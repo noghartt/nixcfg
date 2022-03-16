@@ -15,6 +15,6 @@ in
             config.allowUnfree = true;
           };
         }
-      ] ++ lib.forEach users (user: ../users/${user}/system);
+      ] ++ lib.forEach users (user: ../users/${user});
     };
 }
