@@ -70,7 +70,7 @@ in
   };
 
   nix = {
-    package = pkgs.nixUnstable;
+    package = pkgs.nixFlakes;
     gc = {
       automatic = true;
       options = "--delete-older-than 15d";
