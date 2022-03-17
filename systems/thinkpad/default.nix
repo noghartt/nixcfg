@@ -80,7 +80,7 @@ in
       auto-optimise-store = true;
     };
     extraOptions = ''
-      experimental-features = nix command flakes
+      experimental-features = nix-command flakes
     '';
   };
 
