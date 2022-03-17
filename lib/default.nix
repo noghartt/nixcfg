@@ -1,4 +1,4 @@
-{ inputs, overlays }:
+{ inputs, overlays ? [  ] }:
 
 let
   inherit (inputs.nixpkgs) lib;
@@ -6,6 +6,10 @@ in
 {
   mkSystem = { hostname, system ? builtins.currentSystem, users ? [  ] }:
     lib.nixosSystem {
+      inherit system;
+      specialArgs = {
+        inherit inputs system hostname;
+      };
       modules = [
         ../systems/${hostname}
         {
