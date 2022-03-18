@@ -12,9 +12,9 @@ let
 in
 {
   imports = [
-    common-cpu-amd
-    common-gpu-amd
-    lenovo-thinkpad-t14
+    # common-cpu-amd
+    # common-gpu-amd
+    # lenovo-thinkpad-t14
 
     ./hardware-configuration.nix
   ];

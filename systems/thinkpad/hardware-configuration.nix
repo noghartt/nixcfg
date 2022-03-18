@@ -5,32 +5,21 @@ let
 in
 {
   imports = [
-    "${modulesPath}/installer/scan/not-detected.nix"
+    # TODO: Fix that
+    (modulesPath + "/profiles/qemu-guest.nix")
   ];
 
+  boot.kernelModules = [ "kvm-amd" ];
+  boot.extraModulePackages = [  ];
+
   boot.initrd = {
-    availableKernelModules = [ "nvme" "xhci_pci" "ahci" "usb_storage" "usbhid" "sd_mod" ];
-    kernelModules = [ "kvm-amd" ];
+    # TODO: Remove `ata_piix`, `floppy` and `sr_mod`
+    availableKernelModules = [ "ata_piix" "nvme" "sr_mod" ];
+    kernelModules = [ ];
     supportedFilesystems = [ "btrfs" ];
-
-    postDeviceCommands = ''
-      mkdir -p /mnt
-      mount -o subvol=root ${btrfsDevice} /mnt
-
-      echo "Cleaning subvolume"
-      btrfs subvolume list -o /mnt/root | cut -f9 -d ' ' |
-      while read subvolume; do
-        btrfs subvolume delete "/mnt/$subvolume"
-      done && btrfs subvolume delete /mnt/root
-
-      echo "Restoring blank subvolume"
-      btrfs subvolume snapshot /mnt/root-blank /mnt/root
-
-      umount /mnt
-    '';
   };
 
-  boot.initrd.luks.devices."lvm".device = btrfsDevice;
+  boot.initrd.luks.devices."lvm".device = "/dev/nvme0n1p2";
 
   fileSystems = {
     "/boot" = {
@@ -50,6 +39,8 @@ in
       options = [ "subvol=home" ];
     };
   };
+
+  swapDevices = [ ];
 
   nix.settings.max-jobs = lib.mkDefault 4;
   powerManagement.cpuFreqGovernor = lib.mkDefault "powersave";
