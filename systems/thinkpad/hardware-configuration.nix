@@ -5,21 +5,22 @@ let
 in
 {
   imports = [
-    # TODO: Fix that
-    (modulesPath + "/profiles/qemu-guest.nix")
+    (modulesPath + "/installer/scan/not-detected.nix")
   ];
 
-  boot.kernelModules = [ "kvm-amd" ];
   boot.extraModulePackages = [  ];
 
   boot.initrd = {
-    # TODO: Remove `ata_piix`, `floppy` and `sr_mod`
-    availableKernelModules = [ "ata_piix" "nvme" "sr_mod" ];
-    kernelModules = [ ];
+    availableKernelModules = [ "nvme" "ahci" "usb_storage" "usbhid" "sd_mod" "xhci_pci" ];
+    kernelModules = [ "kvm-amd" ];
     supportedFilesystems = [ "btrfs" ];
-  };
 
-  boot.initrd.luks.devices."lvm".device = "/dev/nvme0n1p2";
+    luks.devices."lvm" = {
+      device = "/dev/nvme0n1p2";
+      preLVM = true;
+      allowDiscards = true;
+    };
+  };
 
   fileSystems = {
     "/boot" = {
@@ -38,9 +39,15 @@ in
       fsType = "btrfs";
       options = [ "subvol=home" ];
     };
+
+    "/nix" = {
+      device = btrfsDevice;
+      fsType = "btrfs";
+      options = [ "subvol=nix" ];
+    };
   };
 
-  swapDevices = [ ];
+  swapDevices = [{ device = "/var/swapfile"; size = (1024 * 8) + (1024 * 2); }];
 
   nix.settings.max-jobs = lib.mkDefault 4;
   powerManagement.cpuFreqGovernor = lib.mkDefault "powersave";
