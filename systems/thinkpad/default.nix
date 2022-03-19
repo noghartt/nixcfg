@@ -3,7 +3,6 @@
 # TODO: This file should be improved in the future
 # Maybe we can improve the collocation of the functions here
 let
-  nur = import inputs.nur { nurpkgs = import inputs.nixpkgs { inherit system; };  };
   inherit (inputs.nixos-hardware.nixosModules)
     common-cpu-amd
     common-gpu-amd
@@ -39,6 +38,11 @@ in
   networking = {
     networkmanager.enable = true;
     useDHCP = false;
+
+    interface.wlp3s0 = {
+      useDHCP = true;
+      wakeOnLan.enable = true;
+    };
   };
 
   time.timeZone = "America/Sao_Paulo";
@@ -84,7 +88,11 @@ in
     '';
   };
 
-  hardware.opengl.enable = true;
+  hardware.opengl = {
+    enable = true;
+    extraPackages = with pkgs; [ amdvlk ];
+    driSupport = true;
+  };
 
   services.xserver = {
     enable = true;
