@@ -16,9 +16,8 @@ in
     lenovo-thinkpad-t14
 
     ./hardware-configuration.nix
+    ../../common/default.nix
   ];
-
-  system.stateVersion = "21.11";
 
   boot = {
     kernelPackages = pkgs.linuxPackages_zen;
@@ -39,15 +38,11 @@ in
     networkmanager.enable = true;
     useDHCP = false;
 
-    interface.wlp3s0 = {
+    interfaces.wlp3s0 = {
       useDHCP = true;
       wakeOnLan.enable = true;
     };
   };
-
-  time.timeZone = "America/Sao_Paulo";
-
-  i18n.defaultLocale = lib.mkDefault "pt_BR.UTF-8";
 
   console = {
     earlySetup = true;
@@ -65,48 +60,10 @@ in
 
   hardware.bluetooth.enable = true;
 
-  environment = {
-    loginShellInit = ''
-      [ -d "$HOME/.nix-profile" ] || /nix/var/nix/profiles/per-user/$USER/home-manager/activate &> /dev/null
-    '';
-    homeBinInPath = true;
-    localBinInPath = true;
-  };
-
-  nix = {
-    package = pkgs.nixFlakes;
-    gc = {
-      automatic = true;
-      options = "--delete-older-than 15d";
-    };
-    settings = {
-      trusted-users = [ "root" "@wheel" ];
-      auto-optimise-store = true;
-    };
-    extraOptions = ''
-      experimental-features = nix-command flakes
-    '';
-  };
-
   hardware.opengl = {
     enable = true;
     extraPackages = with pkgs; [ amdvlk ];
     driSupport = true;
-  };
-
-  services.xserver = {
-    enable = true;
-    displayManager.startx.enable = true;
-    windowManager.xmonad = {
-      enable = true;
-      enableContribAndExtras = true;
-      extraPackages = haskellPackages: with haskellPackages; [
-        xmonad
-        xmonad-contrib
-        xmonad-extras
-        xmobar
-      ];
-    };
   };
 
   fonts = {
