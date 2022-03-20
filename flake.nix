@@ -23,7 +23,8 @@
       overlays = with inputs; [
         nur.overlay
       ];
-      lib = import ./lib { inherit inputs overlays; };
+      pkgs = import inputs.nixpkgs { config = { allowUnfree = true; }; };
+      lib = import ./lib { inherit inputs overlays pkgs; };
       inherit (home-manager.lib) homeManagerConfiguration;
     in
       {
