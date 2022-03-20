@@ -4,8 +4,7 @@ let
   inherit (inputs.nixpkgs) lib;
 in
 {
-  # TODO: Change the system default value to `builtins.currentSystem`
-  mkSystem = { hostname, system ? "x86_64-linux", users ? [  ] }:
+  mkSystem = { hostname, system ? builtins.currentSystem, users ? [  ] }:
     lib.nixosSystem {
       inherit system;
       specialArgs = {
