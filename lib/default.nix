@@ -11,14 +11,14 @@ in
   #
   # TODO: This should be an impure value? Or we can add a default string value?
   # `"x86_64-linux"` for example.
-  mkSystem = { hostname, system ? builtins.currentSystem, users ? [  ] }:
+  mkHost = { hostname, system ? builtins.currentSystem, users ? [  ] }:
     lib.nixosSystem {
       inherit system;
       specialArgs = {
         inherit inputs system hostname;
       };
       modules = [
-        ../systems/${hostname}
+        ../hosts/${hostname}
         {
           networking.hostName = hostname;
           nixpkgs = {

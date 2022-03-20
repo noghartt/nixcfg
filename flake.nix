@@ -28,7 +28,7 @@
     in
       {
         nixosConfigurations = {
-          thinkpad = lib.mkSystem {
+          thinkpad = lib.mkHost {
             hostname = "thinkpad";
             users = [ "noghartt" ];
           };
