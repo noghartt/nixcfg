@@ -1,4 +1,4 @@
-{ inputs, overlays ? [  ] }:
+{ inputs, overlays ? [  ], pkgs }:
 
 let
   inherit (inputs.nixpkgs) lib;
