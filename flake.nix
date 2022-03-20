@@ -20,10 +20,16 @@
 
   outputs = { self, home-manager, ... }@inputs:
     let
+      system = builtins.currentSystem;
       overlays = with inputs; [
         nur.overlay
       ];
-      pkgs = import inputs.nixpkgs { config = { allowUnfree = true; }; };
+      # TODO: Is necessary this `config.allowUnfree` here? Or just the
+      # nixpkgs.config.allowUnfree, from home-manager, can be necessary?
+      pkgs = import inputs.nixpkgs { 
+        inherit system; 
+        config = { allowUnfree = true; };
+      };
       lib = import ./lib { inherit inputs overlays pkgs; };
       inherit (home-manager.lib) homeManagerConfiguration;
     in
@@ -35,5 +41,12 @@
           };
         };
         homeConfigurations = {};
+        # TODO: I don't know why is necessary this shell here, but I see in a config
+        # and I like it, so I'm adding here as well.
+        #
+        # I need to remember to ask why they did it. =)
+        devShell = pkgs.mkShell {
+          buildInputs = with pkgs; [ nixfmt rnix-lsp home-manager git ];
+        };
       };
 }
