@@ -3,35 +3,44 @@
 
   inputs = {
     flake-utils.url = "github:numtide/flake-utils";
+
     nur.url = "github:nix-community/NUR";
+
     nixpkgs = {
       url = "github:NixOS/nixpkgs/nixos-unstable";
-      inputs.nixpkgs.follows = "nixpkgs";
     };
+
     nixos-hardware = {
       url = "github:NixOS/nixos-hardware";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
     home-manager = {
-      url = "home-manager/release-21.11";
+      url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
   outputs = { self, home-manager, ... }@inputs:
     let
-      system = builtins.currentSystem;
+      system = builtins.currentSystem or "x86_64-linux";
+
       overlays = with inputs; [
         nur.overlay
       ];
+
       # TODO: Is necessary this `config.allowUnfree` here? Or just the
       # nixpkgs.config.allowUnfree, from home-manager, can be necessary?
       pkgs = import inputs.nixpkgs { 
         inherit system; 
         config = { allowUnfree = true; };
       };
-      lib = import ./lib { inherit inputs overlays pkgs; };
-      inherit (home-manager.lib) homeManagerConfiguration;
+
+      lib = import ./lib {
+        inherit inputs overlays pkgs;
+        # TODO: I don't like it, maybe we should do `inherit` on lib as well.
+        lib = pkgs.lib;
+      };
     in
       {
         nixosConfigurations = {
@@ -40,12 +49,20 @@
             users = [ "noghartt" ];
           };
         };
-        homeConfigurations = {};
+
+        homeConfigurations = {
+          "noghartt@thinkpad" = {
+            inherit system;
+            username = "noghartt";
+            hostname = "thinkpad";
+          };
+        };
+
         # TODO: I don't know why is necessary this shell here, but I see in a config
         # and I like it, so I'm adding here as well.
         #
         # I need to remember to ask why they did it. =)
-        devShell = pkgs.mkShell {
+        devShell.x86_64-linux = pkgs.mkShell {
           buildInputs = with pkgs; [ nixfmt rnix-lsp home-manager git ];
         };
       };
