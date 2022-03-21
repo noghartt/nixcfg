@@ -36,11 +36,7 @@
         config = { allowUnfree = true; };
       };
 
-      lib = import ./lib {
-        inherit inputs overlays pkgs;
-        # TODO: I don't like it, maybe we should do `inherit` on lib as well.
-        lib = pkgs.lib;
-      };
+      lib = pkgs.callPackages ./lib { inherit inputs; };
     in
       {
         nixosConfigurations = {
