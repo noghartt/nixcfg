@@ -29,14 +29,13 @@
     settings = {
       trusted-users = [ "root" "@wheel" ];
       auto-optimise-store = true;
-      experimental-features = [
-        "nix-command"
-        "flakes"
-      ];
     };
     gc = {
       automatic = true;
       options = "--delete-older-than 15d";
     };
+    extraOptions = ''
+      experimental-features = nix-command flakes
+    '';
   };
 }
