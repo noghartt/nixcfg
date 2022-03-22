@@ -38,6 +38,7 @@ in
 
       homeDirectory = "/home/${username}";
       configuration = ../users/${username}/home/home.nix;
+      stateVersion = "21.11";
       extraModules = [
         {
           nixpkgs = {
