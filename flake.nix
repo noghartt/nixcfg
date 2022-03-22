@@ -21,7 +21,7 @@
     };
   };
 
-  outputs = { self, home-manager, ... }@inputs:
+  outputs = { self, ... }@inputs:
     let
       system = builtins.currentSystem or "x86_64-linux";
 
