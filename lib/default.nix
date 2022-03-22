@@ -37,7 +37,7 @@ in
       };
 
       homeDirectory = "/home/${username}";
-      configuration = ../users/${username}/home;
+      configuration = ../users/${username}/home/home.nix;
       extraModules = [
         {
           nixpkgs = {
