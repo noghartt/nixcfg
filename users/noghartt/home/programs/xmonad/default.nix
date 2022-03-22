@@ -1,17 +1,13 @@
-{ config, lib, pkgs, ... }:
+{ ... }:
 
 {
-  services.xserver = {
+  xsession = {
     enable = true;
-
-    displayManager = {
-      defaultSession = "none+xmonad";
-      startx.enable = true;
-    };
 
     windowManager.xmonad = {
       enable = true;
       enableContribAndExtras = true;
+      config = ./xmonad.hs;
       extraPackages = haskellPackages: with haskellPackages; [
         xmonad
         xmonad-contrib
