@@ -1,12 +1,9 @@
-{ config }:
+{ ... }:
 
 {
   imports = [
-    ./programs
+    ./programs/xmonad/default.nix
+    ./programs/git.nix
+    ./programs/firefox.nix
   ];
-
-  home.file."hm-config" = {
-    source = ".config/nixpkgs";
-    target = config.lib.file.mkOutOfStoreSymlink "/dotfiles";
-  };
 }
