@@ -7,10 +7,13 @@
 
     userName = "Guilherme Ananias";
     userEmail = "hi@noghartt.dev";
-    core = {
-      editor = "vim";
+
+    extraConfig = {
+      core = {
+        editor = "vim";
+      };
+      pull.rebase = false;
     };
-    pull.rebase = false;
   };
 
   programs.gh = {
