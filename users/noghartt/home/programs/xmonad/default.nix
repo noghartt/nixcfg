@@ -1,6 +1,13 @@
 { ... }:
 
 {
+  services.xserver.enable = true;
+
+  services.xserver.displayManager = {
+    defaultSession = "none+xmonad";
+    startx.enable = true;
+  };
+
   xsession = {
     enable = true;
 
