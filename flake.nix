@@ -47,7 +47,7 @@
         };
 
         homeConfigurations = {
-          "noghartt@thinkpad" = {
+          "noghartt@thinkpad" = lib.mkHome {
             inherit system;
             username = "noghartt";
             hostname = "thinkpad";
@@ -58,7 +58,7 @@
         # and I like it, so I'm adding here as well.
         #
         # I need to remember to ask why they did it. =)
-        devShell.x86_64-linux = pkgs.mkShell {
+        devShell.${system} = pkgs.mkShell {
           buildInputs = with pkgs; [ nixfmt rnix-lsp home-manager git ];
         };
       };
