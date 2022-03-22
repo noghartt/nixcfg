@@ -32,7 +32,7 @@
       # TODO: Is necessary this `config.allowUnfree` here? Or just the
       # nixpkgs.config.allowUnfree, from home-manager, can be necessary?
       pkgs = import inputs.nixpkgs { 
-        inherit system; 
+        inherit system overlays; 
         config = { allowUnfree = true; };
       };
 
