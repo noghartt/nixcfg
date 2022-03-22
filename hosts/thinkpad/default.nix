@@ -15,23 +15,13 @@ in
     common-gpu-amd
     lenovo-thinkpad-t14
 
-    ./hardware-configuration.nix
     ../../common/default.nix
+    ./hardware-configuration.nix
   ];
 
   boot = {
     kernelPackages = pkgs.linuxPackages_zen;
     kernelParams = [ "quiet" ];
-    supportedFilesystems = [ "btrfs" ];
-    loader = {
-      timeout = 10;
-      efi.canTouchEfiVariables = true;
-      systemd-boot = {
-        enable = true;
-        consoleMode = "max";
-        editor = false;
-      };
-    };
   };
 
   networking = {
