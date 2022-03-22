@@ -8,8 +8,6 @@ in
     (modulesPath + "/installer/scan/not-detected.nix")
   ];
 
-  boot.extraModulePackages = [  ];
-
   boot.initrd = {
     availableKernelModules = [ "nvme" "ahci" "usb_storage" "usbhid" "sd_mod" "xhci_pci" ];
     kernelModules = [ "kvm-amd" ];
@@ -19,6 +17,16 @@ in
       device = "/dev/nvme0n1p2";
       preLVM = true;
       allowDiscards = true;
+    };
+  };
+
+  boot.loader = {
+    timeout = 10;
+    efi.canTouchEfiVariables = true;
+    systemd-boot = {
+    enable = true;
+    consoleMode = "max";
+      editor = false;
     };
   };
 
