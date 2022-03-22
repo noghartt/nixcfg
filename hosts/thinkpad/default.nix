@@ -15,8 +15,8 @@ in
     common-gpu-amd
     lenovo-thinkpad-t14
 
-    ../common/default.nix
-    ../common/xmonad.nix
+    ../../common/default.nix
+    ../../common/xmonad.nix
     ./hardware-configuration.nix
   ];
 
