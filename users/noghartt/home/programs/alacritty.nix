@@ -1,3 +1,5 @@
+{ ... }:
+
 {
   programs.alacritty = {
     enable = true;
