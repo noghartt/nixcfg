@@ -56,7 +56,7 @@ in
     };
   };
 
-  swapDevices = [{ device = "/var/swapfile"; size = (1024 * 8) + (1024 * 2); }];
+  swapDevices = [{ device = "/var/swapfile"; size = (1024 * 16) + (1024 * 2); }];
 
   nix.settings.max-jobs = lib.mkDefault 4;
   powerManagement.cpuFreqGovernor = lib.mkDefault "ondemand";
