@@ -29,7 +29,7 @@ in
       ] ++ lib.forEach users (user: ../users/${user});
     };
 
-  mkHome= { username, system, hostname }:
+  mkHome = { username, system, hostname }:
     home-manager.lib.homeManagerConfiguration {
       inherit username system;
       extraSpecialArgs = {
