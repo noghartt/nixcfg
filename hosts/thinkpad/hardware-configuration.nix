@@ -2,6 +2,7 @@
 
 let
   btrfsDevice = "/dev/disk/by-label/root";
+  fsOptions = [ "compress=lzo" "noatime" "discard" "ssd" "autodefrag" "space_cache" ];
 in
 {
   imports = [
@@ -39,19 +40,19 @@ in
     "/" = {
       device = btrfsDevice;
       fsType = "btrfs";
-      options = [ "subvol=root" ];
+      options = fsOptions ++ [ "subvol=root" ];
     };
 
     "/home" = {
       device = btrfsDevice;
       fsType = "btrfs";
-      options = [ "subvol=home" ];
+      options = fsOptions ++ [ "subvol=home" ];
     };
 
     "/nix" = {
       device = btrfsDevice;
       fsType = "btrfs";
-      options = [ "subvol=nix" ];
+      options = fsOptions ++ [ "subvol=nix" ];
     };
   };
 
