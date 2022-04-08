@@ -15,8 +15,12 @@ in
     common-gpu-amd
     lenovo-thinkpad-t14
 
-    ../../common/default.nix
-    ../../common/xmonad.nix
+    ../common
+    ../common/xserver.nix
+    ../common/nix.nix
+    ../common/bluetooth.nix
+    ../common/fonts.nix
+
     ./hardware-configuration.nix
   ];
 
@@ -49,22 +53,9 @@ in
     pulse.enable = true;
   };
 
-  hardware.bluetooth.enable = true;
-
   hardware.opengl = {
     enable = true;
     extraPackages = with pkgs; [ amdvlk ];
     driSupport = true;
-  };
-
-  fonts = {
-    enableDefaultFonts = true;
-    # TODO: Add more fonts
-    fonts = with pkgs; [
-      noto-fonts
-      noto-fonts-emoji
-      noto-fonts-extra
-      noto-fonts-cjk
-    ];
   };
 }
