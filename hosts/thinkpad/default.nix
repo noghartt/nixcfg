@@ -16,6 +16,7 @@ in
     lenovo-thinkpad-t14
 
     ../common
+    ../common/bootloader.nix
     ../common/xserver.nix
     ../common/nix.nix
     ../common/bluetooth.nix
