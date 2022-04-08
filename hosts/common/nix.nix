@@ -1,4 +1,4 @@
-{ pkgs }:
+{ pkgs, ... }:
 
 {
   # TODO: Just this attribute is useful? Or I need to add the allowUnfree on `flake.nix` as well?
