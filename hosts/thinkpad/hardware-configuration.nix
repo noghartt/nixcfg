@@ -21,16 +21,6 @@ in
     };
   };
 
-  boot.loader = {
-    timeout = 10;
-    efi.canTouchEfiVariables = true;
-    systemd-boot = {
-    enable = true;
-    consoleMode = "max";
-      editor = false;
-    };
-  };
-
   fileSystems = {
     "/boot" = {
       device = "/dev/disk/by-label/boot";
@@ -59,5 +49,6 @@ in
   swapDevices = [{ device = "/var/swapfile"; size = (1024 * 16) + (1024 * 2); }];
 
   nix.settings.max-jobs = lib.mkDefault 4;
+
   powerManagement.cpuFreqGovernor = lib.mkDefault "ondemand";
 }
