@@ -8,7 +8,7 @@
       session = [
         {
           name = "xsession";
-          manage = " desktop";
+          manage = "desktop";
           start = ''
             exec $HOME/.xsession
           '';

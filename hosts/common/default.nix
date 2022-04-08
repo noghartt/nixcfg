@@ -18,24 +18,8 @@
       wget
       curl
       vim
+      usbutils
+      pciutils
     ];
-  };
-
-  # TODO: Just this attribute is useful? Or I need to add the allowUnfree on `flake.nix` as well?
-  nixpkgs.config.allowUnfree = true;
-
-  nix = {
-    package = pkgs.nixFlakes;
-    settings = {
-      trusted-users = [ "root" "@wheel" ];
-      auto-optimise-store = true;
-    };
-    gc = {
-      automatic = true;
-      options = "--delete-older-than 15d";
-    };
-    extraOptions = ''
-      experimental-features = nix-command flakes
-    '';
   };
 }
