@@ -1,4 +1,4 @@
-{ inputs, ... }:
+{ inputs, pkgs, ... }:
 
 {
   imports = [
@@ -6,5 +6,10 @@
 
     ./programs/git.nix
     ./programs/firefox.nix
+  ];
+
+  home.packages = with pkgs;  [
+    discord
+    neofetch
   ];
 }
