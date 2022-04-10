@@ -22,6 +22,7 @@ in
     ../common/nix.nix
     ../common/bluetooth.nix
     ../common/fonts.nix
+    ../common/ssh.nix
 
     ./hardware-configuration.nix
   ];
