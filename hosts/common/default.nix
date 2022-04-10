@@ -14,12 +14,14 @@
     '';
     homeBinInPath = true;
     localBinInPath = true;
+
     systemPackages = with pkgs; [
       wget
       curl
       vim
       usbutils
       pciutils
+      xclip
     ];
   };
 }
