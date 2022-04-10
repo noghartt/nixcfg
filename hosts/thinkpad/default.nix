@@ -18,6 +18,7 @@ in
     ../common
     ../common/bootloader.nix
     ../common/xserver.nix
+    ../common/pipewire.nix
     ../common/nix.nix
     ../common/bluetooth.nix
     ../common/fonts.nix
@@ -43,15 +44,6 @@ in
   console = {
     earlySetup = true;
     keyMap = "br-abnt2";
-  };
-
-  security.rtkit.enable = true;
-  sound.enable = true;
-  services.pipewire = {
-    enable = true;
-    alsa.enable = true;
-    alsa.support32Bit = true;
-    pulse.enable = true;
   };
 
   hardware.opengl = {
