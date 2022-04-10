@@ -25,8 +25,9 @@ in
   mkHome = { username, system, hostname }:
     home-manager.lib.homeManagerConfiguration {
       inherit username system;
+
       extraSpecialArgs = {
-        inherit system username hostname;
+        inherit system username hostname inputs;
       };
 
       homeDirectory = "/home/${username}";
