@@ -1,8 +1,9 @@
-{ ... }:
+{ inputs, ... }:
 
 {
   imports = [
-    ./programs/xmonad/default.nix
+    inputs.doom-emacs.hmModule
+
     ./programs/git.nix
     ./programs/firefox.nix
   ];
