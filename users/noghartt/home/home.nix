@@ -9,6 +9,7 @@
     ./programs/alacritty.nix
     ./programs/firefox.nix
     ./programs/emacs.nix
+    ./programs/qutebrowser.nix
     ./programs/fish.nix
   ];
 
