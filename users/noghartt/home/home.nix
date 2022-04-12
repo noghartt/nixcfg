@@ -11,7 +11,8 @@
     ./programs/emacs.nix
     ./programs/qutebrowser.nix
     ./programs/fish.nix
-    ./programs/redshift.nix
+
+    ./services/redshift.nix
   ];
 
   home.packages = with pkgs;  [
