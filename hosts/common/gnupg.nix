@@ -1,7 +1,7 @@
 {
   programs.gnupg.agent = {
     enable = true;
-    pinentryFlavor = "emacs";
+    pinentryFlavor = "tty";
   };
 
   services.gnome.gnome-keyring.enable = true;
