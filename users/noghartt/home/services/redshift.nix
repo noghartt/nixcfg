@@ -12,9 +12,7 @@
       night = 3700;
     };
 
-    location = {
-      latitude = "-23.5513981";
-      longitude = "-46.6335635";
-    };
+    latitude = "-23.5513981";
+    longitude = "-46.6335635";
   };
 }
