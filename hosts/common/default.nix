@@ -22,6 +22,7 @@
       usbutils
       pciutils
       xclip
+      lm_sensors
     ];
 
     etc."nixos" = {
