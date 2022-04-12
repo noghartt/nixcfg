@@ -23,5 +23,10 @@
       pciutils
       xclip
     ];
+
+    etc."nixos" = {
+       target = "nixos";
+      source = "/dotfiles";
+    };
   };
-}
+ }
