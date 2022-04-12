@@ -12,6 +12,7 @@
 
     ./terminal/alacritty.nix
     ./terminal/fish.nix
+    ./terminal/tmux
 
     ./services/redshift.nix
   ];
