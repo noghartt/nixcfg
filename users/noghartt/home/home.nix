@@ -10,7 +10,8 @@
     ./programs/firefox.nix
     ./programs/emacs.nix
     ./programs/qutebrowser.nix
-    ./programs/fish.nix
+
+    ./terminal/fish.nix
 
     ./services/redshift.nix
   ];
