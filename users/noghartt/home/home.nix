@@ -6,11 +6,11 @@
 
     ./programs/xmonad
     ./programs/git.nix
-    ./programs/alacritty.nix
     ./programs/firefox.nix
     ./programs/emacs.nix
     ./programs/qutebrowser.nix
 
+    ./terminal/alacritty.nix
     ./terminal/fish.nix
 
     ./services/redshift.nix
