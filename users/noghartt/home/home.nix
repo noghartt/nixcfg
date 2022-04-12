@@ -1,4 +1,4 @@
-{ inputs, pkgs, ... }:
+{ inputs, config, pkgs, ... }:
 
 {
   imports = [
@@ -19,4 +19,9 @@
     discord
     neofetch
   ];
+
+  home.file."homecfg" = {
+    target = ".config/nixpkgs";
+    source = config.lib.file.mkOutOfStoreSymlink "/dotfiles";
+  };
 }
