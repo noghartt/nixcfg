@@ -10,7 +10,7 @@
 
     extraConfig = {
       user = {
-        signingkey = "D30A921C9BE397B8";
+        signingkey = "F7E2E3DBF4190AB7";
       };
 
       commit = {
