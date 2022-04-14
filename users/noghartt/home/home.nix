@@ -8,7 +8,7 @@
     ./programs/xmonad/xmobar.nix
     ./programs/git.nix
     ./programs/firefox.nix
-    ./programs/emacs.nix
+    ./programs/emacs
     ./programs/qutebrowser.nix
 
     ./terminal/alacritty.nix

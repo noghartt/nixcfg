@@ -3,7 +3,7 @@
 {
   programs.doom-emacs = {
     enable = true;
-    doomPrivateDir = "/home/${username}/.config/doom";
+    doomPrivateDir = ./doom.d;
     emacsPackage = pkgs.emacsUnstable;
   };
 
