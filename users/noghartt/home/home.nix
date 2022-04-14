@@ -34,6 +34,7 @@
     nyxt
     steam
     xfce.thunar
+    flameshot
   ];
 
   home.file."homecfg" = {
