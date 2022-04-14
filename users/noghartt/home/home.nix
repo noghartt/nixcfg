@@ -5,6 +5,7 @@
     inputs.doom-emacs.hmModule
 
     ./programs/xmonad
+    ./programs/xmonad/xmobar.nix
     ./programs/git.nix
     ./programs/firefox.nix
     ./programs/emacs.nix
