@@ -10,6 +10,7 @@
     ./programs/firefox.nix
     ./programs/emacs
     ./programs/qutebrowser.nix
+    ./programs/vscode.nix
 
     ./terminal/alacritty.nix
     ./terminal/fish.nix
