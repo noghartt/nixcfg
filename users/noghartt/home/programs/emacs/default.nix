@@ -7,5 +7,14 @@
     emacsPackage = pkgs.emacsUnstable;
   };
 
+  home.packages = with pkgs; [
+    fd
+    ripgrep
+    clang
+    coreutils
+
+    texlive.combined.scheme-medium
+  ];
+
   services.emacs = { enable = true; };
 }
