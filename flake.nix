@@ -72,5 +72,7 @@
         devShell.${system} = pkgs.mkShell {
           buildInputs = with pkgs; [ nixfmt rnix-lsp home-manager git ];
         };
+
+        templates = import ./templates;
       };
 }
