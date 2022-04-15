@@ -13,7 +13,7 @@
     ./programs/vscode.nix
 
     ./terminal/alacritty.nix
-    ./terminal/fish.nix
+    ./terminal/fish
     ./terminal/tmux
 
     ./services/redshift.nix
