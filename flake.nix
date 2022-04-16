@@ -65,10 +65,6 @@
           };
         };
 
-        # TODO: I don't know why is necessary this shell here, but I see in a config
-        # and I like it, so I'm adding here as well.
-        #
-        # I need to remember to ask why they did it. =)
         devShell.${system} = pkgs.mkShell {
           buildInputs = with pkgs; [ nixfmt rnix-lsp home-manager git ];
         };
