@@ -3,6 +3,17 @@
 {
   system.stateVersion = "21.11";
 
+  systemPackages = with pkgs; [
+    wget
+    curl
+    vim
+    usbutils
+    pciutils
+    xclip
+    lm_sensors
+    nixfmt
+  ];
+
   boot.cleanTmpDir = true;
 
   i18n.defaultLocale = lib.mkDefault "en_US.UTF8";
@@ -14,16 +25,6 @@
     '';
     homeBinInPath = true;
     localBinInPath = true;
-
-    systemPackages = with pkgs; [
-      wget
-      curl
-      vim
-      usbutils
-      pciutils
-      xclip
-      lm_sensors
-    ];
 
     etc."nixos" = {
        target = "nixos";
