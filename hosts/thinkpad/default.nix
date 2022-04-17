@@ -53,4 +53,10 @@ in
     extraPackages = with pkgs; [ amdvlk ];
     driSupport = true;
   };
+
+  programs.slock.enable = true;
+
+  environment.systemPackages = with pkgs; [
+    acpi
+  ];
 }
