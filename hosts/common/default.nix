@@ -3,7 +3,7 @@
 {
   system.stateVersion = "21.11";
 
-  systemPackages = with pkgs; [
+  environment.systemPackages = with pkgs; [
     wget
     curl
     vim
@@ -12,6 +12,7 @@
     xclip
     lm_sensors
     nixfmt
+    rnix-lsp
   ];
 
   boot.cleanTmpDir = true;
@@ -27,7 +28,7 @@
     localBinInPath = true;
 
     etc."nixos" = {
-       target = "nixos";
+      target = "nixos";
       source = "/dotfiles";
     };
   };
