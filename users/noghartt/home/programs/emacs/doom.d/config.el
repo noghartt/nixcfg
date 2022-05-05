@@ -5,7 +5,8 @@
 
 ; TODO: I don't like this theme, should be changed in the future.
 (setq doom-theme 'doom-gruvbox
-      doom-font (font-spec :family "Hack Nerd Font Mono" :size 14))
+      doom-font (font-spec :family "Hack Nerd Font Mono" :size 14)
+      doom-unicode-font (font-spec :family "LiterationSerif Nerd Font" :size 14))
 
 (setq confirm-kill-emacs nil)
 
@@ -33,6 +34,10 @@
         org-roam-ui-follow t
         org-roam-ui-update-on-save t
         org-roam-ui-open-on-start nil))
+
+(setq deft-extensions '("txt" "text" "org" "md")
+      deft-directory org-roam-directory
+      deft-recursive t)
 
 (when (and (featurep! :completion company) (featurep! :lang nix))
   (after! company
