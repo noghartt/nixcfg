@@ -15,6 +15,7 @@
     ./terminal/alacritty.nix
     ./terminal/fish
     ./terminal/tmux
+    ./terminal/direnv.nix
 
     ./services/redshift.nix
   ];
@@ -35,6 +36,10 @@
     steam
     xfce.thunar
     flameshot
+    docker
+    docker-compose
+    robo3t
+    gimp
   ];
 
   home.file."homecfg" = {
