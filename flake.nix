@@ -38,37 +38,47 @@
 
       # TODO: Is necessary this `config.allowUnfree` here? Or just the
       # nixpkgs.config.allowUnfree, from home-manager, can be necessary?
-      pkgs = import inputs.nixpkgs { 
-        inherit system overlays; 
+      pkgs = import inputs.nixpkgs {
+        inherit system overlays;
         config = { allowUnfree = true; };
       };
 
       lib = pkgs.callPackage ./lib { inherit inputs overlays; };
     in
-      {
-        inherit overlays;
+    {
+      inherit overlays;
 
-        package = pkgs;
+      package = pkgs;
 
-        nixosConfigurations = {
-          thinkpad = lib.mkHost {
-            hostname = "thinkpad";
-            users = [ "noghartt" ];
-          };
+      nixosConfigurations = {
+        thinkpad = lib.mkHost {
+          hostname = "thinkpad";
+          users = [ "noghartt" ];
         };
-
-        homeConfigurations = {
-          "noghartt@thinkpad" = lib.mkHome {
-            inherit system;
-            username = "noghartt";
-            hostname = "thinkpad";
-          };
-        };
-
-        devShell.${system} = pkgs.mkShell {
-          buildInputs = with pkgs; [ nixfmt rnix-lsp home-manager git ];
-        };
-
-        templates = import ./templates;
       };
+
+      homeConfigurations = {
+        "noghartt@thinkpad" = lib.mkHome {
+          inherit system;
+          username = "noghartt";
+          hostname = "thinkpad";
+        };
+      };
+
+      devShell.${system} = pkgs.mkShell {
+        uildInputs = with pkgs; [ nixfmt rnix-lsp home-manager git ];
+      };
+
+      devShells.${system} = {
+        node = pkgs.mkShell {
+          buildInputs = with pkgs; [
+            nodejs
+            yarn
+            python
+          ];
+        };
+      };
+
+      templates = import ./templates;
+    };
 }
