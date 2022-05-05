@@ -19,6 +19,9 @@
 
     extraOptions = ''
       experimental-features = nix-command flakes
+
+      keep-derivations = true
+      keep-outputs = true
     '';
   };
 }
