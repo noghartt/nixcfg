@@ -17,14 +17,17 @@
 
 import Graphics.X11.ExtraTypes.XF86
 
+import System.Exit
+
 import qualified Data.Map as M
 import Data.Monoid
 
+import XMonad
+
 import qualified XMonad.StackSet as W
 
-import System.Exit
+import XMonad.Layout.Fullscreen
 
-import XMonad
 import XMonad.Hooks.DynamicLog (PP (..), dynamicLogWithPP, shorten, wrap, xmobarColor, xmobarPP)
 import XMonad.Hooks.ManageDocks
 
@@ -245,7 +248,8 @@ myManageHook =
     [ className =? "MPlayer" --> doFloat,
       className =? "Gimp" --> doFloat,
       resource =? "desktop_window" --> doIgnore,
-      resource =? "kdesktop" --> doIgnore
+      resource =? "kdesktop" --> doIgnore,
+      fullscreenManageHook
     ]
 
 ------------------------------------------------------------------------
@@ -262,7 +266,7 @@ myManageHook =
 -- It will add EWMH event handling to your custom event hooks by
 -- combining them with ewmhDesktopsEventHook.
 --
-myEventHook = mempty
+myEventHook = fullscreenEventHook
 
 ------------------------------------------------------------------------
 -- Status bars and logging
@@ -308,8 +312,8 @@ main = do
   xmproc1 <- spawnPipe "xmobar -x 1 $HOME/.config/xmobar/.xmobarrc"
   xmonad 
     $ docks
-    $ 
-      def
+    $ fullscreenSupport
+    $ def
         { terminal = myTerminal,
           focusFollowsMouse = myFocusFollowsMouse,
           borderWidth = myBorderWidth,
