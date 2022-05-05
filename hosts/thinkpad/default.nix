@@ -58,5 +58,8 @@ in
 
   environment.systemPackages = with pkgs; [
     acpi
+    cachix
   ];
+
+  virtualisation.docker.enable = true;
 }
