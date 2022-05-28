@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ pkgs, config, ... }:
 
 {
   users.users.noghartt = {
@@ -9,8 +9,24 @@
       "networkmanager"
       "video"
       "docker"
+      "adbusers"
     ];
     # Change the password after the first boot
     initialPassword = "changeme";
   };
+
+  security.sudo.extraRules = [
+    {
+      runAs = "root";
+      users = [ "guilherme" ];
+      commands = [
+        {
+          command = "${config.system.build.nixos-rebuild}/bin/nixos-rebuild switch";
+          options = [ "NOPASSWD" ];
+        }
+      ];
+    }
+  ];
+
+  home-manager.users.noghartt = import ./home/home.nix;
 }
