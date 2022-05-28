@@ -27,28 +27,13 @@
     };
   };
 
-  outputs = { ... }@inputs:
+  outputs = inputs@{ nixpkgs, flake-utils, ... }:
     let
-      system = builtins.currentSystem or "x86_64-linux";
+      overlays = with inputs; [ nur.overlay emacs-overlay.overlay ];
 
-      overlays = with inputs; [
-        nur.overlay
-        emacs-overlay.overlay
-      ];
-
-      # TODO: Is necessary this `config.allowUnfree` here? Or just the
-      # nixpkgs.config.allowUnfree, from home-manager, can be necessary?
-      pkgs = import inputs.nixpkgs {
-        inherit system overlays;
-        config = { allowUnfree = true; };
-      };
-
-      lib = pkgs.callPackage ./lib { inherit inputs overlays; };
-    in
-    {
+      lib = import ./lib { inherit inputs overlays; };
+    in {
       inherit overlays;
-
-      package = pkgs;
 
       nixosConfigurations = {
         thinkpad = lib.mkHost {
@@ -57,28 +42,28 @@
         };
       };
 
-      homeConfigurations = {
-        "noghartt@thinkpad" = lib.mkHome {
-          inherit system;
-          username = "noghartt";
-          hostname = "thinkpad";
-        };
-      };
+      templates = import ./templates;
+    } // flake-utils.lib.eachDefaultSystem (system:
+      let
+        pkgs = import nixpkgs { inherit system overlays; };
 
-      devShell.${system} = pkgs.mkShell {
-        uildInputs = with pkgs; [ nixfmt rnix-lsp home-manager git ];
-      };
+        ghcWithPackages = pkgs.ghc.withPackages (haskellPackages:
+          with haskellPackages; [
+            hlint
+            haskell-language-server
+          ]);
+      in {
+        packages = pkgs;
 
-      devShells.${system} = {
-        node = pkgs.mkShell {
+        devShell = pkgs.mkShell {
           buildInputs = with pkgs; [
-            nodejs
-            yarn
-            python
+            rnix-lsp
+            statix
+            nix-linter
+            nixpkgs-fmt
+
+            ghcWithPackages
           ];
         };
-      };
-
-      templates = import ./templates;
-    };
+      });
 }
