@@ -49,6 +49,10 @@
 
         ghcWithPackages = pkgs.ghc.withPackages (haskellPackages:
           with haskellPackages; [
+            xmonad
+            xmonad-contrib
+            xmonad-extras
+
             hlint
             haskell-language-server
           ]);
