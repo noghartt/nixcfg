@@ -15,7 +15,20 @@
 (setq org-directory "~/org"
       org-roam-directory (concat org-directory "/roam")
       org-roam-dailies-directory (concat org-roam-directory "/dailies")
-      org-agenda-files '(concat ))
+      org-agenda-files '(org-roam-dailies-directory))
+
+(after! org
+  :config
+  (setq org-todo-keywords
+      '((sequence  "TODO(t)" "DONE(d)")
+        (sequence "[ ](C)" "[-](D)" "[?](W)" "[X](D)")
+        (sequence "|" "CANCELED(c)"))
+      org-todo-keyword-faces
+       '(("TODO" . org-todo)
+         ("DONE" . org-done)
+         ("CANCELED" . +org-todo-cancel)
+         ("[-]" . +org-todo-active)
+         ("[?]" . +org-todo-onhold))))
 
 (after! org-roam
   (setq org-roam-capture-templates
