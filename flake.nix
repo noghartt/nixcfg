@@ -2,7 +2,8 @@
   description = "My NixOS configuration";
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    # TODO: Move it to unstable when fix zen-kernel
+    nixpkgs.url = "github:nixos/nixpkgs/master";
 
     nur.url = "github:nix-community/NUR";
 
@@ -29,7 +30,10 @@
 
   outputs = inputs@{ nixpkgs, flake-utils, ... }:
     let
-      overlays = with inputs; [ nur.overlay emacs-overlay.overlay ];
+      overlays = with inputs; [
+        nur.overlay
+        emacs-overlay.overlay
+      ];
 
       lib = import ./lib { inherit inputs overlays; };
     in {
