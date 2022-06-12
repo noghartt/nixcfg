@@ -16,6 +16,7 @@
     ./terminal/direnv.nix
 
     ./services/redshift.nix
+    ./services/slock.nix
   ];
 
   home.packages = with pkgs;  [
