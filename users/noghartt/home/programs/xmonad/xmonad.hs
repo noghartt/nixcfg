@@ -12,36 +12,40 @@ import XMonad.Layout.ShowWName
 import XMonad.Layout.NoBorders ( smartBorders, noBorders )
 import XMonad.Layout.HintedGrid
 import XMonad.Layout.ThreeColumns
+import XMonad.Layout.SubLayouts
+import XMonad.Layout.WindowNavigation
+import XMonad.Layout.BoringWindows
 
 import XMonad.Util.Run
 
 import qualified XMonad.StackSet as W
+import XMonad.Layout.Simplest (Simplest(Simplest))
+import XMonad.Actions.Navigation2D (windowGo, switchLayer, screenGo, windowSwap, screenSwap, windowToScreen)
 
 main = xmonad
      $ fullscreenSupport
      $ docks
-     $ ewmh defaults
+     $ ewmh
+     $ def {
+      -- stuffs
+      terminal    = myTerminal,
+      modMask     = myModMask,
+      workspaces  = myWorkspaces,
 
-defaults = def {
-  -- stuffs
-  terminal    = myTerminal,
-  modMask     = myModMask,
-  workspaces  = myWorkspaces,
+      -- border stuffs
+      borderWidth = myBorderWidth,
+      normalBorderColor = myNormalBorderColor,
+      focusedBorderColor = myFocusedBorderColor,
 
-  -- border stuffs
-  borderWidth = myBorderWidth,
-  normalBorderColor = myNormalBorderColor,
-  focusedBorderColor = myFocusedBorderColor,
-  
-  -- key bindings
-  keys = myKeys,
+      -- key bindings
+      keys = myKeys,
 
-  -- hooks
-  logHook         = myLogHook,
-  handleEventHook = myEventHook,
-  startupHook     = myStartupHook,
-  layoutHook      = showWName' myShowWNameTheme myLayoutHook
-}
+      -- hooks
+      logHook         = myLogHook,
+      handleEventHook = myEventHook,
+      startupHook     = myStartupHook,
+      layoutHook      = showWName' myShowWNameTheme myLayoutHook
+    }
 
 myTerminal = "alacritty"
 myModMask = mod4Mask
@@ -79,6 +83,7 @@ myKeys conf@(XConfig { XMonad.modMask = modm }) = M.fromList $
 
   -- layouts
   , ((modm, xK_space), sendMessage NextLayout)
+  , ((modm .|. shiftMask, xK_space), sendMessage FirstLayout)
 
   , ((modm, xK_j), windows W.focusDown)
   , ((modm, xK_k), windows W.focusUp)
@@ -93,6 +98,17 @@ myKeys conf@(XConfig { XMonad.modMask = modm }) = M.fromList $
   , ((modm, xK_t), withFocused $ windows . W.sink) -- fix a float window
 
   , ((modm .|. shiftMask, xK_c), kill)
+
+  , ((modm .|. controlMask, xK_h), sendMessage $ pullGroup L)
+  , ((modm .|. controlMask, xK_l), sendMessage $ pullGroup R)
+  , ((modm .|. controlMask, xK_k), sendMessage $ pullGroup U)
+  , ((modm .|. controlMask, xK_j), sendMessage $ pullGroup D)
+
+  , ((modm .|. controlMask, xK_m), withFocused (sendMessage . MergeAll))
+  , ((modm .|. controlMask, xK_u), withFocused (sendMessage . UnMerge))
+
+  , ((modm .|. controlMask, xK_period), onGroup W.focusUp')
+  , ((modm .|. controlMask, xK_comma), onGroup W.focusDown')
   ]
   ++
   [((m .|. modm, k), windows $ f i)
@@ -101,12 +117,14 @@ myKeys conf@(XConfig { XMonad.modMask = modm }) = M.fromList $
 
 myLayoutHook
   = smartBorders
-  $ avoidStruts 
+  $ avoidStruts
+  $ windowNavigation
+  $ boringWindows
+  $ subLayout [] (Simplest ||| Tall 1 0.2 0.5)
   $ noBorders Full
     ||| tiled
     ||| Mirror tiled 
     ||| ThreeColMid nmaster delta ratio
-    ||| Grid False
   where
     -- default tiling algorithm partitions the screen into two panes
     tiled = Tall nmaster delta ratio
