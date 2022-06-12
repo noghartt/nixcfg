@@ -18,7 +18,7 @@
   security.sudo.extraRules = [
     {
       runAs = "root";
-      users = [ "guilherme" ];
+      users = [ "noghartt" ];
       commands = [
         {
           command = "${config.system.build.nixos-rebuild}/bin/nixos-rebuild switch";
