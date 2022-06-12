@@ -4,6 +4,7 @@
   system.stateVersion = "21.11";
 
   environment.systemPackages = with pkgs; [
+    git
     wget
     curl
     vim
