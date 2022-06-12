@@ -2,9 +2,11 @@
   services.redshift = {
     enable = true;
 
-    brightness = {
-      day = "1";
-      night = "0.8";
+    settings = {
+      redshift = {
+        brightness-day = "1";
+        brightness-night = "0.8";
+      };
     };
 
     temperature = {
