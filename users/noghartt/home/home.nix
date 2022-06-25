@@ -19,6 +19,7 @@
 
     ./services/redshift.nix
     ./services/slock.nix
+    ./services/gpg.nix
   ];
 
   home.packages = with pkgs;  [
