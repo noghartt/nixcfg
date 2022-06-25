@@ -42,4 +42,8 @@
     target = ".config/nixpkgs";
     source = config.lib.file.mkOutOfStoreSymlink "/dotfiles";
   };
+
+  home.sessionVariables = {
+    EDITOR = "vim";
+  };
 }
