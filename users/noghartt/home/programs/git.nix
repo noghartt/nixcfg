@@ -21,6 +21,8 @@
         editor = "vim";
       };
 
+      init.defaultBranch = "main";
+
       pull.rebase = false;
     };
   };
