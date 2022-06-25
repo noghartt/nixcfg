@@ -1,6 +1,8 @@
 { config, pkgs, ... }:
 
 {
+  home.stateVersion = "22.05";
+
   imports = [
     ./programs/xmonad
     ./programs/xmonad/xmobar.nix
