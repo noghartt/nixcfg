@@ -2,8 +2,7 @@
   description = "My NixOS configuration";
 
   inputs = {
-    # TODO: Move it to unstable when fix zen-kernel
-    nixpkgs.url = "github:nixos/nixpkgs/master";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
 
     nur.url = "github:nix-community/NUR";
 
