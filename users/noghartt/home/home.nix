@@ -4,8 +4,9 @@
   home.stateVersion = "22.05";
 
   imports = [
-    ./programs/xmonad
-    ./programs/xmonad/xmobar.nix
+    # ./programs/xmonad
+    # ./programs/xmonad/xmobar.nix
+    ./i3.nix
     ./programs/git.nix
     ./programs/firefox.nix
     ./programs/emacs
@@ -37,6 +38,10 @@
     robo3t
     gimp
     peek
+    htop
+
+    # Necessary to Emacs
+    pandoc
   ];
 
   home.file."homecfg" = {
