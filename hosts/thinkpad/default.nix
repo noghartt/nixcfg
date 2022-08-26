@@ -47,6 +47,10 @@ in
     keyMap = "br-abnt2";
   };
 
+  services.fwupd.enable = true;
+
+  hardware.enableRedistributableFirmware = true;
+
   hardware.opengl = {
     enable = true;
     extraPackages = with pkgs; [ amdvlk ];
