@@ -9,6 +9,8 @@ in
 
     shellInit = ''
       set -gx GPG_TTY (tty)
+
+      set PATH $HOME/.npm-global/bin $PATH
     '';
 
     functions = {
