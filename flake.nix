@@ -29,7 +29,10 @@
 
   outputs = inputs@{ nixpkgs, flake-utils, ... }:
     let
+      overlay = import ./overlay/overlay.nix;
+
       overlays = with inputs; [
+        overlay
         nur.overlay
         emacs-overlay.overlay
       ];

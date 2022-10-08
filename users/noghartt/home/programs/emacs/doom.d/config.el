@@ -15,7 +15,11 @@
 (setq org-directory "~/org"
       org-roam-directory (concat org-directory "/roam")
       org-roam-dailies-directory (concat org-roam-directory "/dailies")
-      org-agenda-files '(org-roam-dailies-directory))
+      o(setq org-capture-templates `(("a" "An entry" entry
+			       (file+headline ,(expand-file-name "inbox.org" org-directory) "Unsorted")
+			       "* %^{Title}\n %?"
+			       :refile-targets ((,(expand-file-name "inbox.org" org-directory))))))
+rg-agenda-files '(org-roam-dailies-directory))
 
 (after! org
   :config

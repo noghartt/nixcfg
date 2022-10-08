@@ -8,6 +8,9 @@
 
     pinentryFlavor = "tty";
 
+    defaultCacheTtl = 34560000;
+    maxCacheTtl = 34560000;
+
     extraConfig = ''
       allow-emacs-pinentry
       allow-loopback-pinentry

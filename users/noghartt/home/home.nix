@@ -7,6 +7,8 @@
     # ./programs/xmonad
     # ./programs/xmonad/xmobar.nix
     ./i3.nix
+    ./java.nix
+
     ./programs/git.nix
     ./programs/firefox.nix
     ./programs/emacs
@@ -17,6 +19,7 @@
     ./terminal/fish
     ./terminal/tmux
     ./terminal/direnv.nix
+    ./terminal/gh.nix
 
     ./services/redshift.nix
     ./services/slock.nix
@@ -28,7 +31,6 @@
     discord
     neofetch
     google-chrome
-    gh
     nyxt
     steam
     xfce.thunar
@@ -38,9 +40,13 @@
     robo3t
     gimp
     peek
+    android-studio
+    
     htop
-
-    # Necessary to Emacs
+    manga-cli
+    gh-stars
+    go
+  
     pandoc
   ];
 

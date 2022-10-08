@@ -59,6 +59,8 @@ in
 
   programs.slock.enable = true;
 
+  programs.adb.enable = true;
+
   environment.systemPackages = with pkgs; [
     acpi
     cachix
