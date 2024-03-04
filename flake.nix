@@ -37,7 +37,6 @@
       inherit (inputs.nix-darwin.lib) darwinSystem;
       inherit (inputs.nix-homebrew.darwinModules) nix-homebrew;
       inherit (inputs.home-manager.darwinModules) home-manager;
-      inherit (inputs) homebrew-core homebrew-cask;
     in {
       Guilhermes-MacBook-Pro-4 = darwinSystem {
         system = "aarch64-darwin";
@@ -45,10 +44,9 @@
         specialArgs = { inherit inputs; };
 
         modules = [
-          home-manager
-          ./hosts/mbp/configuration.nix
           nix-homebrew
-          ./hosts/mbp/homebrew.nix
+          ./hosts/mbp/configuration.nix
+          home-manager
           {
             nixpkgs = nixpkgsConfig;
             

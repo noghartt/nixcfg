@@ -3,6 +3,10 @@
 {
   services.nix-daemon.enable = true;
 
+  imports = [
+    ./homebrew.nix
+  ];
+
   users.users.noghartt = {
     home = "/Users/noghartt";    
   };
