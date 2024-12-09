@@ -18,6 +18,8 @@ _:
       "beancount"
       "fava"
       "gh"
+      # TODO: See how to approach `programs.neovim` on Nix.
+      "neovim"
     ];
 
     casks = [
