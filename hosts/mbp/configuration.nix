@@ -3,6 +3,10 @@ _:
 {
   system.stateVersion = 5;
 
+  imports = [
+    ./homebrew.nix
+  ];
+
   services.nix-daemon.enable = true;
 
   users.users.noghartt = {

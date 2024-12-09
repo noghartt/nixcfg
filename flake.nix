@@ -9,6 +9,8 @@
  
     home-manager.url = "github:nix-community/home-manager";
     home-manager.inputs.nixpkgs.follows = "nixpkgs";
+
+    nix-homebrew.url = "github:zhaofengli-wip/nix-homebrew";
   };
  
   outputs = inputs @ { self, ... }: let
@@ -26,8 +28,9 @@
           specialArgs = { inherit inputs; };
 
           modules = [
-            ./hosts/mbp/configuration.nix
+            inputs.nix-homebrew.darwinModules.nix-homebrew
             inputs.home-manager.darwinModules.home-manager
+            ./hosts/mbp/configuration.nix
             {
               nixpkgs = nixpkgsConfig;
  
