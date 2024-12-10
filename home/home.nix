@@ -14,6 +14,11 @@
     enable = true;
   };
  
+  programs.dircolors = {
+    enable = true;
+    enableZshIntegration = true;
+  };
+
   programs.zsh = {
     enable = true;
 
