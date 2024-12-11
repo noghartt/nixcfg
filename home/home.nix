@@ -8,6 +8,7 @@
     curl
     coreutils
     jq
+    nodejs_23
   ];
 
   programs.tmux = {
