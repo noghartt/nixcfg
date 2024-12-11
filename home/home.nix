@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ pkgs, lib, ... }:
  
 {
   home.stateVersion = "25.05";
@@ -8,7 +8,7 @@
     curl
     coreutils
     jq
-    nodejs_23
+    direnv
   ];
 
   programs.tmux = {
