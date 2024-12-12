@@ -5,6 +5,7 @@ _:
 
   imports = [
     ./homebrew.nix
+    ./launchd.nix
   ];
 
   services.nix-daemon.enable = true;
