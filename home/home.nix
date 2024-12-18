@@ -8,7 +8,7 @@
     curl
     coreutils
     jq
-    direnv
+    monaspace
   ];
 
   programs.tmux = {
@@ -19,6 +19,8 @@
     enable = true;
     enableZshIntegration = true;
   };
+
+  programs.direnv.enable = true;
 
   programs.zsh = {
     enable = true;
