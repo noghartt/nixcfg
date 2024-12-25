@@ -26,7 +26,6 @@ _:
       "firefox"
       "1password-cli"
       "discord"
-      "visual-studio-code"
       "alacritty"
       "spotify"
     ];

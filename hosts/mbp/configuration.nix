@@ -1,12 +1,21 @@
-_:
+{ ... }@args:
 
+let
+  username = "noghartt";
+  mkImports = import ../../lib/mkImports.nix args;
+in
 {
   system.stateVersion = 5;
 
-  imports = [
-    ./homebrew.nix
-    ./launchd.nix
-  ];
+  imports = mkImports {
+    inherit username;
+    
+    imports = [
+      ./homebrew.nix
+      ./launchd.nix
+      ./apps/vscode/vscode.nix
+    ];
+  };
 
   services.nix-daemon.enable = true;
 
