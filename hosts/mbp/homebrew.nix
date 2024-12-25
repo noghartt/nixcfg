@@ -28,6 +28,7 @@ _:
       "discord"
       "visual-studio-code"
       "alacritty"
+      "spotify"
     ];
   };
 }
