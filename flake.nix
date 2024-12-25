@@ -10,10 +10,12 @@
     home-manager.url = "github:nix-community/home-manager";
     home-manager.inputs.nixpkgs.follows = "nixpkgs";
 
+    flake-utils.url = "github:numtide/flake-utils";
+
     nix-homebrew.url = "github:zhaofengli-wip/nix-homebrew";
   };
  
-  outputs = inputs @ { self, ... }: let
+  outputs = inputs @ { self, flake-utils, nixpkgs, ... }: let
     nixpkgsConfig = {
       config.allowUnfree = true;
     };
@@ -41,5 +43,20 @@
           ];
         };
       };
-  };
+  } // flake-utils.lib.eachDefaultSystem (system:
+    let
+      pkgs = import nixpkgs { inherit system; };
+    in
+    {
+      packages = pkgs;
+
+      devShell = with pkgs; mkShell {
+        buildInputs = [
+          nil
+          statix
+          nixpkgs-fmt
+        ];
+      };
+    }
+  );
 }
