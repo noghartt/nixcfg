@@ -1,4 +1,4 @@
-{ pkgs, lib, ... }:
+{ pkgs, config, lib, ... }:
  
 {
   home.stateVersion = "25.05";
@@ -9,6 +9,10 @@
     coreutils
     jq
     monaspace
+  ];
+
+  imports = [
+    ./vscode.nix
   ];
 
   programs.tmux = {

@@ -13,7 +13,6 @@ in
     imports = [
       ./homebrew.nix
       ./launchd.nix
-      ./apps/vscode/vscode.nix
     ];
   };
 
