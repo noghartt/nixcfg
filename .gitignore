@@ -1,1 +1,4 @@
 .direnv
+
+.env*
+!.envrc
