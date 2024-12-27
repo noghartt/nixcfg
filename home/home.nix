@@ -15,6 +15,7 @@
     ./vscode.nix
     ./git.nix
     ./zsh.nix
+    ./ssh.nix
   ];
 
   programs.tmux = {

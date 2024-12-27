@@ -27,6 +27,7 @@ _:
       "discord"
       "alacritty"
       "spotify"
+      "ghostty"
     ];
   };
 }
