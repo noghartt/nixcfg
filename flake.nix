@@ -32,13 +32,13 @@
           modules = [
             inputs.nix-homebrew.darwinModules.nix-homebrew
             inputs.home-manager.darwinModules.home-manager
-            ./hosts/mbp/configuration.nix
+            ./nix/hosts/mbp/configuration.nix
             {
               nixpkgs = nixpkgsConfig;
  
               home-manager.useGlobalPkgs = true;
               home-manager.useUserPackages = true;
-              home-manager.users.noghartt = import ./home/home.nix;
+              home-manager.users.noghartt = import ./nix/home/home.nix;
             }
           ];
         };
