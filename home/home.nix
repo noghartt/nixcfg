@@ -16,6 +16,7 @@
     ./git.nix
     ./zsh.nix
     ./ssh.nix
+    ./nvim.nix
   ];
 
   programs.tmux = {

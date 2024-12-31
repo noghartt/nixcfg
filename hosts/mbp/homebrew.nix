@@ -17,8 +17,6 @@ _:
     brews = [
       "beancount"
       "fava"
-      # TODO: See how to approach `programs.neovim` on Nix.
-      "neovim"
     ];
 
     casks = [
@@ -28,6 +26,7 @@ _:
       "alacritty"
       "spotify"
       "ghostty"
+      "rescuetime"
     ];
   };
 }
