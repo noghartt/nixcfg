@@ -17,6 +17,7 @@ _:
     brews = [
       "beancount"
       "fava"
+      "ollama"
     ];
 
     casks = [
