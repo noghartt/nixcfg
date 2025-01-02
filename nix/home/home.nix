@@ -10,7 +10,8 @@
     jq
     monaspace
     fava
-    beancount
+    python3Packages.beancount
+    python3Packages.bean-price
   ];
 
   imports = [
