@@ -10,6 +10,7 @@
     jq
     monaspace
     fava
+    beancount
   ];
 
   imports = [

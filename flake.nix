@@ -16,7 +16,11 @@
   };
  
   outputs = inputs @ { self, flake-utils, nixpkgs, ... }: let
+    overlays = [ (import ./nix/overlays) ];
+
     nixpkgsConfig = {
+      inherit overlays;
+
       config.allowUnfree = true;
     };
   in {
@@ -45,8 +49,6 @@
       };
   } // flake-utils.lib.eachDefaultSystem (system:
     let
-      overlays = [ (import ./nix/overlays) ];
-
       pkgs = import nixpkgs { inherit system overlays; };
     in
     {

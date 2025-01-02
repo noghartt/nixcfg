@@ -15,8 +15,6 @@ _:
     enable = true;
 
     brews = [
-      "beancount"
-      "fava"
       "ollama"
     ];
 

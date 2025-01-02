@@ -24,7 +24,6 @@ buildPythonPackage rec {
   propagatedBuildInputs = with python3Packages; [
     python
     python-dateutil
-    beancount
   ];
 
   meta = with lib; {
