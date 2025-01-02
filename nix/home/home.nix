@@ -9,6 +9,7 @@
     coreutils
     jq
     monaspace
+    fava
   ];
 
   imports = [
