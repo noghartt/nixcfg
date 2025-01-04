@@ -10,6 +10,7 @@ args @ { pkgs, ... }:
       bbenoist.nix
       pkief.material-icon-theme
       astro-build.astro-vscode
+      eamodio.gitlens
     ];
 
     userSettings = {
