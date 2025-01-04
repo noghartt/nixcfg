@@ -20,11 +20,8 @@
     ./zsh.nix
     ./ssh.nix
     ./nvim.nix
+    ./tmux.nix
   ];
-
-  programs.tmux = {
-    enable = true;
-  };
  
   programs.dircolors = {
     enable = true;
