@@ -1,8 +1,8 @@
 { pkgs, config, lib, ... }:
- 
+
 {
   home.stateVersion = "25.05";
- 
+
   home.packages = with pkgs; [
     htop
     curl
@@ -12,6 +12,8 @@
     fava
     python3Packages.beancount
     python3Packages.bean-price
+    zotero
+    calibre
   ];
 
   imports = [
@@ -22,7 +24,7 @@
     ./nvim.nix
     ./tmux.nix
   ];
- 
+
   programs.dircolors = {
     enable = true;
     enableZshIntegration = true;
