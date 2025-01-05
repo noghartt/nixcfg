@@ -1,8 +1,10 @@
 final: prev:
 
 let
+  inherit (prev) callPackage;
+
   pythonPackageExtensionsOverrides = self: super: {
-    bean-price = prev.callPackage ./bean-price {
+    bean-price = callPackage ./bean-price {
       inherit (super) buildPythonPackage isPy3k;
     };
 
@@ -16,4 +18,6 @@ let
 in
 {
   pythonPackagesExtensions = prev.pythonPackagesExtensions ++ [pythonPackageExtensionsOverrides];
+
+  calibre = callPackage ./calibre { };
 }
