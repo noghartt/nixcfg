@@ -23,3 +23,5 @@ require("lazy").setup({
   },
   checker = { enabled = true },
 })
+
+vim.wo.number = true
