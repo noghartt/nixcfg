@@ -1,4 +1,4 @@
-args @ { pkgs, ... }:
+{ pkgs, ... }:
 
 {
   programs.vscode = {
@@ -19,10 +19,12 @@ args @ { pkgs, ... }:
       "workbench.startupEditor" = "none";
 
       "editor.tabSize" = 2;
-
       "editor.codeActionsOnSave" = {
         "source.fixAll" = "explicit";
       };
+
+      "nix.enableLanguageServer" = true;
+      "nix.serverPath" = "nil";
     };
   };
 }
