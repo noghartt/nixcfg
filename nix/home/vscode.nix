@@ -11,6 +11,7 @@ args @ { pkgs, ... }:
       pkief.material-icon-theme
       astro-build.astro-vscode
       eamodio.gitlens
+      dbaeumer.vscode-eslint
     ];
 
     userSettings = {
@@ -18,6 +19,10 @@ args @ { pkgs, ... }:
       "workbench.startupEditor" = "none";
 
       "editor.tabSize" = 2;
+
+      "editor.codeActionsOnSave" = {
+        "source.fixAll" = "explicit";
+      };
     };
   };
 }
