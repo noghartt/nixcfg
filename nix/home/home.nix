@@ -14,6 +14,7 @@
     python3Packages.bean-price
     zotero
     calibre
+    net-news-wire
   ];
 
   imports = [
