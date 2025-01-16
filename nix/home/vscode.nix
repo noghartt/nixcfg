@@ -12,6 +12,7 @@
       astro-build.astro-vscode
       eamodio.gitlens
       dbaeumer.vscode-eslint
+      esbenp.prettier-vscode
     ];
 
     userSettings = {
