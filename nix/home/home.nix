@@ -15,6 +15,8 @@
     zotero
     calibre
     net-news-wire
+    yubico-pam
+    yubikey-manager
   ];
 
   imports = [
