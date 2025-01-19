@@ -17,6 +17,7 @@
     net-news-wire
     yubico-pam
     yubikey-manager
+    ripgrep
   ];
 
   imports = [
