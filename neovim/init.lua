@@ -53,6 +53,8 @@ local servers = {
       telemetry = { enable = false },
     },
   },
+
+  ts_ls = {},
 }
 
 -- nvim-cmp supports additional completion capabilities, so broadcast that to servers
