@@ -44,7 +44,9 @@ return {
       end, { desc = '[S]earch [/] in Open Files' })
 
       vim.keymap.set('n', '<leader>sc', function ()
-        builtin.find_files { cwd = vim.fn.stdpath 'config' }
+        local home = os.getenv('HOME')
+        local path = home .. "/www/nixcfg/neovim"
+        builtin.find_files { cwd = path }
       end, { desc = '[S]earch [C]onfig' })
     end,
   },
