@@ -190,6 +190,8 @@ return {
         --
         ts_ls = {},
 
+        zls = {},
+
         lua_ls = {
           -- cmd = { ... },
           -- filetypes = { ... },
