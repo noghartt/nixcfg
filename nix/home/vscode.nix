@@ -13,6 +13,7 @@
       eamodio.gitlens
       dbaeumer.vscode-eslint
       esbenp.prettier-vscode
+      vscodevim.vim
     ];
 
     userSettings = {
