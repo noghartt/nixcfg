@@ -20,6 +20,11 @@ return {
           "<cmd>Telescope workspaces<CR>",
           desc = "[O]pen [W]orkspaces",
         },
+        {
+          "<leader>ol",
+          "<cmd>Lazy<CR>",
+          { desc = "[O]pen [L]azy" },
+        },
       },
     },
   },
