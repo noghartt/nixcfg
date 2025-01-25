@@ -300,6 +300,8 @@ return {
         --
         ts_ls = {},
 
+        gopls = {},
+
         zls = {},
 
         nil_ls = {},
