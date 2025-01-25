@@ -18,6 +18,7 @@
     yubico-pam
     yubikey-manager
     ripgrep
+    age
   ];
 
   imports = [
