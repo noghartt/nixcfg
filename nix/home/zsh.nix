@@ -2,7 +2,7 @@ _:
 
 {
   programs.zsh = {
-    enable = true;
+    enable = false;
 
     initExtra = ''
       if [ -e "$HOME/.env" ]; then

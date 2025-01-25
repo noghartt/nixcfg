@@ -1,4 +1,4 @@
-{ ... }@args:
+{ pkgs, ... } @ args:
 
 let
   username = "noghartt";
@@ -9,7 +9,7 @@ in
 
   imports = mkImports {
     inherit username;
-    
+
     imports = [
       ./homebrew.nix
       ./launchd.nix
@@ -18,10 +18,16 @@ in
 
   services.nix-daemon.enable = true;
 
+  environment.shells = with pkgs; [ fish zsh ];
+
+  programs.fish.enable = true;
+
   users.users.noghartt = {
     home = "/Users/noghartt";
+
+    shell = pkgs.fish;
   };
- 
+
   nix.extraOptions = ''
     auto-optimise-store = true
     experimental-features = nix-command flakes

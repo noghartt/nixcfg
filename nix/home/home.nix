@@ -25,6 +25,7 @@
     ./vscode.nix
     ./git.nix
     ./zsh.nix
+    ./fish.nix
     ./ssh.nix
     ./nvim.nix
     ./tmux.nix
