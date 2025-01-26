@@ -8,7 +8,7 @@ in
     user = {
       agents = {
         beancount-fava = {
-          command = "/opt/homebrew/bin/fava ${beancount_ledger_folder}/*.bean";
+          command = "/opt/homebrew/bin/fava ${beancount_ledger_folder}/2025.bean";
           serviceConfig = {
             UserName = "noghartt";
             KeepAlive = true;
