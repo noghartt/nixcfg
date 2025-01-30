@@ -14,6 +14,7 @@
       dbaeumer.vscode-eslint
       esbenp.prettier-vscode
       vscodevim.vim
+      ziglang.vscode-zig
     ];
 
     userSettings = {
@@ -27,6 +28,8 @@
 
       "nix.enableLanguageServer" = true;
       "nix.serverPath" = "nil";
+
+      "zig.zls.enabled" = "on";
     };
   };
 }
