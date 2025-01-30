@@ -19,6 +19,7 @@
     yubikey-manager
     ripgrep
     age
+    ngrok
   ];
 
   imports = [
