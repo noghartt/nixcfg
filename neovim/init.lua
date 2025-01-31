@@ -39,6 +39,10 @@ vim.o.timeoutlen = 300
 vim.o.completeopt = "menuone,noselect"
 vim.o.termguicolors = true
 
+vim.bo.softtabstop = 2
+vim.opt.tabstop = 2
+vim.opt.expandtab = true
+
 vim.g.netrw_keepdir = false
 vim.g.netrw_winsize = 30
 vim.g.netrw_banner = false
