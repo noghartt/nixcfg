@@ -21,4 +21,6 @@ return {
     main = "ibl",
     opts = {},
   },
+
+  { "mbbill/undotree" },
 }

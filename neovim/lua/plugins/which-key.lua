@@ -23,7 +23,12 @@ return {
         {
           "<leader>ol",
           "<cmd>Lazy<CR>",
-          { desc = "[O]pen [L]azy" },
+          desc = "[O]pen [L]azy",
+        },
+        {
+          "<leader>ou",
+          "<cmd>UndotreeToggle<CR>",
+          desc = "[O]pen [U]ndotree",
         },
       },
     },
