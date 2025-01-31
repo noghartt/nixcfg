@@ -48,9 +48,6 @@ vim.g.netrw_winsize = 30
 vim.g.netrw_banner = false
 vim.g.netrw_localcopydircmd = "cp -r"
 
-vim.o.foldmethod = "indent"
-vim.o.foldenable = true
-
 require("lazy").setup {
   spec = {
     { import = "plugins" },
