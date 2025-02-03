@@ -16,6 +16,8 @@ _:
 
     shellAliases = {
       gds = "git diff --staged";
+      gd = "git diff";
+      gs = "git status";
     };
   };
 }
