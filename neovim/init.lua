@@ -56,3 +56,20 @@ require("lazy").setup {
 }
 
 vim.schedule(function() vim.opt.clipboard = "unnamedplus" end)
+
+local lang_config = {
+  {
+    pattern = "*.js",
+    callback = function()
+      vim.o.tabstop = 2
+      vim.o.shiftwidth = 2
+    end,
+  },
+}
+
+for _, config in ipairs(lang_config) do
+  vim.api.nvim_create_autocmd({ "BufEnter", "BufWinEnter" }, {
+    pattern = config.pattern,
+    callback = config.callback,
+  })
+end
