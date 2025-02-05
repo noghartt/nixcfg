@@ -18,7 +18,7 @@ return {
     cmd = { "ConformInfo" },
     keys = {
       {
-        "<leader>f",
+        "<leader>bf",
         function()
           require("conform").format { async = true, lsp_format = "fallback" }
         end,
@@ -46,10 +46,10 @@ return {
       end,
       formatters_by_ft = {
         lua = { "stylua" },
-        javascript = { "prettierd", "prettier" },
-        javascriptreact = { "prettierd", "prettier" },
-        typescript = { "prettierd", "prettier" },
-        typescriptreact = { "prettierd", "prettier" },
+        javascript = { "prettierd", "prettier", "eslint_d" },
+        javascriptreact = { "prettierd", "prettier", "eslint_d" },
+        typescript = { "prettierd", "prettier", "eslint_d" },
+        typescriptreact = { "prettierd", "prettier", "eslint_d" },
         go = { "gofmt" },
         -- Conform can also run multiple formatters sequentially
         -- python = { "isort", "black" },
