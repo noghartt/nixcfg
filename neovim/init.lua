@@ -57,18 +57,59 @@ require("lazy").setup {
 
 vim.schedule(function() vim.opt.clipboard = "unnamedplus" end)
 
+vim.filetype.add {
+  extension = {
+    nix = "nix",
+  },
+}
+
 local lang_config = {
   {
-    pattern = "*.js",
+    pattern = "javascript",
     callback = function()
-      vim.o.tabstop = 2
-      vim.o.shiftwidth = 2
+      vim.opt_local.tabstop = 2
+      vim.opt_local.shiftwidth = 2
+    end,
+  },
+  {
+    pattern = "typescript",
+    callback = function()
+      vim.opt_local.tabstop = 2
+      vim.opt_local.shiftwidth = 2
+    end,
+  },
+  {
+    pattern = "typescriptreact",
+    callback = function()
+      vim.opt_local.tabstop = 2
+      vim.opt_local.shiftwidth = 2
+    end,
+  },
+  {
+    pattern = "javascriptreact",
+    callback = function()
+      vim.opt_local.tabstop = 2
+      vim.opt_local.shiftwidth = 2
+    end,
+  },
+  {
+    pattern = "lua",
+    callback = function()
+      vim.opt_local.tabstop = 2
+      vim.opt_local.shiftwidth = 2
+    end,
+  },
+  {
+    pattern = "nix",
+    callback = function()
+      vim.opt_local.tabstop = 2
+      vim.opt_local.shiftwidth = 2
     end,
   },
 }
 
 for _, config in ipairs(lang_config) do
-  vim.api.nvim_create_autocmd({ "BufEnter", "BufWinEnter" }, {
+  vim.api.nvim_create_autocmd({ "FileType" }, {
     pattern = config.pattern,
     callback = config.callback,
   })
