@@ -65,6 +65,7 @@
           statix
           nixpkgs-fmt
           rust-bin.beta.latest.default
+          nodejs_22
         ];
       };
     }
