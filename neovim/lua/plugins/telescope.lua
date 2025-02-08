@@ -42,6 +42,14 @@ return {
         builtin.buffers,
         { desc = "Find existing buffers" }
       )
+
+      vim.keymap.set(
+        "n",
+        "<leader>fo",
+        builtin.oldfiles,
+        { desc = "Open Oldfiles" }
+      )
+
       vim.keymap.set(
         "n",
         "<leader>/",
@@ -68,9 +76,16 @@ return {
         { desc = "[S]earch [/] in Open Files" }
       )
 
+      vim.keymap.set(
+        "n",
+        "<leader>f/",
+        builtin.live_grep,
+        { desc = "[S]earch [/] in Files" }
+      )
+
       vim.keymap.set("n", "<leader>sc", function()
         local home = os.getenv "HOME"
-        local path = home .. "/www/nixcfg/neovim"
+        local path = home .. "/www/nixcfg"
         builtin.find_files { cwd = path }
       end, { desc = "[S]earch [C]onfig" })
     end,
