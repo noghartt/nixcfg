@@ -1,4 +1,4 @@
-{ pkgs, config, lib, ... }:
+{ pkgs, ... }:
 
 {
   home.stateVersion = "25.05";
@@ -18,6 +18,7 @@
     yubico-pam
     yubikey-manager
     ripgrep
+    fd
     age
     ngrok
   ];
