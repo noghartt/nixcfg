@@ -23,4 +23,6 @@ return {
   },
 
   { "mbbill/undotree" },
+
+  { "github/copilot.vim" },
 }
