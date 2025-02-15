@@ -38,6 +38,8 @@ vim.o.updatetime = 250
 vim.o.timeoutlen = 300
 vim.o.completeopt = "menuone,noselect"
 vim.o.termguicolors = true
+vim.wo.wrap = false
+vim.o.textwidth = 0
 
 vim.bo.softtabstop = 2
 vim.opt.tabstop = 2
