@@ -114,3 +114,5 @@ for _, config in ipairs(lang_config) do
     callback = config.callback,
   })
 end
+
+require "keymaps"
