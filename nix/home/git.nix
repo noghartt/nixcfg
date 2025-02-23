@@ -18,6 +18,8 @@
 
       user.signingkey = builtins.getEnv "SSH_PUB_KEY";
 
+      core.editor = "nvim";
+
       commit.gpgsign = true;
 
       init.defaultBranch = "main";
