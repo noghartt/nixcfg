@@ -5,6 +5,10 @@ _:
     enable = true;
 
     interactiveShellInit = ''
+      if test -f $HOME/.env
+        source $HOME/.env
+      end
+
       ssh-add --apple-load-keychain 2> /dev/null
 
       fish_add_path -amP /usr/bin
