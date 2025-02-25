@@ -18,15 +18,53 @@
 
       user.signingkey = builtins.getEnv "SSH_PUB_KEY";
 
-      core.editor = "nvim";
-
       commit.gpgsign = true;
 
       init.defaultBranch = "main";
 
-      pull.rebase = false;
+      pull.rebase = true;
 
       push.autoSetupRemote = true;
+
+      column.ui = "auto";
+
+      branch.sort = "-commiterdate";
+
+      tag.sort = "version:refname";
+
+      diff = {
+        algorithm = "histogram";
+        colorMoved = "plain";
+        mnemonicPrefix = true;
+        renames = true;
+      };
+
+      fetch = {
+        prune = true;
+        pruneTags = true;
+        all = true;
+      };
+
+      help.autocorrect = "prompt";
+
+      commit.verbose = true;
+
+      rerere = {
+        enabled = true;
+        autoupdate = true;
+      };
+
+      core = {
+        excludesfile = "~/.gitconfig";
+        editor = "nvim";
+        fscache = "falseb";
+      };
+
+      rebase = {
+        autoSquash = true;
+        autoStash = true;
+        updateRefs = true;
+      };
     };
   };
 }
