@@ -13,6 +13,12 @@ return {
 
     config = function()
       require("telescope").setup {
+        defaults = {
+          file_ignore_patterns = {
+            "node_modules",
+            ".git",
+          },
+        },
         extensions = {
           ["ui-select"] = {
             require("telescope.themes").get_dropdown(),
@@ -33,7 +39,12 @@ return {
       vim.keymap.set(
         "n",
         "<leader>sf",
-        builtin.find_files,
+        function()
+          builtin.find_files {
+            hidden = true,
+            no_ignore = true,
+          }
+        end,
         { desc = "[S]earch [F]iles" }
       )
       vim.keymap.set(
@@ -79,14 +90,14 @@ return {
       vim.keymap.set(
         "n",
         "<leader>f/",
-        builtin.live_grep,
+        function() builtin.live_grep { hidden = true } end,
         { desc = "[S]earch [/] in Files" }
       )
 
       vim.keymap.set("n", "<leader>sc", function()
         local home = os.getenv "HOME"
         local path = home .. "/www/nixcfg"
-        builtin.find_files { cwd = path }
+        builtin.find_files { cwd = path, hidden = true }
       end, { desc = "[S]earch [C]onfig" })
     end,
   },
