@@ -13,12 +13,6 @@ return {
 
     config = function()
       require("telescope").setup {
-        defaults = {
-          file_ignore_patterns = {
-            "node_modules",
-            ".git",
-          },
-        },
         extensions = {
           ["ui-select"] = {
             require("telescope.themes").get_dropdown(),
@@ -42,7 +36,6 @@ return {
         function()
           builtin.find_files {
             hidden = true,
-            no_ignore = true,
           }
         end,
         { desc = "[S]earch [F]iles" }
