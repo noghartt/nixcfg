@@ -21,6 +21,8 @@
     fd
     age
     ngrok
+    python311Packages.uv
+    nodejs_22
   ];
 
   imports = [
