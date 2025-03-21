@@ -14,7 +14,7 @@
 
     nix-homebrew.url = "github:zhaofengli-wip/nix-homebrew";
 
-    nixpkgs-nixos = "github:NixOS/nixpkgs/nixos-24.11";
+    nixpkgs-nixos.url = "github:NixOS/nixpkgs/nixos-24.11";
 
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
