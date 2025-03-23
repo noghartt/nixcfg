@@ -16,8 +16,6 @@ in
     ];
   };
 
-  services.nix-daemon.enable = true;
-
   environment.shells = with pkgs; [ fish zsh ];
 
   programs.fish.enable = true;
