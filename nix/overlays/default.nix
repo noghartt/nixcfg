@@ -11,7 +11,9 @@ let
     beancount = super.beancount.overrideAttrs (oldAttrs: {
       postInstall = ''
         ${oldAttrs.postInstall or ""}
-        rm $out/bin/bean-price
+        if [ -f $out/bin/bean-price ]; then
+          rm $out/bin/bean-price
+        fi
       '';
     });
   };
