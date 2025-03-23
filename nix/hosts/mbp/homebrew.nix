@@ -16,6 +16,7 @@ _:
 
     brews = [
       "ollama"
+      "helm"
     ];
 
     casks = [
