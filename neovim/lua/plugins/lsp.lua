@@ -312,6 +312,8 @@ return {
 
         nil_ls = {},
 
+        terraformls = {},
+
         lua_ls = {
           -- cmd = { ... },
           -- filetypes = { ... },
