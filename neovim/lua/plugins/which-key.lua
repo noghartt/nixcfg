@@ -30,6 +30,11 @@ return {
           "<cmd>UndotreeToggle<CR>",
           desc = "[O]pen [U]ndotree",
         },
+        {
+          "<leader>ot",
+          "<cmd>tabnew<CR>",
+          desc = "[O]pen [T]ab",
+        },
       },
     },
   },
