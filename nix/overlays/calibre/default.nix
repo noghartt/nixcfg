@@ -8,7 +8,7 @@
 let
   pname = "calibre";
 
-  version = "7.23.0";
+  version = "8.1.1";
 
   meta = with lib; {
     homepage = "https://calibre-ebook.com";
