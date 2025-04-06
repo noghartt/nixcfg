@@ -14,15 +14,13 @@
 
     nix-homebrew.url = "github:zhaofengli-wip/nix-homebrew";
 
-    nixpkgs-nixos.url = "github:NixOS/nixpkgs/nixos-24.11";
-
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
-  outputs = inputs @ { self, flake-utils, nixpkgs, nixpkgs-nixos, rust-overlay, ... }: let
+  outputs = inputs @ { self, flake-utils, nixpkgs, rust-overlay, ... }: let
     overlays = [ (import rust-overlay) (import ./nix/overlays) ];
 
     nixpkgsConfig = {
@@ -31,20 +29,6 @@
       config.allowUnfree = true;
     };
   in {
-    nixosConfigurations =
-      let
-        inherit (nixpkgs-nixos) nixosSystem;
-      in
-      {
-        kubernetes = nixosSystem {
-          system = "x86_64-linux";
-
-          modules = [
-            ./hosts/kubernetes/configuration.nix
-          ];
-        };
-      };
-
     darwinConfigurations =
       let
         inherit (inputs.nix-darwin.lib) darwinSystem;
