@@ -1,3 +1,7 @@
+vim.diagnostic.config {
+  virtual_text = true,
+}
+
 return {
   {
     -- `lazydev` configures Lua LSP for your Neovim config, runtime and plugins
@@ -313,6 +317,8 @@ return {
         nil_ls = {},
 
         terraformls = {},
+
+        marksman = {},
 
         lua_ls = {
           -- cmd = { ... },
