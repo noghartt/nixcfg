@@ -34,6 +34,7 @@
     ./ssh.nix
     ./nvim.nix
     ./tmux.nix
+    ./aerospace.nix
   ];
 
   programs.dircolors = {
