@@ -21,6 +21,8 @@ _:
       and not set -q TMUX
         exec tmux
       end
+
+      set -x MANPAGER "nvim +Man!"
     '';
 
     shellAliases = {
