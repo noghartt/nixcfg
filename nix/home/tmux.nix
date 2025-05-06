@@ -17,6 +17,14 @@
     ];
 
     extraConfig = ''
+      set -g status-style 'bg=black fg=white'
+      set -g pane-border-style 'fg=black'
+      set -g pane-active-border-style 'fg=red'
+
+      bind c new-wind -c '#{pane_current_path}'
+      bind '"' split-window -c '#{pane_current_path}'
+      bind % split-window -h -c '#{pane_current_path}'
+
       bind -n C-h select-pane -L
       bind -n C-j select-pane -D
       bind -n C-k select-pane -U
