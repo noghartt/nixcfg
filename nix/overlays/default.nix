@@ -22,4 +22,6 @@ in
   pythonPackagesExtensions = prev.pythonPackagesExtensions ++ [pythonPackageExtensionsOverrides];
 
   calibre = callPackage ./calibre { };
+
+  ghostty = callPackage ./ghostty { };
 }
