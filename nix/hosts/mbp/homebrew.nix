@@ -25,7 +25,6 @@ _:
       "discord"
       "alacritty"
       "spotify"
-      "ghostty"
       "rescuetime"
     ];
   };

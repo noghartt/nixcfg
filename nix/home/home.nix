@@ -35,6 +35,7 @@
     ./nvim.nix
     ./tmux.nix
     ./aerospace.nix
+    ./ghostty.nix
   ];
 
   programs.dircolors = {

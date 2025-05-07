@@ -4,6 +4,12 @@ _:
   programs.fish = {
     enable = true;
 
+    loginShellInit = ''
+      if set -q GHOSTTY_RESOURCES_DIR
+        source "$GHOSTTY_RESOURCES_DIR/Resources/fish/vendor_completions.d/ghostty.fish"
+      end
+    '';
+
     interactiveShellInit = ''
       if test -f $HOME/.env
         source $HOME/.env
