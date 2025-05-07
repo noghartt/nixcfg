@@ -17,7 +17,7 @@
     ];
 
     extraConfig = ''
-      set -g status-style 'bg=black fg=white'
+      set -g status-style 'bg=#5f5f5f,fg=#ffffff'
       set -g pane-border-style 'fg=black'
       set -g pane-active-border-style 'fg=red'
 
