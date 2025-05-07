@@ -26,5 +26,14 @@ return {
 
   { "github/copilot.vim" },
 
-  { "aserowy/tmux.nvim" },
+  {
+    "aserowy/tmux.nvim",
+    config = function() require("tmux").setup {} end,
+  },
+
+  {
+    "ellisonleao/gruvbox.nvim",
+    priority = 1000,
+    config = true,
+  },
 }

@@ -108,6 +108,13 @@ local lang_config = {
       vim.opt_local.shiftwidth = 2
     end,
   },
+  {
+    pattern = "rust",
+    callback = function()
+      vim.opt_local.tabstop = 4
+      vim.opt_local.shiftwidth = 4
+    end,
+  },
 }
 
 for _, config in ipairs(lang_config) do
@@ -118,3 +125,6 @@ for _, config in ipairs(lang_config) do
 end
 
 require "keymaps"
+
+vim.o.background = "light"
+vim.cmd [[ colorscheme gruvbox ]]
