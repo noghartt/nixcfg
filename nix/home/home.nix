@@ -25,6 +25,7 @@
     nodejs_22
     bore-cli
     iosevka
+    emacs
   ];
 
   imports = [
