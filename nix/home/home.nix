@@ -24,6 +24,7 @@
     python311Packages.uv
     nodejs_22
     bore-cli
+    iosevka
   ];
 
   imports = [
