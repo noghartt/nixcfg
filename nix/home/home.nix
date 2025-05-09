@@ -46,4 +46,9 @@
   };
 
   programs.direnv.enable = true;
+
+  xdg.configFile.emacs = {
+    source = ../../emacs;
+    recursive = true;
+  };
 }
