@@ -26,6 +26,12 @@
 (scroll-bar-mode -1)
 (blink-cursor-mode 0)
 (global-hl-line-mode 1)
+					;
+; This is adding a tab mode based on window
+(tab-line-mode 1)
+
+(which-key-mode 1)
+(which-key-setup-side-window-bottom)
 
 (use-package corfu
   :ensure t
@@ -60,14 +66,15 @@
 (use-package general)
 
 (use-package evil
+  :ensure t
+  :config
+  (define-key evil-window-map (kbd "N") 'evil-window-vnew)
   :init
   (setq evil-want-keybinding nil)
   (evil-mode))
 
 (setq-default display-fill-column-indicator 79)
 (global-display-fill-column-indicator-mode 1)
-
-(display-line-numbers-mode t)
 
 (use-package vertico 
   :init
@@ -91,17 +98,37 @@
   :init
   (marginalia-mode))
 
-(use-package which-key
-  :init (which-key-mode)
-  :config
-  (setq which-key-idle-delay 0.3))
-
 (defconst leader-key "SPC"
   "The leader key for evil-mode")
-(defconst localleader-key "SPC-m"
+(defconst localleader-key "SPC m"
   "The localleader prefix key, for major-mode specific commands")
 
 (general-create-definer leader-def
-  :prefix leader key)
+  :prefix leader-key)
 (general-create-definer localleader-def
   :prefix localleader-key)
+
+(defvar my/keybinds-buffer-map (make-sparse-keymap))
+(general-define-key
+ :keymaps 'my/keybinds-buffer-map
+ "i" #'ibuffer
+ "kb" #'kill-buffer
+ "kc" #'kill-current-buffer)
+
+(defvar my/keybinds-local-lisp-map (make-sparse-keymap))
+(general-define-key
+ :keymaps 'my/keybinds-local-lisp-map
+ :wk "buffer"
+ "b" #'eval-buffer
+ "r" #'eval-region
+ "e" #'eval-expression
+ "f" #'eval-defun)
+
+(localleader-def
+  :states 'normal
+  :keymaps '(emacs-lisp-mode-map lisp-interaction-mode-map)
+  "e" '(:keymap my/keybinds-local-lisp-map :wk "eval"))
+
+(leader-def
+  :states 'normal
+  "h" '(:keymap help-map :wk "help"))
