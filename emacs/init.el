@@ -1,3 +1,7 @@
+(set-face-attribute 'default t
+		    :family "Iosevka"
+		    :height 180)
+
 (when (string= system-type "darwin")
   (setq dired-use-ls-dired nil))
 
@@ -26,9 +30,8 @@
 (scroll-bar-mode -1)
 (blink-cursor-mode 0)
 (global-hl-line-mode 1)
-					;
-; This is adding a tab mode based on window
 (tab-line-mode 1)
+(global-display-line-numbers-mode)
 
 (which-key-mode 1)
 (which-key-setup-side-window-bottom)
@@ -80,7 +83,6 @@
   :init
   (vertico-mode))
 
-
 (use-package consult
   :hook (completion-list-mode . consult-preview-at-point-mode)
   :init
@@ -115,14 +117,20 @@
  "kb" #'kill-buffer
  "kc" #'kill-current-buffer)
 
+(defvar my/keybinds-files-map (make-sparse-keymap))
+(general-define-key
+ :keymaps 'my/keybinds-files-map
+ "s" #'save-buffer
+ "f" #'find-file)
+
 (defvar my/keybinds-local-lisp-map (make-sparse-keymap))
 (general-define-key
- :keymaps 'my/keybinds-local-lisp-map
- :wk "buffer"
- "b" #'eval-buffer
- "r" #'eval-region
- "e" #'eval-expression
- "f" #'eval-defun)
+  :keymaps 'my/keybinds-local-lisp-map
+  :wk "buffer"
+  "b" #'eval-buffer
+  "r" #'eval-region
+  "e" #'eval-expression
+  "f" #'eval-defun)
 
 (localleader-def
   :states 'normal
@@ -131,4 +139,6 @@
 
 (leader-def
   :states 'normal
-  "h" '(:keymap help-map :wk "help"))
+  "h" '(:keymap help-map :wk "help")
+  "b" '(:keymap my/keybinds-buffer-map :wk "buffer")
+  "f" '(:keymap my/keybinds-files-map :wk "files"))
