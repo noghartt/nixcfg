@@ -1,4 +1,7 @@
-((defvar bootstrap-version)
+(when (string= system-type "darwin")
+  (setq dired-use-ls-dired nil))
+
+(defvar bootstrap-version)
 (let ((bootstrap-file
        (expand-file-name
         "straight/repos/straight.el/bootstrap.el"
@@ -17,6 +20,88 @@
 (straight-use-package 'use-package)
 (setq straight-use-package-by-default t)
 
-(use-package evil)
-(evil-mode 1)
+(menu-bar-mode -1)
+(tool-bar-mode -1)
+(tooltip-mode -1)
+(scroll-bar-mode -1)
+(blink-cursor-mode 0)
+(global-hl-line-mode 1)
 
+(use-package corfu
+  :ensure t
+  :init
+  (global-corfu-mode)
+  (corfu-history-mode)
+  (corfu-popupinfo-mode)
+  :config
+  (setq corfu-auto t
+	corfu-auto-delay 0.1
+	corfu-auto-prefix 2)
+
+  (keymap-global-set "C-SPC" #'completion-at-point))
+
+(use-package lsp-mode
+  :init
+  (setq lsp-keymap-prefix "C-c l")
+  :config
+  (setq lsp-log-io nil)
+  :hook ((lsp-mode . lsp-enable-which-key-integration)))
+
+(use-package lsp-ui
+  :hook (lsp-mode . lsp-ui-mode))
+
+(use-package smartparens
+	     :ensure smartparens
+	     :config
+	     (require 'smartparens-config)
+	     :init
+             (add-hook 'emacs-lisp-mode-hook #'smartparens-mode))
+
+(use-package general)
+
+(use-package evil
+  :init
+  (setq evil-want-keybinding nil)
+  (evil-mode))
+
+(setq-default display-fill-column-indicator 79)
+(global-display-fill-column-indicator-mode 1)
+
+(display-line-numbers-mode t)
+
+(use-package vertico 
+  :init
+  (vertico-mode))
+
+
+(use-package consult
+  :hook (completion-list-mode . consult-preview-at-point-mode)
+  :init
+  (advice-add #'register-preview :override #'consult-register-window)
+  (setq register-preview-delay 0.5)
+  (setq xref-show-xrefs-function #'consult-xref
+	xref-show-definitions-function #'consult-xref)
+  :config
+  (setq consult-narrow-key "<"))
+
+(use-package consult-lsp
+  :defer t)
+
+(use-package marginalia
+  :init
+  (marginalia-mode))
+
+(use-package which-key
+  :init (which-key-mode)
+  :config
+  (setq which-key-idle-delay 0.3))
+
+(defconst leader-key "SPC"
+  "The leader key for evil-mode")
+(defconst localleader-key "SPC-m"
+  "The localleader prefix key, for major-mode specific commands")
+
+(general-create-definer leader-def
+  :prefix leader key)
+(general-create-definer localleader-def
+  :prefix localleader-key)
