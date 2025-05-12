@@ -23,6 +23,8 @@
     ngrok
     python311Packages.uv
     nodejs_22
+    # nodePackages."@github/copilot-language-server"
+    copilot-language-server
     bore-cli
     iosevka
     emacs
