@@ -36,6 +36,18 @@
 (which-key-mode 1)
 (which-key-setup-side-window-bottom)
 
+(use-package copilot
+  :ensure t
+  :straight (:host github :repo "copilot-emacs/copilot.el" :files ("*.el"))
+  :config
+  (custom-set-variables
+   '(copilot-install-dir "/etc/profiles/per-user/noghartt")
+   '(copilot-indent-offset-warning-disable t))
+  (define-key copilot-completion-map (kbd "<tab>") 'copilot-accept-completion)
+  (define-key copilot-completion-map (kbd "<backtab>") 'copilot-accept-completion-by-word)
+  :init
+  (add-hook 'prog-mode-hook 'copilot-mode))
+
 (use-package corfu
   :ensure t
   :init
@@ -79,7 +91,7 @@
 (setq-default display-fill-column-indicator 79)
 (global-display-fill-column-indicator-mode 1)
 
-(use-package vertico 
+(use-package vertico
   :init
   (vertico-mode))
 
