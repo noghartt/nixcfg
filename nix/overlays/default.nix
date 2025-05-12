@@ -24,4 +24,6 @@ in
   calibre = callPackage ./calibre { };
 
   ghostty = callPackage ./ghostty { };
+
+  nodePackages = prev.nodePackages // callPackage ./node-packages { };
 }
