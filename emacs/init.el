@@ -21,6 +21,22 @@
       (eval-print-last-sexp)))
   (load bootstrap-file nil 'nomessage))
 
+(use-package exec-path-from-shell
+  :ensure t
+  :config
+  (when (memq window-system '(mac ns x))
+    (exec-path-from-shell-initialize)))
+
+(use-package direnv
+  :straight (:host github :repo "wbolster/emacs-direnv" :files ("*.el"))
+  :ensure t
+  :config
+  (direnv-mode))
+
+(use-package beancount
+  :ensure t
+  :hook ((beancount-mode . outline-minor-mode)))
+
 (straight-use-package 'use-package)
 (setq straight-use-package-by-default t)
 
@@ -52,12 +68,14 @@
   :ensure t
   :init
   (global-corfu-mode)
-  (corfu-history-mode)
+  (corfu-history-mod)
   (corfu-popupinfo-mode)
   :config
   (setq corfu-auto t
 	corfu-auto-delay 0.1
-	corfu-auto-prefix 2)
+	corfu-auto-prefix 2
+	corfu-popupinfo-hide nil
+	corfu-popupinfo-delay '(0.2 . 0.1))
 
   (keymap-global-set "C-SPC" #'completion-at-point))
 
@@ -70,6 +88,12 @@
 
 (use-package lsp-ui
   :hook (lsp-mode . lsp-ui-mode))
+
+(use-package rustic
+  :ensure t)
+
+(use-package flycheck
+  :ensure t)
 
 (use-package smartparens
 	     :ensure smartparens
