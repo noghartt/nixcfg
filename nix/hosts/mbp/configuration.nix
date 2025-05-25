@@ -20,6 +20,7 @@ in
 
   programs.fish.enable = true;
 
+  system.primaryUser = username;
   users.users.noghartt = {
     home = "/Users/noghartt";
 
