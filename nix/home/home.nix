@@ -40,6 +40,7 @@
     ./tmux.nix
     ./aerospace.nix
     ./ghostty.nix
+    ./sketchybar.nix
   ];
 
   programs.dircolors = {

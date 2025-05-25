@@ -12,7 +12,10 @@
 
     flake-utils.url = "github:numtide/flake-utils";
 
-    nix-homebrew.url = "github:zhaofengli-wip/nix-homebrew";
+    # TODO: It's having an error with substituteAll function on nix-darwin input
+    # nix-homebrew.url = "github:zhaofengli-wip/nix-homebrew";
+    # nix-homebrew.inputs.nixpkgs.follows = "nixpkgs";
+    # nix-homebrew.inputs.nix-darwin.follows = "nix-darwin";
 
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
@@ -39,7 +42,7 @@
           specialArgs = { inherit inputs; };
 
           modules = [
-            inputs.nix-homebrew.darwinModules.nix-homebrew
+            # inputs.nix-homebrew.darwinModules.nix-homebrew
             inputs.home-manager.darwinModules.home-manager
             ./nix/hosts/mbp/configuration.nix
             {
