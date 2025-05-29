@@ -26,8 +26,10 @@
     # nodePackages."@github/copilot-language-server"
     copilot-language-server
     bore-cli
-    iosevka
     emacs
+
+    nerd-fonts.hack
+    iosevka
   ];
 
   imports = [
