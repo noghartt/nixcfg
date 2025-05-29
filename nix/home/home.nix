@@ -30,6 +30,7 @@
 
     nerd-fonts.hack
     iosevka
+    nixd
   ];
 
   imports = [
