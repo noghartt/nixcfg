@@ -15,7 +15,10 @@ _:
         inner.vertical = 0;
         outer.left = 0;
         outer.right = 0;
-        outer.top = 0;
+        outer.top = [
+          { monitor."LG HDR WFHD" = 40; }
+          0
+        ];
         outer.bottom = 0;
       };
 
