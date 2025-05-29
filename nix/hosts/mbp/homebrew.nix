@@ -26,6 +26,7 @@ _:
       "alacritty"
       "spotify"
       "rescuetime"
+      "anki"
     ];
   };
 }
