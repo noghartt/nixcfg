@@ -31,6 +31,7 @@
     nerd-fonts.hack
     iosevka
     nixd
+    graphviz
   ];
 
   imports = [
@@ -53,8 +54,8 @@
 
   programs.direnv.enable = true;
 
-  xdg.configFile.emacs = {
-    source = ../../emacs;
-    recursive = true;
-  };
+  # xdg.configFile.emacs = {
+  #   source = ../../emacs;
+  #   recursive = true;
+  # };
 }
