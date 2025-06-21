@@ -17,6 +17,9 @@ _:
     brews = [
       "ollama"
       "helm"
+      "mit-scheme"
+      "ffmpeg"
+      "socat"
     ];
 
     casks = [
@@ -27,6 +30,7 @@ _:
       "spotify"
       "rescuetime"
       "anki"
+      "container"
     ];
   };
 }
