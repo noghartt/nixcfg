@@ -27,6 +27,7 @@
     copilot-language-server
     bore-cli
     emacs
+    tailscale
 
     nerd-fonts.hack
     iosevka
