@@ -21,6 +21,7 @@ let
     changelog = "https://ghostty.org/docs/install/release-notes";
     maintainers = with maintainers; [ noghartt ];
     platforms = platforms.unix ++ platforms.darwin;
+    mainProgram = "ghostty";
   };
 in
 if stdenv.hostPlatform.isDarwin then
