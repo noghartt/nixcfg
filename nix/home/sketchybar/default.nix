@@ -1,11 +1,26 @@
-_:
+{ pkgs, lib, ... }:
 
-{
-  home.file.".config/sketchybar/plugins" = {
-    source     = ./plugins;
-    recursive  = true;
-    executable = true;
+
+let
+  plugins = {
+    battery = pkgs.callPackage ./sketchybar-plugin-battery.nix { };
+    aerospace = pkgs.callPackage ./sketchybar-plugin-aerospace.nix { };
+    clock = pkgs.callPackage ./sketchybar-plugin-clock.nix { };
+    front_app = pkgs.callPackage ./sketchybar-plugin-front-app.nix { };
+    volume = pkgs.callPackage ./sketchybar-plugin-volume.nix { };
   };
+in
+{
+  home.file = lib.mapAttrs' (
+    name: plugin:
+    lib.nameValuePair
+      ".config/sketchybar/plugins/${name}.sh"
+      {
+        source = "${plugin}/bin/${plugin.name}";
+        executable = true;
+      }
+  ) plugins;
+
 
   programs.sketchybar = {
     enable = true;
@@ -61,7 +76,7 @@ _:
       # to indicate active and available mission control spaces.
 
       sketchybar --add event aerospace_workspace_change
-      for sid in $(/etc/profiles/per-user/noghartt/bin/aerospace list-workspaces --all); do
+      for sid in $(${pkgs.aerospace}/bin/aerospace list-workspaces --all); do
         sketchybar \
           --add item space.$sid left \
           --subscribe space.$sid aerospace_workspace_change \
@@ -71,7 +86,7 @@ _:
           background.height=20 \
           background.drawing=off \
           label="$sid" \
-          click_script="/etc/profiles/per-user/noghartt/bin/aerospace workspace $sid" \
+          click_script="${pkgs.aerospace}/bin/aerospace workspace $sid" \
           script="$PLUGIN_DIR/aerospace.sh $sid"
       done
 
