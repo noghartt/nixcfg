@@ -8,6 +8,12 @@ _:
       start-at-login = true;
       default-root-container-layout = "tiles";
 
+      exec-on-workspace-change = [
+        "/bin/bash"
+        "-c"
+        "/etc/profiles/per-user/noghartt/bin/sketchybar --trigger aerospace_workspace_change FOCUSED_WORKSPACE=$(/etc/profiles/per-user/noghartt/bin/aerospace list-workspaces --focused)"
+      ];
+
       accordion-padding = 0;
 
       gaps = {
