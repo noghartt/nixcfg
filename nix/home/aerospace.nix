@@ -1,4 +1,4 @@
-_:
+{ pkgs, ... }:
 
 {
   programs.aerospace = {
@@ -11,7 +11,7 @@ _:
       exec-on-workspace-change = [
         "/bin/bash"
         "-c"
-        "/etc/profiles/per-user/noghartt/bin/sketchybar --trigger aerospace_workspace_change FOCUSED_WORKSPACE=$(/etc/profiles/per-user/noghartt/bin/aerospace list-workspaces --focused)"
+        "${pkgs.sketchybar}/bin/sketchybar --trigger aerospace_workspace_change FOCUSED_WORKSPACE=$AEROSPACE_FOCUSED_WORKSPACE"
       ];
 
       accordion-padding = 0;
