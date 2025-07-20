@@ -49,7 +49,7 @@
     ./tmux.nix
     ./aerospace.nix
     ./ghostty.nix
-    ./sketchybar.nix
+    ./sketchybar
   ];
 
   programs.dircolors = {

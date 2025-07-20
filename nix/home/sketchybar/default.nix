@@ -1,6 +1,12 @@
 _:
 
 {
+  home.file.".config/sketchybar/plugins" = {
+    source     = ./plugins;
+    recursive  = true;
+    executable = true;
+  };
+
   programs.sketchybar = {
     enable = true;
 
