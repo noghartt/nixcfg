@@ -10,8 +10,6 @@
     jq
     monaspace
     fava
-    python3Packages.beancount
-    python3Packages.bean-price
     zotero
     calibre
     net-news-wire
@@ -21,8 +19,14 @@
     fd
     age
     ngrok
-    python311Packages.uv
+    nmap
+
+    uv
+    python3Packages.beancount
+    python3Packages.bean-price
+
     nodejs_22
+
     # nodePackages."@github/copilot-language-server"
     copilot-language-server
     bore-cli
