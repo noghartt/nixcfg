@@ -46,7 +46,6 @@ in
         blur_radius=30
         color=0x40000000
         display=all
-        topmost=window
       )
 
       sketchybar --bar "''${bar[@]}"
