@@ -6,7 +6,7 @@ pkgs.writeShellApplication {
 
   text = ''
   #!/usr/bin/env bash
-  if [ "''$1" = "''$FOCUSED_WORKSPACE" ]; then
+  if [ "''$1" = "''${FOCUSED_WORKSPACE:-"1"}" ]; then
       sketchybar --set "''$NAME" background.drawing=on
   else
       sketchybar --set "''$NAME" background.drawing=off

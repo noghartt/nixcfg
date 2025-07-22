@@ -2,13 +2,11 @@
 
 pkgs.writeShellApplication {
   name = "sketchybar-plugin-battery";
-  runtimeInputs = [ pkgs.sketchybar ];
+  runtimeInputs = [ pkgs.sketchybar pkgs.gnugrep ];
 
   text = ''
-  #!/bin/sh
-
-  PERCENTAGE="$(pmset -g batt | grep -Eo "\d+%" | cut -d% -f1)"
-  CHARGING="$(pmset -g batt | grep 'AC Power')"
+  PERCENTAGE="$(pmset -g batt | grep -Po "\d+%" | cut -d% -f1)"
+  CHARGING="$(pmset -g batt | grep -F 'AC Power' || echo "")"
 
   if [ "$PERCENTAGE" = "" ]; then
     exit 0
