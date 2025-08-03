@@ -10,9 +10,6 @@
       nil
       nixpkgs-fmt
       statix
-
-      ripgrep
-      fd
     ];
   };
 

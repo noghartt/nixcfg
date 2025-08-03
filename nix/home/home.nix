@@ -32,6 +32,7 @@
     bore-cli
     emacs
     tailscale
+    claude-code
 
     nerd-fonts.hack
     iosevka
