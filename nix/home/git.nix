@@ -57,7 +57,7 @@
       core = {
         excludesfile = "~/.gitconfig";
         editor = "nvim";
-        fscache = "falseb";
+        fscache = "false";
       };
 
       rebase = {
