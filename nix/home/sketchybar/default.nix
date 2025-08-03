@@ -42,7 +42,7 @@ in
 
       bar=(
         position=top
-        height=36
+        height=32
         blur_radius=30
         color=0x40000000
         display=all
