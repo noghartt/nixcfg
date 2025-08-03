@@ -7,7 +7,6 @@ return {
       delay = 0,
 
       spec = {
-        { "<leader>a", "<cmd>Alpha<CR>", desc = "Go to [A]lpha" },
         { "<leader>s", group = "[S]earch" },
 
         { "<leader>f", group = "[F]ile" },
