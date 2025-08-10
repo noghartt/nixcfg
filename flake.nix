@@ -17,6 +17,16 @@
     # nix-homebrew.inputs.nixpkgs.follows = "nixpkgs";
     # nix-homebrew.inputs.nix-darwin.follows = "nix-darwin";
 
+    agenix = {
+      url = "github:ryantm/agenix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    sops-nix = {
+      url = "github:Mic92/sops-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -35,11 +45,12 @@
     darwinConfigurations =
       let
         inherit (inputs.nix-darwin.lib) darwinSystem;
+        system = "aarch64-darwin";
       in {
         "MacBook-Pro-de-Guilherme" = darwinSystem {
-          system = "aarch64-darwin";
+          inherit system;
 
-          specialArgs = { inherit inputs; };
+          specialArgs = { inherit system inputs; };
 
           modules = [
             # inputs.nix-homebrew.darwinModules.nix-homebrew
@@ -52,6 +63,8 @@
               home-manager.useUserPackages = true;
               home-manager.users.noghartt = import ./nix/home/home.nix;
             }
+            inputs.agenix.darwinModules.default
+            inputs.sops-nix.darwinModules.sops
           ];
         };
       };
