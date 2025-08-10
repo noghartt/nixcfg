@@ -21,6 +21,12 @@
           export PATH="/opt/homebrew/bin:$PATH"
           export PATH="/opt/local/bin:$PATH"
           export PATH="/usr/bin:$PATH"
+
+          if [ -z "$TMUX" ] && [ -t 1 ]; then
+            exec tmux
+          fi
+
+          export MANPAGER="nvim +Man!"
         '';
       in
       lib.mkMerge [
