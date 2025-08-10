@@ -4,7 +4,8 @@ _:
   programs.ghostty = {
     enable = true;
 
-    enableFishIntegration = true;
+    # enableFishIntegration = true;
+    enableZshIntegration = true;
 
     settings = {
       theme = "GruvboxLight";

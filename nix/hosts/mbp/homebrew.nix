@@ -15,7 +15,7 @@ _:
     enable = true;
 
     brews = [
-      "ollama"
+      # "ollama"
       "helm"
       "mit-scheme"
       "ffmpeg"

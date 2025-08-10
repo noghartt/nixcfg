@@ -44,7 +44,7 @@
     ./vscode.nix
     ./git.nix
     ./zsh.nix
-    ./fish.nix
+    # ./fish.nix
     ./ssh.nix
     ./nvim.nix
     ./tmux.nix

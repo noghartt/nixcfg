@@ -1,4 +1,9 @@
-{ pkgs, ... } @ args:
+{
+  pkgs,
+  system,
+  inputs,
+  ...
+}@args:
 
 let
   username = "noghartt";
@@ -16,15 +21,18 @@ in
     ];
   };
 
-  environment.shells = with pkgs; [ fish zsh ];
+  environment.systemPackages = [
+    inputs.agenix.packages.${system}.default
+  ];
 
-  programs.fish.enable = true;
+  environment.shells = with pkgs; [ zsh ];
+
+  programs.zsh.enable = true;
 
   system.primaryUser = username;
   users.users.noghartt = {
     home = "/Users/noghartt";
-
-    shell = pkgs.fish;
+    shell = pkgs.zsh;
   };
 
   nix.extraOptions = ''

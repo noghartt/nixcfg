@@ -4,7 +4,7 @@
   meta,
   stdenv,
   fetchurl,
-  _7zz
+  _7zz,
 }:
 
 stdenv.mkDerivation rec {
@@ -23,7 +23,10 @@ stdenv.mkDerivation rec {
   dontBuild = true;
   dontFixup = true; # breaks notarization
 
-  phases = [ "unpackPhase" "installPhase" ];
+  phases = [
+    "unpackPhase"
+    "installPhase"
+  ];
 
   unpackPhase = ''
     7zz x -snld $src
@@ -40,6 +43,9 @@ stdenv.mkDerivation rec {
     # Create a copy of the Ghostty completion for fish
     mkdir -p $out/share/fish/vendor_completions.d
     cp $out/Applications/Ghostty.app/Contents/Resources/fish/vendor_completions.d/ghostty.fish $out/share/fish/vendor_completions.d/ghostty.fish
+    # Create a copy of the Ghostty completion for zsh
+    mkdir -p $out/share/zsh/site-functions
+    cp $out/Applications/Ghostty.app/Contents/Resources/zsh/site-functions/_ghostty $out/share/zsh/site-functions/_ghostty
 
     # Set up man pages
     mkdir -p $out/share/man/man1
