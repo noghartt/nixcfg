@@ -24,7 +24,7 @@ return {
 
   { "mbbill/undotree" },
 
-  { "github/copilot.vim" },
+  -- { "github/copilot.vim" },
 
   {
     "aserowy/tmux.nvim",
