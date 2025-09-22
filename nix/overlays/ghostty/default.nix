@@ -8,7 +8,7 @@
 let
   pname = "ghostty";
 
-  version = "1.1.3";
+  version = "1.2.0";
 
   meta = with lib; {
     homepage = "https://ghostty.org";
