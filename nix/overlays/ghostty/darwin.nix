@@ -12,7 +12,7 @@ stdenv.mkDerivation rec {
 
   src = fetchurl {
     url = "https://release.files.ghostty.org/${version}/Ghostty.dmg";
-    hash = "sha256-ZOUUGI9UlZjxZtbctvjfKfMz6VTigXKikB6piKFPJkc=";
+    sha256 = "17p33alxzyc2809fl59izs47r4kqw94si9i1hjia5k2lcqwqwaw1";
   };
 
   sourceRoot = ".";
