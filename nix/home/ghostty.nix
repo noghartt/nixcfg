@@ -8,7 +8,7 @@ _:
     enableZshIntegration = true;
 
     settings = {
-      theme = "GruvboxLight";
+      theme = "Gruvbox Light";
       font-family = "Iosevka";
       font-feature = "-calt, -liga, -dlig";
     };
