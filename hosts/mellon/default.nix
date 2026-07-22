@@ -10,7 +10,11 @@
 {
   imports = [
     ./hardware-configuration.nix
+    ./hardware.nix
+    ./disk.nix
+    ./boot.nix
     ./nvidia.nix
+    ./desktop.nix
     ../common/global
   ];
 
@@ -18,17 +22,9 @@
 
   device.type = "desktop";
 
-  boot.loader = {
-    systemd-boot = {
-      enable = true;
-      configurationLimit = 20;
-    };
-    efi.canTouchEfiVariables = true;
-  };
-
   networking.networkmanager.enable = true;
 
-  # time.timeZone = "America/Sao_Paulo";
+  time.timeZone = "America/Sao_Paulo";
 
   system.stateVersion = "26.11";
 }
