@@ -20,8 +20,8 @@ modules/home-manager/        custom HM options — OPTION-ONLY, auto-imported in
 hosts/common/global/         imported by every host (nix settings, home-manager wiring)
 hosts/common/optional/       opt-in system modules shared by 2+ hosts (created when needed)
 hosts/<host>/                default.nix = host SPEC (function over { users, lib },
-                             mapped by mkNixOSConfig), hardware-configuration.nix (generated),
-                             host-specific hardware modules (mellon: nvidia.nix)
+                             mapped by mkNixOSConfig) + host modules (mellon: disk, boot,
+                             hardware, nvidia, desktop) + hardware-configuration.nix (generated)
 home/<user>/user.nix         user factory: overridable (functor + overrideAttrs) NIXOS module
 home/<user>/home.nix         default HM config, imported on every host
 home/<user>/features/        import-based HM features (cli, desktop, ...)

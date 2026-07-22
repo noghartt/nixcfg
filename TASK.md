@@ -14,15 +14,16 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 
 ## mellon — NixOS desktop
 
-- [x] Host skeleton (systemd-boot, NetworkManager, user creation)
 - [x] NVIDIA Blackwell module (adapted from fersilva16/nix-config)
-- [ ] Replace placeholder `hardware-configuration.nix` with `nixos-generate-config` output on the real machine
-- [ ] disko layout: LUKS + btrfs (`@`, `@home`, `@nix`, zstd+noatime), zram instead of swap; TPM2 auto-unlock optional (ref: fersilva16 `polaris-disk.nix`)
-- [ ] Kernel decision: default vs `linuxPackages_latest` — check WiFi NIC first (RTL8922AE needs latest, but Blackwell suspend-to-idle hangs on newest kernels)
-- [ ] `time.timeZone` + i18n locale
-- [ ] Desktop environment: pick one — niri+Noctalia (fersilva16's stack) / Hyprland / GNOME
-- [ ] Audio (pipewire) + Bluetooth
-- [ ] Dual boot: systemd-boot windows entry + `time.hardwareClockInLocalTime` (if keeping Windows)
+- [x] disko: ESP + LUKS2 + LVM (root 500G / home 1T btrfs, ~300G free in VG) + 64G swapfile
+- [x] Kernel: `linuxPackages_latest` (RTL8922AE needs 7.x; Blackwell suspend caveat in hardware.nix)
+- [x] Boot: systemd-boot (NixOS has no native EFISTUB) + systemd initrd + LVM
+- [x] Desktop: Hyprland (Wayland) + greetd + pipewire + bluetooth
+- [x] `time.timeZone` (America/Sao_Paulo)
+- [ ] Install day: `sudo disko --mode disko --flake .#mellon` from the installer, then `nixos-install --flake .#mellon`
+- [ ] Install day: replace placeholder `hardware-configuration.nix` with `nixos-generate-config` output
+- [ ] Install day: set `resume_offset` in hosts/mellon/boot.nix (`sudo btrfs inspect-internal map-swapfile -r /swap/swapfile`) and rebuild — enables hibernation
+- [ ] TPM2 auto-unlock for LUKS (optional; `systemd-cryptenroll`, initrd is already systemd)
 - [ ] Gaming: steam + gamemode (32-bit graphics already enabled by the NVIDIA module)
 
 ## Home Manager
