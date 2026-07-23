@@ -27,11 +27,11 @@ let
       users.users.${username} = {
         isNormalUser = true;
         inherit (cfg) extraGroups;
-        shell = pkgs.fish;
+        shell = pkgs.zsh;
       };
 
       # Login shell needs the system-level module so it lands in /etc/shells.
-      programs.fish.enable = true;
+      programs.zsh.enable = true;
 
       home-manager.users.${username} = {
         # Forward the system-level device namespace into HM.
