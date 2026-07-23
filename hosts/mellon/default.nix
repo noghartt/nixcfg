@@ -15,6 +15,7 @@
     ./boot.nix
     ./nvidia.nix
     ./desktop.nix
+    ./1password.nix
     ../common/global
   ];
 
