@@ -9,7 +9,7 @@
 
       "$mod" = "SUPER";
       bind = [
-        "$mod, Return, exec, alacritty"
+        "$mod, Return, exec, ghostty"
         "$mod, Q, killactive"
         "$mod SHIFT, E, exit"
       ];

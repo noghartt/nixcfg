@@ -1,6 +1,7 @@
 {
   imports = [
     ./hyprland.nix
-    ./alacritty.nix
+    ./ghostty.nix
+    ./browsers.nix
   ];
 }
