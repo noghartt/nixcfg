@@ -15,7 +15,7 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 ## mellon — NixOS desktop
 
 - [x] NVIDIA Blackwell module (adapted from fersilva16/nix-config)
-- [x] disko: ESP + LVM (root 500G / home 1T btrfs, ~300G free in VG, unencrypted) + 64G swapfile
+- [x] disko: ESP 2G + LVM (root 500G / home ~1.3T btrfs, unencrypted), subvolumes @ @nix @var_log @snapshots @swap + @home, 64G swapfile
 - [x] Kernel: `linuxPackages_latest` (RTL8922AE needs 7.x; Blackwell suspend caveat in hardware.nix)
 - [x] Boot: systemd-boot (NixOS has no native EFISTUB) + systemd initrd + LVM
 - [x] Desktop: Hyprland (Wayland) + greetd + pipewire + bluetooth
@@ -54,6 +54,7 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 
 ## Someday / maybe
 
+- [ ] snapper on @ and/or @home (subvolumes already in place, Arch used it)
 - [ ] Impermanence (Misterio77 opt-in pattern: `optin-persistence.nix` + `ephemeral-btrfs.nix`)
 - [ ] Theming namespace (colors/fonts shared across NixOS + HM)
 - [ ] Per-host activation apps (`nix run '.#nixosActivations/mellon'`)

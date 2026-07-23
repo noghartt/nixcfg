@@ -1,7 +1,9 @@
 # Disk layout (disko) for mellon's 2TB Kingston NVMe:
 # GPT -> ESP + LVM vg -> btrfs LVs. No LUKS: unencrypted by choice.
-# ~300G is deliberately left unallocated in the VG: growing or adding LVs
-# later is the whole point of LVM. INSTALL ONLY: disko wipes the disk.
+# Sizes and subvolumes follow the previous Arch install (@, @snapshots,
+# @var_log on root), plus @nix and @swap for NixOS. home takes whatever
+# the root LV leaves; it is the filesystem that actually grows.
+# INSTALL ONLY: disko wipes the disk.
 { flake, ... }:
 let
   # Mount options carried over from the Arch setup (see the gist reference
@@ -26,7 +28,9 @@ in
         type = "gpt";
         partitions = {
           ESP = {
-            size = "1G";
+            # NixOS keeps configurationLimit (20) kernel+initrd pairs on the
+            # ESP; 1G gets tight with current 7.x kernels.
+            size = "2G";
             type = "EF00";
             content = {
               type = "filesystem";
@@ -64,6 +68,14 @@ in
                 mountpoint = "/nix";
                 mountOptions = btrfsOpts;
               };
+              "@var_log" = {
+                mountpoint = "/var/log";
+                mountOptions = btrfsOpts;
+              };
+              "@snapshots" = {
+                mountpoint = "/.snapshots";
+                mountOptions = btrfsOpts;
+              };
               # Sized for hibernation (60G RAM). Swap files on btrfs refuse
               # to activate on CoW subvolumes, hence nodatacow.
               "@swap" = {
@@ -78,7 +90,7 @@ in
           };
         };
         home = {
-          size = "1T";
+          size = "100%FREE";
           content = {
             type = "btrfs";
             extraArgs = [ "-f" ];
