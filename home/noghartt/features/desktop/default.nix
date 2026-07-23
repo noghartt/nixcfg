@@ -2,6 +2,8 @@
   imports = [
     ./hyprland.nix
     ./ghostty.nix
-    ./browsers.nix
+    ./firefox.nix
+    ./chrome.nix
+    ./obsidian.nix
   ];
 }

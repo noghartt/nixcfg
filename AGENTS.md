@@ -56,6 +56,8 @@ TASK.md                      living checklist of planned work — keep it update
 - Single `nixpkgs` input (`nixos-unstable`) for now. When the macbook lands: add a second
   branch (`nixpkgs-unstable` for darwin) + `mkDarwinConfig` — see TASK.md.
 - No frameworks (flake-parts, blueprint, den, ...). Vanilla `nixpkgs.lib` + `lib/`.
+- Extra inputs and why: `disko` (declarative disk layout for mellon),
+  `firefox-addons` (rycee's packaged Firefox extensions, used by the desktop feature).
 
 ## Commands
 
