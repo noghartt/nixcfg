@@ -34,10 +34,5 @@
 
   home.sessionPath = [
     "$HOME/.local/bin"
-    "$HOME/.npm/bin"
-    "$HOME/.bun/bin"
-    "$HOME/.cargo/bin"
-    "$HOME/.fly/bin"
-    "$HOME/.opencode/bin"
   ];
 }
