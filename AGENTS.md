@@ -89,6 +89,8 @@ Conventional commits: `type(scope): description` (adapted from Foundry)
 - Message is lowercase, no period at end.
 - `flake.lock` bumps: summarize what actually changed upstream (short hash range + bullet
   list of meaningful commits), so the diff is reviewable without leaving the repo.
+- Record notable changes in CHANGELOG.md under `[Unreleased]` (date-based entries,
+  Added/Changed/Fixed/Removed), and date-stamp them at checkpoints.
 
 ## Reference configs
 
