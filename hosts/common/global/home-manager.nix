@@ -13,7 +13,10 @@
     backupFileExtension = "hm-backup";
     extraSpecialArgs = { inherit flake; };
 
-    # Custom option-only HM modules available to every user.
-    sharedModules = builtins.attrValues flake.outputs.homeManagerModules;
+    # Custom option-only HM modules available to every user, plus opnix
+    # (inert unless a user enables programs.onepassword-secrets).
+    sharedModules = builtins.attrValues flake.outputs.homeManagerModules ++ [
+      flake.inputs.opnix.homeManagerModules.default
+    ];
   };
 }
