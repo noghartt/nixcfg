@@ -1,5 +1,5 @@
 # Disk layout (disko) for mellon's 2TB Kingston NVMe:
-# GPT -> ESP + LUKS2 (cryptlvm) -> LVM vg -> btrfs LVs.
+# GPT -> ESP + LVM vg -> btrfs LVs. No LUKS: unencrypted by choice.
 # ~300G is deliberately left unallocated in the VG: growing or adding LVs
 # later is the whole point of LVM. INSTALL ONLY: disko wipes the disk.
 { flake, ... }:
@@ -35,16 +35,12 @@ in
               mountOptions = [ "umask=0077" ];
             };
           };
-          luks = {
+          lvm = {
             size = "100%";
+            type = "8E00";
             content = {
-              type = "luks";
-              name = "cryptlvm";
-              settings.allowDiscards = true;
-              content = {
-                type = "lvm_pv";
-                vg = "vg";
-              };
+              type = "lvm_pv";
+              vg = "vg";
             };
           };
         };

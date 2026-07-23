@@ -92,7 +92,7 @@ Conventional commits: `type(scope): description` (adapted from Foundry)
 Patterns here are adapted from:
 
 - [Misterio77/Foundry](https://github.com/Misterio77/Foundry) — overall layout, hostname-keyed HM entrypoints, option-only custom modules
-- [fersilva16/nix-config](https://github.com/fersilva16/nix-config) — NVIDIA Blackwell module, disko LUKS+btrfs layout, dual-boot polish
+- [fersilva16/nix-config](https://github.com/fersilva16/nix-config) — NVIDIA Blackwell module, RTL8922AE kernel notes, disk layout reference
 - [thiagokokada/nix-configs](https://github.com/thiagokokada/nix-configs) — `mapDir` outputs
 - [lucasew/nixcfg](https://github.com/lucasew/nixcfg) — generation labels, `/etc` breadcrumbs (later)
 

@@ -14,7 +14,7 @@
     };
 
     initrd = {
-      # systemd stage-1: clean LUKS+LVM handling and reliable hibernate resume.
+      # systemd stage-1: clean LVM activation and reliable hibernate resume.
       systemd.enable = true;
       services.lvm.enable = true;
     };

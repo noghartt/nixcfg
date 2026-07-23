@@ -15,7 +15,7 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 ## mellon — NixOS desktop
 
 - [x] NVIDIA Blackwell module (adapted from fersilva16/nix-config)
-- [x] disko: ESP + LUKS2 + LVM (root 500G / home 1T btrfs, ~300G free in VG) + 64G swapfile
+- [x] disko: ESP + LVM (root 500G / home 1T btrfs, ~300G free in VG, unencrypted) + 64G swapfile
 - [x] Kernel: `linuxPackages_latest` (RTL8922AE needs 7.x; Blackwell suspend caveat in hardware.nix)
 - [x] Boot: systemd-boot (NixOS has no native EFISTUB) + systemd initrd + LVM
 - [x] Desktop: Hyprland (Wayland) + greetd + pipewire + bluetooth
@@ -23,7 +23,6 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [ ] Install day: `sudo disko --mode disko --flake .#mellon` from the installer, then `nixos-install --flake .#mellon`
 - [ ] Install day: replace placeholder `hardware-configuration.nix` with `nixos-generate-config` output
 - [ ] Install day: set `resume_offset` in hosts/mellon/boot.nix (`sudo btrfs inspect-internal map-swapfile -r /swap/swapfile`) and rebuild — enables hibernation
-- [ ] TPM2 auto-unlock for LUKS (optional; `systemd-cryptenroll`, initrd is already systemd)
 - [ ] Gaming: steam + gamemode (32-bit graphics already enabled by the NVIDIA module)
 
 ## Home Manager
