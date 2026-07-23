@@ -1,5 +1,5 @@
 # Git identity comes from 1Password via opnix, not from the repo (see
-# AGENTS.md): create an item "git" in the Personal vault whose NOTES field
+# AGENTS.md): create an item "git" in the Nix vault whose NOTES field
 # holds exactly:
 #   [user]
 #   	name = <your name>
@@ -12,7 +12,7 @@
       enable = true;
       tokenFile = "${config.home.homeDirectory}/.config/opnix/token";
       secrets.gitUser = {
-        reference = "op://Personal/git/notes";
+        reference = "op://Nix/git/notes";
         path = ".config/git/user";
       };
     };

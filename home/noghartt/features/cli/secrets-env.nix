@@ -16,7 +16,7 @@ let
   opnix = "${flake.inputs.opnix.packages.${pkgs.stdenv.hostPlatform.system}.default}/bin/opnix";
 
   envVars = [
-    # { name = "GITHUB_TOKEN"; reference = "op://Personal/github/token"; }
+    # { name = "GITHUB_TOKEN"; reference = "op://Nix/github/token"; }
   ];
 in
 {
