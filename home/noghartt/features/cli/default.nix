@@ -4,5 +4,7 @@
     ./zsh.nix
     ./tools.nix
     ./editor.nix
+    ./tmux.nix
+    ./direnv.nix
   ];
 }
