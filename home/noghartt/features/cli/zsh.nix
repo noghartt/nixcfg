@@ -29,8 +29,6 @@
     # is safe for pipelines.
     shellAliases = {
       cat = "bat --paging=never --style=plain";
-      claude-mem = ''bun "$HOME/.claude/plugins/marketplaces/thedotmack/plugin/scripts/worker-service.cjs"'';
-      zotero-cli = "bun run ~/www/zotero-api-cli/src/index.ts";
     };
   };
 
