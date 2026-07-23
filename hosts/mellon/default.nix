@@ -16,10 +16,17 @@
     ./nvidia.nix
     ./desktop.nix
     ./1password.nix
+    ./docker.nix
     ../common/global
   ];
 
-  users = with users; [ noghartt ];
+  # First real use of user factory overrides: mellon adds the docker group
+  # on top of the user's default groups.
+  users = [
+    (users.noghartt.overrideAttrs (old: {
+      extraGroups = old.extraGroups ++ [ "docker" ];
+    }))
+  ];
 
   device.type = "desktop";
 
