@@ -27,9 +27,11 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 
 ## Home Manager
 
-- [ ] cli feature: git identity strategy (no PII in repo — local include or override), shell, ssh
-- [ ] editor (neovim?) + terminal (ghostty?)
-- [ ] prompt / shell tooling (eza, fzf, direnv, zoxide)
+- [x] Terminal (ghostty) + zsh (autosuggestion, syntax-highlighting)
+- [x] cli tooling: eza, bat, fd, fzf, lazygit + browsers (firefox, chrome)
+- [ ] git identity strategy (no PII in repo — local include or override), ssh config
+- [x] editor (neovim, bare — plugins/config to grow)
+- [ ] prompt (starship?) + remaining shell tooling (direnv, zoxide)
 
 ## Tooling / CI
 
