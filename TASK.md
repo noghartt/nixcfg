@@ -38,7 +38,12 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [ ] treefmt: nixfmt + statix + deadnix wired as `checks.formatting`
 - [ ] CI: build `nixosConfigurations` on push
 - [ ] Generation labels (`system.nixos.label` with rev) + `/etc` breadcrumb symlinks (lucasew pattern)
-- [ ] Secrets: decide sops-nix (age key derived from host SSH key — Misterio77 pattern) vs 1Password SSH agent (fersilva16 pattern)
+- [x] Secrets: 1Password via opnix (HM user secrets; SSH keys via the 1Password agent)
+- [ ] Bootstrap: create a 1Password service account (Personal-vault scoped), then on the machine:
+      `opnix token -path ~/.config/opnix/token set && chmod 600 ~/.config/opnix/token`
+      (HM activation fails until this exists, git identity secret depends on it)
+- [ ] Bootstrap: create the `git` item in the Personal vault with the `[user]` ini block in its notes field
+- [ ] Declare secrets as env vars in `home/noghartt/features/cli/secrets-env.nix` as tools need them
 
 ## mithril — macbook (later)
 

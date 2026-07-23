@@ -57,7 +57,8 @@ TASK.md                      living checklist of planned work — keep it update
   branch (`nixpkgs-unstable` for darwin) + `mkDarwinConfig` — see TASK.md.
 - No frameworks (flake-parts, blueprint, den, ...). Vanilla `nixpkgs.lib` + `lib/`.
 - Extra inputs and why: `disko` (declarative disk layout for mellon),
-  `firefox-addons` (rycee's packaged Firefox extensions, used by the desktop feature).
+  `firefox-addons` (rycee's packaged Firefox extensions, used by the desktop feature),
+  `opnix` (1Password secrets — see Hard rules).
 
 ## Commands
 
@@ -100,7 +101,10 @@ Patterns here are adapted from:
 
 ## Hard rules
 
-- Never commit secrets. Secrets strategy is still undecided — see TASK.md.
+- Never commit secrets. Strategy: 1Password via opnix — user secrets as
+  `programs.onepassword-secrets` (HM), system secrets as `services.onepassword-secrets`
+  (NixOS, add when first needed). The service-account token lives outside the repo
+  (`~/.config/opnix/token`, provisioned with `opnix token set`); never commit it.
 - No personal data in the repo: no real names, emails, or other PII in any file
   (git identity, SSH config with personal hosts, etc. stay local).
 - Don't add flake inputs without a documented reason (note it in this file).
