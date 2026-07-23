@@ -23,6 +23,7 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [ ] Install day: `sudo disko --mode disko --flake .#mellon` from the installer, then `nixos-install --flake .#mellon`
 - [ ] Install day: replace placeholder `hardware-configuration.nix` with `nixos-generate-config` output
 - [ ] Install day: set `resume_offset` in hosts/mellon/boot.nix (`sudo btrfs inspect-internal map-swapfile -r /swap/swapfile`) and rebuild — enables hibernation
+- [x] docker + compose (daemon on the host, `docker` group via user factory `overrideAttrs`, NVIDIA container toolkit)
 - [ ] Gaming: steam + gamemode (32-bit graphics already enabled by the NVIDIA module)
 
 ## Home Manager
