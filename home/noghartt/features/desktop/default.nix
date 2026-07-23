@@ -5,5 +5,7 @@
     ./firefox.nix
     ./chrome.nix
     ./obsidian.nix
+    ./dunst.nix
+    ./flameshot.nix
   ];
 }

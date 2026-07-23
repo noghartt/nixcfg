@@ -12,6 +12,7 @@
         "$mod, Return, exec, ghostty"
         "$mod, Q, killactive"
         "$mod SHIFT, E, exit"
+        ", Print, exec, flameshot gui"
       ];
     };
   };
