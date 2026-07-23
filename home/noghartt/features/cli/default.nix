@@ -7,5 +7,6 @@
     ./tmux.nix
     ./direnv.nix
     ./secrets-env.nix
+    ./dev.nix
   ];
 }
