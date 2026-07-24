@@ -15,16 +15,20 @@
     ./boot.nix
     ./nvidia.nix
     ./desktop.nix
+    ./networking.nix
+    ./maintenance.nix
     ./1password.nix
     ./docker.nix
     ../common/global
   ];
 
-  # First real use of user factory overrides: mellon adds the docker group
-  # on top of the user's default groups.
+  # Host services extend the user's portable groups.
   users = [
     (users.noghartt.overrideAttrs (old: {
-      extraGroups = old.extraGroups ++ [ "docker" ];
+      extraGroups = old.extraGroups ++ [
+        "docker"
+        "wireshark"
+      ];
     }))
   ];
 
@@ -32,6 +36,8 @@
 
   networking.networkmanager.enable = true;
 
+  i18n.defaultLocale = "en_US.UTF-8";
+  console.keyMap = "us";
   time.timeZone = "America/Sao_Paulo";
 
   system.stateVersion = "26.11";

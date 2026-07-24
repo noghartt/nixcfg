@@ -66,7 +66,8 @@ TASK.md                      living checklist of planned work — keep it update
 - No frameworks (flake-parts, blueprint, den, ...). Vanilla `nixpkgs.lib` + `lib/`.
 - Extra inputs and why: `disko` (declarative disk layout for mellon),
   `firefox-addons` (rycee's packaged Firefox extensions, used by the desktop feature),
-  `opnix` (1Password secrets — see Hard rules).
+  `opnix` (1Password secrets — see Hard rules), `noctalia` (native desktop shell and
+  its Home Manager module, newer than the legacy nixpkgs package).
 
 ## Commands
 

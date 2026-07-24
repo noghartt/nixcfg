@@ -12,7 +12,6 @@ let
     "compress=zstd"
     "noatime"
     "ssd"
-    "discard=async"
     "space_cache=v2"
     "autodefrag"
   ];

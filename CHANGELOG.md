@@ -10,6 +10,14 @@ whenever it feels like a checkpoint.
 
 ### Added
 
+- **mellon**: systemd-resolved, native firewall, Tailscale, Cloudflare WARP,
+  Wireshark capture, SMART desktop notifications, weekly trim, power profiles,
+  explicit `us-intl` desktop input, and NVIDIA VRAM preservation across
+  suspend/hibernate.
+- **home/noghartt/desktop**: Noctalia v5 shell with notifications, lock screen,
+  and idle handling; rofi launcher, Hyprpolkitagent, complete workspace/window
+  bindings, MIME defaults, Todoist, Calibre, Zotero, Slack, Discord, and Spotify.
+- **home/noghartt/cli**: Jujutsu.
 - **home/noghartt**: Claude Code, Codex, and OpenCode through per-harness Home
   Manager modules; Claude Code's global settings are managed declaratively. Pi
   is an independent feature with Misterio77-inspired model, compaction,
@@ -17,6 +25,10 @@ whenever it feels like a checkpoint.
 - **home/noghartt**: tmux now auto-attaches from Ghostty and includes vi copy
   mode, Wayland clipboard integration, persistent sessions, and git-root-aware
   agent and lazygit panes based on fersilva16's setup.
+
+### Removed
+
+- **home/noghartt/desktop**: Dunst; Noctalia now owns desktop notifications.
 
 ## 2026-07-22
 

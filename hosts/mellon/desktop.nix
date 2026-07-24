@@ -6,7 +6,10 @@
     xwayland.enable = true;
   };
 
-  security.rtkit.enable = true;
+  security = {
+    polkit.enable = true;
+    rtkit.enable = true;
+  };
 
   services = {
     # Minimal greeter straight into the Hyprland session.
@@ -27,6 +30,12 @@
     };
 
     blueman.enable = true;
+    upower.enable = true;
+
+    xserver.xkb = {
+      layout = "us";
+      variant = "intl";
+    };
   };
 
   # RTL8922AE has rough BT/WiFi coexistence (noted on fersilva16's identical

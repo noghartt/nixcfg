@@ -16,6 +16,10 @@
     open = true;
     modesetting.enable = true;
     nvidiaSettings = true;
+
+    # Preserve VRAM across suspend and hibernate; fine-grained RTD3 is only
+    # appropriate for PRIME offload laptops.
+    powerManagement.enable = true;
   };
 
   boot.kernelParams = [

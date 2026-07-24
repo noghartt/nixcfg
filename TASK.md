@@ -24,6 +24,9 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [ ] Install day: replace placeholder `hardware-configuration.nix` with `nixos-generate-config` output
 - [ ] Install day: set `resume_offset` in hosts/mellon/boot.nix (`sudo btrfs inspect-internal map-swapfile -r /swap/swapfile`) and rebuild — enables hibernation
 - [x] docker + compose (daemon on the host, `docker` group via user factory `overrideAttrs`, NVIDIA container toolkit)
+- [x] Reliability: SMART monitoring + desktop notifications, weekly fstrim, power-profiles-daemon
+- [x] Networking: systemd-resolved, native firewall, Tailscale, Cloudflare WARP, Wireshark capture
+- [x] NVIDIA suspend/hibernate VRAM preservation (resume offset still pending install day)
 - [ ] Gaming: steam + gamemode (32-bit graphics already enabled by the NVIDIA module)
 
 ## Home Manager
@@ -31,6 +34,10 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [x] Terminal: Ghostty auto-attached to persistent tmux + zsh (autosuggestion, syntax-highlighting)
 - [x] cli tooling: eza, bat, fd, fzf, lazygit + browsers (firefox, chrome)
 - [x] AI coding agents: Claude Code, Codex, OpenCode, Pi + pi-claude-bridge
+- [x] Desktop shell: Noctalia + rofi launcher + Polkit agent + lock/idle behavior
+- [x] Migrate i3 workflow: workspaces, focus/move/resize, audio, launcher, session controls
+- [x] Desktop apps: Todoist, Calibre, Zotero, Slack, Discord, Spotify
+- [x] Jujutsu
 - [ ] git identity strategy (no PII in repo — local include or override), ssh config
 - [x] editor (neovim, bare — plugins/config to grow)
 - [ ] prompt (starship?) + remaining shell tooling (direnv, zoxide)
