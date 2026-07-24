@@ -1,5 +1,6 @@
 {
   imports = [
+    ./agents
     ./git.nix
     ./zsh.nix
     ./tools.nix
