@@ -7,6 +7,11 @@
     # Independently locked kernel, firmware, microcode, and out-of-tree modules.
     nixpkgs-hardware.url = "github:nixos/nixpkgs/nixos-unstable";
 
+    nixos-hardware = {
+      url = "github:NixOS/nixos-hardware";
+      inputs.nixpkgs.follows = "nixpkgs-hardware";
+    };
+
     home-manager = {
       url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";

@@ -125,6 +125,7 @@ Test TTY login, `sudo`, Ethernet at 2.5 Gb/s, Wi-Fi with Bluetooth active,
 audio, monitor refresh rates, Docker GPU passthrough, repeated suspend/resume,
 and hibernation with substantial GPU memory in use.
 
-Mellon's kernel, NVIDIA module, Linux firmware, wireless regulatory data, and
-AMD microcode come from the independently locked `nixpkgs-hardware` input.
-Update it separately from userspace only after repeating these hardware tests.
+Mellon's kernel, Linux firmware, wireless regulatory data, and AMD microcode
+come from the independently locked `nixpkgs-hardware` input. The NVIDIA version
+and source hashes are pinned separately in `hosts/mellon/nvidia.nix`. Update
+either separately from userspace only after repeating these hardware tests.

@@ -14,9 +14,9 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 
 ## mellon — NixOS desktop
 
-- [x] NVIDIA Blackwell module (adapted from fersilva16/nix-config)
+- [x] NVIDIA Blackwell module (`nixos-hardware` architecture baseline + host-pinned driver and desktop policy)
 - [x] disko: ESP 2G + LUKS + LVM (root 500G / home remainder), btrfs subvolumes @ @nix @var_log @snapshots @swap + @home, 64G swapfile
-- [x] Independently locked hardware stack: Linux 6.18.39, NVIDIA 595.84, Linux firmware + AMD microcode 20260622
+- [x] Hardware stack: independently locked Linux 6.18.39 + firmware/microcode 20260622; NVIDIA 595.84 pinned in `nvidia.nix`
 - [x] Boot: Lanzaboote Secure Boot + systemd initrd + encrypted LVM
 - [x] Desktop: Hyprland (Wayland) + greetd + pipewire + bluetooth
 - [x] `time.timeZone` (America/Sao_Paulo)

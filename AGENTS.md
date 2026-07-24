@@ -63,14 +63,16 @@ INSTALL.md                   destructive install + LUKS/Secure Boot runbook
   `flake.outputs.x`), never by importing `../flake.nix`.
 - `hardware-configuration.nix` is machine-generated (`nixos-generate-config`); do not hand-edit.
 - `nixpkgs` tracks `nixos-unstable` for userspace. `nixpkgs-hardware` is independently
-  locked and supplies mellon's kernel, NVIDIA module set, Linux firmware, wireless
-  regulatory data, and AMD microcode. Update that input only as a deliberate, separately
-  tested hardware-stack change. When the macbook lands: add a darwin branch
+  locked and supplies mellon's kernel build stack, Linux firmware, wireless regulatory
+  data, and AMD microcode. The NVIDIA version and source hashes are pinned in the host's
+  `nvidia.nix` via that kernel package set's `mkDriver`. Update either only as a deliberate,
+  separately tested hardware-stack change. When the macbook lands: add a darwin branch
   (`nixpkgs-unstable`) + `mkDarwinConfig` — see TASK.md.
 - No frameworks (flake-parts, blueprint, den, ...). Vanilla `nixpkgs.lib` + `lib/`.
 - Extra inputs and why: `disko` (declarative disk layout for mellon),
   `lanzaboote` (Secure Boot signing and systemd-boot integration),
-  `nixpkgs-hardware` (independently locked kernel/driver/firmware package set),
+  `nixpkgs-hardware` (independently locked kernel/firmware package set),
+  `nixos-hardware` (upstream hardware quirks; Mellon uses its Blackwell module),
   `firefox-addons` (rycee's packaged Firefox extensions, used by the desktop feature),
   `opnix` (1Password secrets — see Hard rules), `noctalia` (native desktop shell and
   its Home Manager module, newer than the legacy nixpkgs package).

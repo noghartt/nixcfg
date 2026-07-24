@@ -10,9 +10,12 @@ whenever it feels like a checkpoint.
 
 ### Added
 
-- **mellon/hardware**: independent nixpkgs lock for Linux 6.18.39,
-  NVIDIA 595.84, Linux firmware, wireless regulatory data, and AMD microcode;
-  userspace can now update without moving the tested hardware stack.
+- **mellon/hardware**: independent nixpkgs lock for Linux 6.18.39, Linux
+  firmware, wireless regulatory data, and AMD microcode; NVIDIA 595.84 is
+  explicitly pinned with source hashes in the host module. Userspace can now
+  update without moving the tested hardware stack.
+- **mellon/nvidia**: official `nixos-hardware` Blackwell baseline; redundant
+  driver selection and DRM kernel parameters are now delegated upstream.
 - **mellon**: LUKS encryption around the existing LVM layout, Lanzaboote
   Secure Boot, bounded root Snapper retention, journal limits, conservative
   Docker pruning, Brazilian Wi-Fi regulatory settings, and disabled Wi-Fi
