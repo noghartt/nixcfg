@@ -10,6 +10,9 @@ whenever it feels like a checkpoint.
 
 ### Added
 
+- **docs**: complete Mellon installation runbook covering installer preparation,
+  locked Disko provisioning, LUKS and Lanzaboote bootstrap, 1Password/opnix,
+  hibernation, hardware validation, and live-USB recovery.
 - **mellon/hardware**: independent nixpkgs lock for Linux 6.18.39, Linux
   firmware, wireless regulatory data, and AMD microcode; NVIDIA 595.84 is
   explicitly pinned with source hashes in the host module. Userspace can now
