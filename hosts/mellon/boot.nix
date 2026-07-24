@@ -1,16 +1,29 @@
 {
+  flake,
+  lib,
+  pkgs,
+  ...
+}:
+{
+  imports = [ flake.inputs.lanzaboote.nixosModules.lanzaboote ];
+
   boot = {
     loader = {
-      # NixOS has no native EFISTUB bootloader; systemd-boot is the native
-      # UEFI path (same as the previous Arch setup).
+      # Lanzaboote replaces the systemd-boot installer while retaining its
+      # menu settings and signing every bootable generation.
       systemd-boot = {
-        enable = true;
+        enable = lib.mkForce false;
         configurationLimit = 20;
         consoleMode = "max";
         # Kernel cmdline editing at boot would bypass the login password.
         editor = false;
       };
       efi.canTouchEfiVariables = true;
+    };
+
+    lanzaboote = {
+      enable = true;
+      pkiBundle = "/var/lib/sbctl";
     };
 
     initrd = {
@@ -26,8 +39,9 @@
     # then add "resume_offset=<value>" to kernelParams below.
     resumeDevice = "/dev/mapper/vg-root";
     kernelParams = [
-      "nowatchdog"
       # "resume_offset=REPLACE_AFTER_INSTALL"
     ];
   };
+
+  environment.systemPackages = [ pkgs.sbctl ];
 }

@@ -2,24 +2,36 @@
 # stays machine-generated). Detected pre-install on the machine:
 # Ryzen 9 9950X, RTX 5070 Ti, RTL8922AE WiFi+BT, RTL8125 2.5GbE, ASUS board.
 {
-  pkgs,
+  flake,
   lib,
-  config,
+  pkgs,
   ...
 }:
+let
+  hardwarePkgs = import flake.inputs.nixpkgs-hardware {
+    system = pkgs.stdenv.hostPlatform.system;
+    config.allowUnfree = true;
+  };
+in
 {
   hardware = {
-    # rtw89 firmware for the RTL8922AE lives in the redistributable set.
-    enableRedistributableFirmware = true;
-    cpu.amd.updateMicrocode = lib.mkDefault config.hardware.enableRedistributableFirmware;
+    # Keep the kernel-facing stack coherent and independent from userspace
+    # updates. NetworkManager otherwise injects the main package set's regdb.
+    enableRedistributableFirmware = false;
+    wirelessRegulatoryDatabase = lib.mkForce false;
+    firmware = [
+      hardwarePkgs.linux-firmware
+      hardwarePkgs.wireless-regdb
+    ];
+
+    cpu.amd = {
+      updateMicrocode = true;
+      microcodePackage = hardwarePkgs.microcode-amd;
+    };
   };
 
   boot = {
-    # RTL8922AE (WiFi 7) does not probe on the default kernel (rtw89_8922ae
-    # needs 7.x). Track latest until the default catches up. Known tension
-    # from fersilva16's identical build: Blackwell suspend-to-idle can hang
-    # on the newest kernels — if that hits, weigh WiFi vs suspend.
-    kernelPackages = pkgs.linuxPackages_latest;
+    kernelPackages = hardwarePkgs.linuxPackages_6_18;
 
     initrd.availableKernelModules = [
       "nvme"
@@ -28,6 +40,10 @@
     ];
 
     kernelModules = [ "kvm-amd" ];
+
+    # Establish the legal channel and power limits before userspace starts;
+    # the matching pinned regulatory database is supplied above.
+    kernelParams = [ "cfg80211.ieee80211_regdom=BR" ];
   };
 
   services.fwupd.enable = true;

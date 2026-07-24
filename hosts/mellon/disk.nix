@@ -1,5 +1,5 @@
 # Disk layout (disko) for mellon's 2TB Kingston NVMe:
-# GPT -> ESP + LVM vg -> btrfs LVs. No LUKS: unencrypted by choice.
+# GPT -> ESP + LUKS -> LVM vg -> btrfs LVs.
 # Sizes and subvolumes follow the previous Arch install (@, @snapshots,
 # @var_log on root), plus @nix and @swap for NixOS. home takes whatever
 # the root LV leaves; it is the filesystem that actually grows.
@@ -13,7 +13,6 @@ let
     "noatime"
     "ssd"
     "space_cache=v2"
-    "autodefrag"
   ];
 in
 {
@@ -40,10 +39,23 @@ in
           };
           lvm = {
             size = "100%";
-            type = "8E00";
+            type = "8309";
             content = {
-              type = "lvm_pv";
-              vg = "vg";
+              type = "luks";
+              name = "cryptlvm";
+
+              # Provision this ephemeral file in the installer environment;
+              # normal boots prompt interactively and never retain the secret.
+              passwordFile = "/run/disko-luks-password";
+
+              # Let weekly fstrim reach the NVMe, accepting that discard
+              # reveals which encrypted blocks are allocated.
+              settings.allowDiscards = true;
+
+              content = {
+                type = "lvm_pv";
+                vg = "vg";
+              };
             };
           };
         };

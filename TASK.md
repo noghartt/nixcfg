@@ -15,17 +15,16 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 ## mellon — NixOS desktop
 
 - [x] NVIDIA Blackwell module (adapted from fersilva16/nix-config)
-- [x] disko: ESP 2G + LVM (root 500G / home ~1.3T btrfs, unencrypted), subvolumes @ @nix @var_log @snapshots @swap + @home, 64G swapfile
-- [x] Kernel: `linuxPackages_latest` (RTL8922AE needs 7.x; Blackwell suspend caveat in hardware.nix)
-- [x] Boot: systemd-boot (NixOS has no native EFISTUB) + systemd initrd + LVM
+- [x] disko: ESP 2G + LUKS + LVM (root 500G / home remainder), btrfs subvolumes @ @nix @var_log @snapshots @swap + @home, 64G swapfile
+- [x] Independently locked hardware stack: Linux 6.18.39, NVIDIA 595.84, Linux firmware + AMD microcode 20260622
+- [x] Boot: Lanzaboote Secure Boot + systemd initrd + encrypted LVM
 - [x] Desktop: Hyprland (Wayland) + greetd + pipewire + bluetooth
 - [x] `time.timeZone` (America/Sao_Paulo)
-- [ ] Install day: `sudo disko --mode disko --flake .#mellon` from the installer, then `nixos-install --flake .#mellon`
-- [ ] Install day: replace placeholder `hardware-configuration.nix` with `nixos-generate-config` output
+- [ ] Install day: follow `INSTALL.md` exactly (destructive Disko, temporary LUKS secret, hardware config, Lanzaboote keys, login password)
 - [ ] Install day: set `resume_offset` in hosts/mellon/boot.nix (`sudo btrfs inspect-internal map-swapfile -r /swap/swapfile`) and rebuild — enables hibernation
 - [x] docker + compose (daemon on the host, `docker` group via user factory `overrideAttrs`, NVIDIA container toolkit)
-- [x] Reliability: SMART monitoring + desktop notifications, weekly fstrim, power-profiles-daemon
-- [x] Networking: systemd-resolved, native firewall, Tailscale, Cloudflare WARP, Wireshark capture
+- [x] Reliability: SMART monitoring + desktop notifications, weekly fstrim, power-profiles-daemon, bounded journal/Docker growth, root Snapper timeline
+- [x] Networking: NetworkManager + RTL8922AE desktop tuning, Brazilian regulatory domain, systemd-resolved, native firewall, Tailscale, Cloudflare WARP, Wireshark capture
 - [x] NVIDIA suspend/hibernate VRAM preservation (resume offset still pending install day)
 - [ ] Gaming: steam + gamemode (32-bit graphics already enabled by the NVIDIA module)
 
@@ -45,12 +44,12 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 ## Tooling / CI
 
 - [ ] treefmt: nixfmt + statix + deadnix wired as `checks.formatting`
-- [ ] CI: build `nixosConfigurations` on push
+- [x] CI: lint, evaluate, and build `nixosConfigurations.mellon` on push and pull requests
 - [ ] Generation labels (`system.nixos.label` with rev) + `/etc` breadcrumb symlinks (lucasew pattern)
 - [x] Secrets: 1Password via opnix (HM user secrets; SSH keys via the 1Password agent)
 - [ ] Bootstrap: create a 1Password service account (Nix-vault scoped), then on the machine:
       `opnix token -path ~/.config/opnix/token set && chmod 600 ~/.config/opnix/token`
-      (HM activation fails until this exists, git identity secret depends on it)
+      (HM activation skips secret retrieval until this exists; git identity depends on it)
 - [ ] Bootstrap: create the `git` item in the Nix vault with the `[user]` ini block in its notes field
 - [ ] Declare secrets as env vars in `home/noghartt/features/cli/secrets-env.nix` as tools need them
 
@@ -63,7 +62,8 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 
 ## Someday / maybe
 
-- [ ] snapper on @ and/or @home (subvolumes already in place, Arch used it)
+- [x] Snapper timeline on root `@` (separate mounts and home deliberately excluded)
+- [ ] Off-machine backup destination and tested restore procedure for `/home`
 - [ ] Impermanence (Misterio77 opt-in pattern: `optin-persistence.nix` + `ephemeral-btrfs.nix`)
 - [ ] Theming namespace (colors/fonts shared across NixOS + HM)
 - [ ] Per-host activation apps (`nix run '.#nixosActivations/mellon'`)

@@ -10,6 +10,15 @@ whenever it feels like a checkpoint.
 
 ### Added
 
+- **mellon/hardware**: independent nixpkgs lock for Linux 6.18.39,
+  NVIDIA 595.84, Linux firmware, wireless regulatory data, and AMD microcode;
+  userspace can now update without moving the tested hardware stack.
+- **mellon**: LUKS encryption around the existing LVM layout, Lanzaboote
+  Secure Boot, bounded root Snapper retention, journal limits, conservative
+  Docker pruning, Brazilian Wi-Fi regulatory settings, and disabled Wi-Fi
+  power saving for RTL8922AE reliability.
+- **tooling**: GitHub Actions now lints, evaluates, and builds Mellon on pushes
+  and pull requests with commit-pinned actions.
 - **mellon**: systemd-resolved, native firewall, Tailscale, Cloudflare WARP,
   Wireshark capture, SMART desktop notifications, weekly trim, power profiles,
   explicit `us-intl` desktop input, and NVIDIA VRAM preservation across
@@ -28,6 +37,10 @@ whenever it feels like a checkpoint.
 
 ### Removed
 
+- **mellon**: forced latest kernel and unexplained `nowatchdog`; the pinned
+  Linux 6.18 branch supports RTL8922AE while reducing Blackwell suspend churn.
+- **mellon/storage**: global Btrfs `autodefrag`; Docker and large-file workloads
+  make its write amplification a poor default alongside timeline snapshots.
 - **home/noghartt/desktop**: Dunst; Noctalia now owns desktop notifications.
 
 ## 2026-07-22
