@@ -8,6 +8,16 @@ whenever it feels like a checkpoint.
 
 ## [Unreleased]
 
+### Added
+
+- **home/noghartt**: Claude Code, Codex, and OpenCode through per-harness Home
+  Manager modules; Claude Code's global settings are managed declaratively. Pi
+  is an independent feature with Misterio77-inspired model, compaction,
+  keybinding, and offline settings plus the Nix-packaged `pi-claude-bridge`.
+- **home/noghartt**: tmux now auto-attaches from Ghostty and includes vi copy
+  mode, Wayland clipboard integration, persistent sessions, and git-root-aware
+  agent and lazygit panes based on fersilva16's setup.
+
 ## 2026-07-22
 
 Initial build-out: flake skeleton plus the full mellon desktop setup.

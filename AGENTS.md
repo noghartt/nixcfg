@@ -24,7 +24,9 @@ hosts/<host>/                default.nix = host SPEC (function over { users, lib
                              hardware, nvidia, desktop) + hardware-configuration.nix (generated)
 home/<user>/user.nix         user factory: overridable (functor + overrideAttrs) NIXOS module
 home/<user>/home.nix         default HM config, imported on every host
-home/<user>/features/        import-based HM features (cli, desktop, ...)
+home/<user>/features/cli/    shared shell/dev tools; agents/ holds Claude, Codex, OpenCode
+home/<user>/features/desktop/ graphical applications and desktop integration
+home/<user>/features/pi/     standalone Pi feature: settings + packaged extensions
 home/<user>/<host>.nix       optional per-host HM overrides
 TASK.md                      living checklist of planned work — keep it updated
 ```
@@ -49,7 +51,13 @@ TASK.md                      living checklist of planned work — keep it update
 - Hardware-specific modules live in the host dir (e.g. mellon's `nvidia.nix`); promote to
   `hosts/common/optional/` only when a second host needs them.
 - HM features are import-based (`home/<user>/features/<area>/`), not enable-flag-based.
-  Optional system modules are the same: plain files in `hosts/common/optional/`, no options.
+  Feature areas are imported directly by `home.nix`; do not nest a substantial feature under
+  `cli/` merely because its executable is a CLI. Use a directory when a feature has multiple
+  concerns, as Pi does for core settings and packaged extensions. Optional system modules use
+  the same plain-file pattern in `hosts/common/optional/`.
+- AI harnesses use their native Home Manager modules. Claude Code, Codex, and OpenCode remain
+  small per-harness modules under `features/cli/agents/`; Pi is a standalone feature because it
+  owns model settings and Nix-packaged extensions.
 - Modules access flake inputs/outputs through the `flake` specialArg (`flake.inputs.x`,
   `flake.outputs.x`), never by importing `../flake.nix`.
 - `hardware-configuration.nix` is machine-generated (`nixos-generate-config`); do not hand-edit.
@@ -96,8 +104,8 @@ Conventional commits: `type(scope): description` (adapted from Foundry)
 
 Patterns here are adapted from:
 
-- [Misterio77/Foundry](https://github.com/Misterio77/Foundry) — overall layout, hostname-keyed HM entrypoints, option-only custom modules
-- [fersilva16/nix-config](https://github.com/fersilva16/nix-config) — NVIDIA Blackwell module, RTL8922AE kernel notes, disk layout reference
+- [Misterio77/Foundry](https://github.com/Misterio77/Foundry) — overall layout, hostname-keyed HM entrypoints, option-only custom modules, Pi configuration
+- [fersilva16/nix-config](https://github.com/fersilva16/nix-config) — NVIDIA Blackwell module, RTL8922AE kernel notes, disk layout and tmux references
 - [thiagokokada/nix-configs](https://github.com/thiagokokada/nix-configs) — `mapDir` outputs
 - [lucasew/nixcfg](https://github.com/lucasew/nixcfg) — generation labels, `/etc` breadcrumbs (later)
 
