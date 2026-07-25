@@ -26,8 +26,8 @@ in
         type = "gpt";
         partitions = {
           ESP = {
-            # NixOS keeps configurationLimit (20) kernel+initrd pairs on the
-            # ESP; 1G gets tight with current 7.x kernels.
+            # Measured boot keeps 8 predicted kernel+initrd generations on the
+            # ESP; 1G still gets tight with current 7.x kernels.
             size = "2G";
             type = "EF00";
             content = {
