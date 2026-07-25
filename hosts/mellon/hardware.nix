@@ -31,7 +31,7 @@ in
   };
 
   boot = {
-    kernelPackages = hardwarePkgs.linuxPackages_6_18;
+    kernelPackages = hardwarePkgs.linuxPackages_7_1;
 
     initrd.availableKernelModules = [
       "nvme"
