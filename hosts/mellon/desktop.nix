@@ -31,6 +31,10 @@
 
     blueman.enable = true;
     upower.enable = true;
+    systemd-lock-handler.enable = true;
+
+    # Give the user session time to acknowledge its lock before sleep.
+    logind.settings.Login.InhibitDelayMaxSec = "30s";
 
     xserver.xkb = {
       layout = "us";
