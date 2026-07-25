@@ -10,8 +10,11 @@
       wifi.powersave = false;
     };
 
-    # Keep firewall state declarative; service modules add their required ports.
-    firewall.enable = true;
+    firewall = {
+      enable = true;
+      # Tailscale and WARP use independent policy-routing tables.
+      checkReversePath = "loose";
+    };
   };
 
   services = {
@@ -25,6 +28,8 @@
       openFirewall = true;
     };
 
+    # The daemon stays available, but the work tunnel is connected on demand.
+    # Its managed profile must exclude Tailscale ranges and use traffic-only DNS.
     cloudflare-warp.enable = true;
   };
 
