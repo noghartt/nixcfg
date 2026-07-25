@@ -5,7 +5,7 @@
     ./jujutsu.nix
     ./zsh.nix
     ./tools.nix
-    ./editor.nix
+    ./neovim.nix
     ./tmux.nix
     ./direnv.nix
     ./secrets-env.nix
