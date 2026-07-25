@@ -40,8 +40,9 @@
         imports = (spec.imports or [ ]) ++ map asModule (spec.users or [ ]);
       };
     in
+    # No `system` here: each host declares its own platform via
+    # `nixpkgs.hostPlatform` (hardware-configuration.nix already does).
     lib.nixosSystem {
-      system = "x86_64-linux";
       specialArgs = {
         flake = self;
       };
@@ -55,12 +56,9 @@
 
   # Darwin hosts use a separate system constructor. User resolution remains
   # intentionally deferred until the cross-platform factory contract is set.
+  # Like NixOS hosts, the host file declares its own `nixpkgs.hostPlatform`.
   mkDarwinConfig =
-    {
-      hostName,
-      hostFile,
-      system,
-    }:
+    { hostName, hostFile }:
     self.inputs.nix-darwin.lib.darwinSystem {
       specialArgs = {
         flake = self;
@@ -69,7 +67,6 @@
       modules = [
         {
           networking.hostName = lib.mkDefault hostName;
-          nixpkgs.hostPlatform = system;
           system.configurationRevision = self.rev or (self.dirtyRev or "dirty");
         }
         hostFile

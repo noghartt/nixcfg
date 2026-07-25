@@ -8,6 +8,13 @@ whenever it feels like a checkpoint.
 
 ## [Unreleased]
 
+### Changed
+
+- **flake/lib**: hosts now declare their own platform via `nixpkgs.hostPlatform`
+  instead of a hardcoded `x86_64-linux` in `mkNixOSConfig`; per-system outputs
+  (checks, devShells, formatter) are generated for x86_64-linux, aarch64-linux,
+  and aarch64-darwin, with each host's build check filed under its own platform.
+
 ### Added
 
 - **mellon**: TPM2 measured-boot preparation with PIN-based LUKS unlock and

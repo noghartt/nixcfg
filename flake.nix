@@ -55,8 +55,15 @@
   outputs =
     { self, nixpkgs, ... }:
     let
-      system = "x86_64-linux";
-      pkgs = nixpkgs.legacyPackages.${system};
+      # Platforms this flake serves per-system outputs (checks, devShells,
+      # formatter) for. Hosts declare their own platform via
+      # `nixpkgs.hostPlatform`; this list only has to cover them.
+      systems = [
+        "x86_64-linux"
+        "aarch64-linux"
+        "aarch64-darwin"
+      ];
+      forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
 
       libEx = import ./lib {
         inherit self;
@@ -84,38 +91,46 @@
         ) ./hosts
       );
 
-      checks.${system} = {
-        formatting =
-          pkgs.runCommand "nixcfg-formatting"
-            {
-              nativeBuildInputs = with pkgs; [
-                deadnix
-                findutils
-                nixfmt
-                statix
-              ];
-            }
-            ''
-              find ${self.outPath} -type f -name '*.nix' -exec nixfmt --check {} +
-              statix check ${self.outPath}
-              deadnix --fail ${self.outPath}
-              touch $out
-            '';
-      }
-      // nixpkgs.lib.mapAttrs' (
-        hostName: configuration:
-        nixpkgs.lib.nameValuePair "nixos-${hostName}" configuration.config.system.build.toplevel
-      ) self.nixosConfigurations;
+      checks = forAllSystems (
+        pkgs:
+        {
+          formatting =
+            pkgs.runCommand "nixcfg-formatting"
+              {
+                nativeBuildInputs = with pkgs; [
+                  deadnix
+                  findutils
+                  nixfmt
+                  statix
+                ];
+              }
+              ''
+                find ${self.outPath} -type f -name '*.nix' -exec nixfmt --check {} +
+                statix check ${self.outPath}
+                deadnix --fail ${self.outPath}
+                touch $out
+              '';
+        }
+        # Each host's build check lands in the check set of its own platform.
+        // nixpkgs.lib.concatMapAttrs (
+          hostName: configuration:
+          nixpkgs.lib.optionalAttrs (
+            configuration.pkgs.stdenv.hostPlatform.system == pkgs.stdenv.hostPlatform.system
+          ) { "nixos-${hostName}" = configuration.config.system.build.toplevel; }
+        ) self.nixosConfigurations
+      );
 
-      devShells.${system}.default = pkgs.mkShell {
-        packages = with pkgs; [
-          deadnix
-          nixd
-          nixfmt
-          statix
-        ];
-      };
+      devShells = forAllSystems (pkgs: {
+        default = pkgs.mkShell {
+          packages = with pkgs; [
+            deadnix
+            nixd
+            nixfmt
+            statix
+          ];
+        };
+      });
 
-      formatter.${system} = pkgs.nixfmt;
+      formatter = forAllSystems (pkgs: pkgs.nixfmt);
     };
 }

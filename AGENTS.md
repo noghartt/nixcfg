@@ -64,6 +64,11 @@ INSTALL.md                   destructive install + LUKS/Secure Boot runbook
 - AI harnesses use their native Home Manager modules. Claude Code, Codex, and OpenCode remain
   small per-harness modules under `features/cli/agents/`; Pi is a standalone feature because it
   owns model settings and Nix-packaged extensions.
+- Hosts declare their own platform via `nixpkgs.hostPlatform` (mellon: in
+  `hardware-configuration.nix`); `mkNixOSConfig`/`mkDarwinConfig` take no `system`.
+  Per-system flake outputs (checks, devShells, formatter) come from `forAllSystems`
+  over the `systems` list in flake.nix — extend that list for a new platform. Each
+  host's build check lands in its own platform's check set.
 - Modules access flake inputs/outputs through the `flake` specialArg (`flake.inputs.x`,
   `flake.outputs.x`), never by importing `../flake.nix`.
 - `hardware-configuration.nix` is machine-generated (`nixos-generate-config`); do not hand-edit.
