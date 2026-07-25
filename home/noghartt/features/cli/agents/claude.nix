@@ -11,7 +11,13 @@
 
       permissions = {
         allow = [ ];
+        ask = [ "Bash(dangerouslyDisableSandbox:true)" ];
         defaultMode = "auto";
+      };
+
+      sandbox = {
+        enabled = true;
+        failIfUnavailable = true;
       };
 
       model = "claude-fable-5[1m]";
