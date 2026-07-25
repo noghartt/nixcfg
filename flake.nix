@@ -17,6 +17,12 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # Darwin system wiring; the first host and shared user adapter remain TODO.
+    nix-darwin = {
+      url = "github:nix-darwin/nix-darwin/master";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     disko = {
       url = "github:nix-community/disko";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -77,6 +83,29 @@
           }
         ) ./hosts
       );
+
+      checks.${system} = {
+        formatting =
+          pkgs.runCommand "nixcfg-formatting"
+            {
+              nativeBuildInputs = with pkgs; [
+                deadnix
+                findutils
+                nixfmt
+                statix
+              ];
+            }
+            ''
+              find ${self.outPath} -type f -name '*.nix' -exec nixfmt --check {} +
+              statix check ${self.outPath}
+              deadnix --fail ${self.outPath}
+              touch $out
+            '';
+      }
+      // nixpkgs.lib.mapAttrs' (
+        hostName: configuration:
+        nixpkgs.lib.nameValuePair "nixos-${hostName}" configuration.config.system.build.toplevel
+      ) self.nixosConfigurations;
 
       devShells.${system}.default = pkgs.mkShell {
         packages = with pkgs; [

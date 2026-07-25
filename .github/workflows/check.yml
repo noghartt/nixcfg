@@ -3,7 +3,7 @@ name: Check
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, v2]
 
 permissions:
   contents: read
@@ -21,13 +21,5 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@33c9ab3ef95cd57c164d9d6eb1f9a46338538d41
       - uses: DeterminateSystems/magic-nix-cache-action@55718cd9ebf1737a061487d5ada21abf31e99a98
 
-      - name: Lint Nix
-        run: |
-          nix develop --command statix check .
-          nix develop --command deadnix --fail .
-
-      - name: Evaluate flake
-        run: nix flake check --no-build
-
-      - name: Build Mellon
-        run: nix build --no-link .#nixosConfigurations.mellon.config.system.build.toplevel
+      - name: Check flake
+        run: nix flake check --print-build-logs

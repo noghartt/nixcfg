@@ -52,4 +52,27 @@
       # Option-only custom modules available to every host.
       ++ builtins.attrValues self.outputs.nixosModules;
     };
+
+  # Darwin hosts use a separate system constructor. User resolution remains
+  # intentionally deferred until the cross-platform factory contract is set.
+  mkDarwinConfig =
+    {
+      hostName,
+      hostFile,
+      system,
+    }:
+    self.inputs.nix-darwin.lib.darwinSystem {
+      specialArgs = {
+        flake = self;
+      };
+
+      modules = [
+        {
+          networking.hostName = lib.mkDefault hostName;
+          nixpkgs.hostPlatform = system;
+          system.configurationRevision = self.rev or (self.dirtyRev or "dirty");
+        }
+        hostFile
+      ];
+    };
 }
