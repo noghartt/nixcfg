@@ -60,10 +60,6 @@ in
       setw -g aggressive-resize on
       set -g extended-keys-format csi-u
 
-      # Copy selections directly to the Wayland clipboard.
-      bind-key -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel "${lib.getExe' pkgs.wl-clipboard "wl-copy"}"
-      bind-key -T copy-mode-vi y send-keys -X copy-pipe-and-cancel "${lib.getExe' pkgs.wl-clipboard "wl-copy"}"
-
       bind-key R source-file ~/.config/tmux/tmux.conf \; display-message "Config reloaded"
 
       # Agent tools and new windows open at the nearest git root.

@@ -25,7 +25,7 @@ hosts/<host>/                default.nix = host SPEC (function over { users, lib
 home/<user>/user.nix         user factory: overridable (functor + overrideAttrs) NIXOS module
 home/<user>/home.nix         default HM config, imported on every host
 home/<user>/features/cli/    shared shell/dev tools; agents/ holds Claude, Codex, OpenCode
-home/<user>/features/desktop/ graphical applications and desktop integration
+home/<user>/features/desktop/ portable desktop default + platform-specific modules
 home/<user>/features/pi/     standalone Pi feature: settings + packaged extensions
 home/<user>/<host>.nix       optional per-host HM overrides
 TASK.md                      living checklist of planned work — keep it updated
@@ -52,10 +52,15 @@ INSTALL.md                   destructive install + LUKS/Secure Boot runbook
 - Hardware-specific modules live in the host dir (e.g. mellon's `nvidia.nix`); promote to
   `hosts/common/optional/` only when a second host needs them.
 - HM features are import-based (`home/<user>/features/<area>/`), not enable-flag-based.
-  Feature areas are imported directly by `home.nix`; do not nest a substantial feature under
-  `cli/` merely because its executable is a CLI. Use a directory when a feature has multiple
-  concerns, as Pi does for core settings and packaged extensions. Optional system modules use
-  the same plain-file pattern in `hosts/common/optional/`.
+  Portable baseline areas are imported by `home.nix`; platform features are composed by the
+  user host entrypoint. Do not nest a substantial feature under `cli/` merely because its
+  executable is a CLI. Use a directory when a feature has multiple concerns, as Pi does for
+  core settings and packaged extensions. Optional system modules use the same plain-file
+  pattern in `hosts/common/optional/`.
+- Platform composition stays at the user host entrypoint: `home.nix` imports the portable
+  baseline, while `<host>.nix` combines portable desktop features with the platform-specific
+  modules it needs. `desktop/default.nix` must remain evaluable on both Linux and Darwin;
+  platform-only integrations are imported directly by the corresponding host entrypoint.
 - AI harnesses use their native Home Manager modules. Claude Code, Codex, and OpenCode remain
   small per-harness modules under `features/cli/agents/`; Pi is a standalone feature because it
   owns model settings and Nix-packaged extensions.

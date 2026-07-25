@@ -6,7 +6,7 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 
 - [x] Fix flake.nix (`outputs`, `nixosConfigurations`, `follows`)
 - [x] lib helpers: `mapDir` (directory-driven hosts) + `mkNixOSConfig`
-- [x] Foundry layout: `hosts/{common,<host>}` + `home/<user>/{user.nix,home.nix,features,<host>.nix}`
+- [x] Foundry layout: `hosts/{common,<host>}` + `home/<user>/{user.nix,home.nix,features,<host>.nix}` with portable/platform HM composition
 - [x] Host specs: `mkNixOSConfig` maps host fields (`users`, `imports`) into modules; overridable user factories (call / `overrideAttrs`)
 - [x] Custom option-only modules (`device.type`) auto-imported into NixOS + HM
 - [x] home-manager as NixOS module; per-host HM entrypoint keyed by `networking.hostName`
@@ -33,7 +33,7 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [x] Terminal: Ghostty auto-attached to persistent tmux + zsh (autosuggestion, syntax-highlighting)
 - [x] cli tooling: eza, bat, fd, fzf, lazygit + browsers (firefox, chrome)
 - [x] AI coding agents: Claude Code, Codex, OpenCode, Pi + pi-claude-bridge
-- [x] Desktop shell: Noctalia + rofi launcher + Polkit agent + lock/idle behavior
+- [x] Desktop shell: Noctalia + rofi launcher + Polkit agent + lock/idle behavior + Hyprsunset night light
 - [x] Migrate i3 workflow: workspaces, focus/move/resize, audio, launcher, session controls
 - [x] Desktop apps: Todoist, Calibre, Zotero, Slack, Discord, Spotify
 - [x] Jujutsu

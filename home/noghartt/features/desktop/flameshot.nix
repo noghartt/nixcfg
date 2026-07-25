@@ -1,11 +1,7 @@
-# Screenshots on Wayland go through xdg-desktop-portal (already wired by
-# programs.hyprland on the system side).
+# On Wayland, screenshots go through the portal wired by Hyprland.
 {
   services.flameshot = {
     enable = true;
-    settings.General = {
-      disabledTrayIcon = true;
-      showStartupLaunchMessage = false;
-    };
+    settings.General.showStartupLaunchMessage = false;
   };
 }

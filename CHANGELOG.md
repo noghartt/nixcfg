@@ -10,6 +10,13 @@ whenever it feels like a checkpoint.
 
 ### Added
 
+- **home/noghartt**: explicit portable/platform Home Manager composition; Mellon
+  directly selects its Wayland modules while shared CLI and desktop modules
+  remain available to a future Darwin host. Portable application, Ghostty, and
+  Flameshot settings are separated from Mellon's Linux-only packages and UI
+  policy.
+- **home/noghartt/desktop**: Hyprsunset blue-light filtering for the Wayland
+  session, with daytime identity and a warm evening profile.
 - **docs**: complete Mellon installation runbook covering installer preparation,
   locked Disko provisioning, LUKS and Lanzaboote bootstrap, 1Password/opnix,
   hibernation, hardware validation, and live-USB recovery.
