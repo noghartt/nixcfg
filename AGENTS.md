@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Unified NixOS + home-manager flake (nix-darwin planned, see TASK.md).
+Unified NixOS + home-manager flake (nix-darwin foundation, host planned).
 Hosts are named after Lord of the Rings names/artifacts: lowercase, short, hostname-safe.
 Layout follows [Misterio77/Foundry](https://github.com/Misterio77/Foundry).
 
@@ -14,7 +14,7 @@ Layout follows [Misterio77/Foundry](https://github.com/Misterio77/Foundry).
 
 ```
 flake.nix                    inputs + outputs only; hosts directory-discovered via lib/mapDir
-lib/                         mapDir, mkNixOSConfig
+lib/                         mapDir, mkNixOSConfig, mkDarwinConfig
 modules/nixos/               custom NixOS options — OPTION-ONLY, auto-imported into every host
 modules/home-manager/        custom HM options — OPTION-ONLY, auto-imported into every user
 hosts/common/global/         imported by every host (nix settings, home-manager wiring)
@@ -71,13 +71,14 @@ INSTALL.md                   destructive install + LUKS/Secure Boot runbook
   locked and supplies mellon's kernel build stack, Linux firmware, wireless regulatory
   data, and AMD microcode. The NVIDIA version and source hashes are pinned in the host's
   `nvidia.nix` via that kernel package set's `mkDriver`. Update either only as a deliberate,
-  separately tested hardware-stack change. When the macbook lands: add a darwin branch
-  (`nixpkgs-unstable`) + `mkDarwinConfig` — see TASK.md.
+  separately tested hardware-stack change. The Darwin constructor exists, but the macbook
+  still needs a dedicated nixpkgs branch and cross-platform user adapter — see TASK.md.
 - No frameworks (flake-parts, blueprint, den, ...). Vanilla `nixpkgs.lib` + `lib/`.
 - Extra inputs and why: `disko` (declarative disk layout for mellon),
   `lanzaboote` (Secure Boot signing and systemd-boot integration),
   `nixpkgs-hardware` (independently locked kernel/firmware package set),
   `nixos-hardware` (upstream hardware quirks; Mellon uses its Blackwell module),
+  `nix-darwin` (Darwin system constructor; first host wiring is still pending),
   `firefox-addons` (rycee's packaged Firefox extensions, used by the desktop feature),
   `opnix` (1Password secrets — see Hard rules), `noctalia` (native desktop shell and
   its Home Manager module, newer than the legacy nixpkgs package).

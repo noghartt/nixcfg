@@ -10,6 +10,14 @@ whenever it feels like a checkpoint.
 
 ### Added
 
+- **mellon**: TPM2 measured-boot preparation with PIN-based LUKS unlock and
+  passphrase fallback, Steam and GameMode, and lock-before-sleep integration
+  between logind and Noctalia.
+- **tooling**: revision-labelled generations, immutable source breadcrumbs,
+  flake-native formatting and discovered-host build checks, plus the
+  `nix-darwin` input and `mkDarwinConfig` foundation.
+- **home/noghartt/agents**: Claude Bash and subagents now run in the OS sandbox;
+  retrying a command without the sandbox requires explicit approval.
 - **home/noghartt**: explicit portable/platform Home Manager composition; Mellon
   directly selects its Wayland modules while shared CLI and desktop modules
   remain available to a future Darwin host. Portable application, Ghostty, and
@@ -20,7 +28,7 @@ whenever it feels like a checkpoint.
 - **docs**: complete Mellon installation runbook covering installer preparation,
   locked Disko provisioning, LUKS and Lanzaboote bootstrap, 1Password/opnix,
   hibernation, hardware validation, and live-USB recovery.
-- **mellon/hardware**: independent nixpkgs lock for Linux 6.18.39, Linux
+- **mellon/hardware**: independent nixpkgs lock for Linux 7.1.4, Linux
   firmware, wireless regulatory data, and AMD microcode; NVIDIA 595.84 is
   explicitly pinned with source hashes in the host module. Userspace can now
   update without moving the tested hardware stack.
@@ -30,8 +38,8 @@ whenever it feels like a checkpoint.
   Secure Boot, bounded root Snapper retention, journal limits, conservative
   Docker pruning, Brazilian Wi-Fi regulatory settings, and disabled Wi-Fi
   power saving for RTL8922AE reliability.
-- **tooling**: GitHub Actions now lints, evaluates, and builds Mellon on pushes
-  and pull requests with commit-pinned actions.
+- **tooling**: GitHub Actions now runs every flake check on main/v2 pushes and
+  pull requests with commit-pinned actions.
 - **mellon**: systemd-resolved, native firewall, Tailscale, Cloudflare WARP,
   Wireshark capture, SMART desktop notifications, weekly trim, power profiles,
   explicit `us-intl` desktop input, and NVIDIA VRAM preservation across
@@ -50,8 +58,8 @@ whenever it feels like a checkpoint.
 
 ### Removed
 
-- **mellon**: forced latest kernel and unexplained `nowatchdog`; the pinned
-  Linux 6.18 branch supports RTL8922AE while reducing Blackwell suspend churn.
+- **mellon**: an unpinned latest-kernel selection and unexplained `nowatchdog`;
+  Linux is now explicitly selected from the independently locked hardware set.
 - **mellon/storage**: global Btrfs `autodefrag`; Docker and large-file workloads
   make its write amplification a poor default alongside timeline snapshots.
 - **home/noghartt/desktop**: Dunst; Noctalia now owns desktop notifications.

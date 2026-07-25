@@ -339,6 +339,33 @@ sudo cryptsetup luksDump /dev/disk/by-partlabel/disk-main-lvm
 
 Reboot once and test the recovery passphrase before relying on it.
 
+### Enroll TPM2 unlock with a PIN
+
+Mellon's measured-boot policy binds TPM unlock to Lanzaboote's verified boot
+chain and Secure Boot state. Enroll only after Secure Boot is enabled and the
+recovery passphrase above has been tested:
+
+```bash
+systemd-analyze has-tpm2
+sudo /run/current-system/systemd/lib/systemd/systemd-pcrlock is-supported
+sudo test -s /var/lib/systemd/pcrlock.json
+sudo systemd-cryptenroll \
+  --tpm2-device=auto \
+  --tpm2-pcrlock=/var/lib/systemd/pcrlock.json \
+  --tpm2-with-pin=true \
+  /dev/disk/by-partlabel/disk-main-lvm
+sudo cryptsetup luksDump /dev/disk/by-partlabel/disk-main-lvm
+```
+
+Choose a PIN distinct from the LUKS passphrases. Normal boots request this PIN;
+if the TPM is cleared or the measured boot policy no longer matches, the signed
+initrd falls back to a LUKS passphrase. Never remove every passphrase slot.
+
+Reboot and test both TPM PIN unlock and recovery-passphrase fallback before
+depending on the TPM token. BIOS updates, Secure Boot key or `dbx` changes, TPM
+resets, and motherboard replacement can require one passphrase boot and TPM
+reenrollment.
+
 ### Configure 1Password and opnix
 
 1. Sign in to the 1Password desktop application.
@@ -372,14 +399,19 @@ Only run the services that are wanted on this machine:
 
 ```bash
 gh auth login
-sudo tailscale up
+sudo tailscale up --accept-dns=true --accept-routes=false
 warp-cli registration new
+warp-cli mode tunnel_only
+warp-cli tunnel ip list
 warp-cli connect
 ```
 
-The 1Password SSH agent supplies Git SSH keys. Tailscale and Cloudflare WARP are
-independent VPNs; do not expect both routes to be active simultaneously without
-explicit routing policy.
+The 1Password SSH agent supplies Git SSH keys. Tailscale is the persistent
+personal VPN and owns DNS; WARP is an on-demand work tunnel in traffic-only
+mode. The organization-managed WARP profile must exclude `100.64.0.0/10` and
+`fd7a:115c:a1e0::/48`. If work policy rejects traffic-only mode or controls split
+tunnels, request those settings from the WARP administrator rather than adding
+manual default routes. Do not use a Tailscale exit node while WARP is connected.
 
 ## Hibernation
 
