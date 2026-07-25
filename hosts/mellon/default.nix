@@ -15,6 +15,7 @@
     ./boot.nix
     ./nvidia.nix
     ./desktop.nix
+    ./gaming.nix
     ./networking.nix
     ./maintenance.nix
     ./1password.nix
