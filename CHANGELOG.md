@@ -29,6 +29,13 @@ whenever it feels like a checkpoint.
 
 ### Added
 
+- **hosts/common/darwin**: declarative Homebrew — the `nix-homebrew` input owns
+  a pinned Homebrew installation, while nix-darwin's `homebrew` module drives
+  `brew bundle` with auto-update disabled and `zap` cleanup so installed
+  casks/formulae never drift from the flake; palantir declares the `1password`,
+  `raycast`, and `slack` casks as its first entries.
+- **home/noghartt/cli**: the 1Password CLI (`op`) joins the portable baseline,
+  complementing the opnix-driven secrets on both hosts.
 - **palantir**: first nix-darwin host for the M5 work MacBook Pro, with a minimal
   host entrypoint reusing Mellon's Chrome, Firefox, Ghostty, and Claude Code
   configuration through Home Manager, plus a dedicated bootstrap runbook.
