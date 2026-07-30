@@ -8,6 +8,7 @@
     ./neovim.nix
     ./tmux.nix
     ./direnv.nix
+    ./onepassword.nix
     ./secrets-env.nix
     ./dev.nix
   ];
