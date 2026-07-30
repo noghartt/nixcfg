@@ -8,6 +8,12 @@ whenever it feels like a checkpoint.
 
 ## [Unreleased]
 
+### Fixed
+
+- **home/noghartt/pi**: gate the custom `pi-claude-bridge` npm package and its
+  model entries to Linux, avoiding its native `prefetch-npm-deps` build failure
+  on Palantir while retaining Pi and Claude Code on Darwin.
+
 ### Changed
 
 - **flake/lib**: Darwin hosts are directory-discovered under `hosts/darwin/`,

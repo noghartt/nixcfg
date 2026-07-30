@@ -41,14 +41,16 @@ let
   };
 in
 {
-  programs.pi-coding-agent.settings.packages = [ piClaudeBridge ];
+  config = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+    programs.pi-coding-agent.settings.packages = [ piClaudeBridge ];
 
-  home.file.".pi/agent/claude-bridge.json".text = builtins.toJSON {
-    askClaude.enabled = false;
-    provider = {
-      plan = "max";
-      strictMcpConfig = true;
-      pathToClaudeCodeExecutable = lib.getExe pkgs.claude-code;
+    home.file.".pi/agent/claude-bridge.json".text = builtins.toJSON {
+      askClaude.enabled = false;
+      provider = {
+        plan = "max";
+        strictMcpConfig = true;
+        pathToClaudeCodeExecutable = lib.getExe pkgs.claude-code;
+      };
     };
   };
 }

@@ -69,6 +69,7 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [x] Official Nix installer + first nix-darwin activation runbook (`DARWIN.md`)
 - [ ] First activation on the Mac and validate app copying, Spotlight discovery, and browser launch
 - [ ] Add macOS system defaults only after the managed-device policy is known
+- [ ] Make the custom Pi Claude bridge package build natively on Darwin before enabling it on Palantir
 - [ ] Decide whether arm64 macOS CI is worth the hosted-runner cost; until then validate on palantir
 
 ## mithril — personal macbook (later)
