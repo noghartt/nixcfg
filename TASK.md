@@ -53,10 +53,11 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [x] CI: run all flake checks on main/v2 pushes and pull requests
 - [x] Generation revision/label + immutable `/etc/nixcfg` and `/etc/nixpkgs` breadcrumbs
 - [x] Secrets: 1Password via opnix (HM user secrets; SSH keys via the 1Password agent)
-- [ ] Bootstrap: create a 1Password service account (Nix-vault scoped), then on the machine:
+- [x] Bootstrap: create a 1Password service account (Nix-vault scoped), then on the machine:
       `opnix token -path ~/.config/opnix/token set && chmod 600 ~/.config/opnix/token`
       (HM activation skips secret retrieval until this exists; git identity depends on it)
-- [ ] Bootstrap: create the `git` item in the Nix vault with text fields `name` and `email`
+      — done on palantir; repeat the token step when bootstrapping mellon
+- [x] Bootstrap: create the `git` item in the Nix vault with text fields `name` and `email`
       (an activation step composes them into the `~/.config/git/user` include)
 - [ ] Declare secrets as env vars in `home/noghartt/features/cli/secrets-env.nix` as tools need them
 
