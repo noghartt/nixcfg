@@ -2,6 +2,33 @@
   self,
   lib,
 }:
+let
+  # Host files are specs rather than plain modules. Resolve their selected user
+  # factories identically for NixOS and Darwin.
+  resolveHostModule =
+    hostFile:
+    let
+      spec = import hostFile {
+        inherit lib;
+        inherit (self.outputs) users;
+      };
+
+      asModule =
+        u:
+        if builtins.isAttrs u then
+          if u ? __functor then u { } else u
+        else if !(builtins.isFunction u) then
+          u
+        else if (builtins.functionArgs u) ? config then
+          u
+        else
+          u { };
+    in
+    (builtins.removeAttrs spec [ "users" ])
+    // {
+      imports = (spec.imports or [ ]) ++ map asModule (spec.users or [ ]);
+    };
+in
 {
   # Map a function over every directory inside `dir`, keyed by directory
   # name. Lets flake.nix discover hosts and users without being edited.
@@ -14,32 +41,6 @@
 
   mkNixOSConfig =
     { hostName, hostFile }:
-    let
-      # Host files are host SPECS, not plain NixOS modules: functions of
-      # { users, lib, ... } returning fields that get mapped into a module.
-      spec = import hostFile {
-        inherit lib;
-        inherit (self.outputs) users;
-      };
-
-      # A spec `users` entry is either already a module (a factory that was
-      # called or overrideAttrs'd) or a user factory (bare functor attrset),
-      # called here with { } for the default configuration.
-      asModule =
-        u:
-        if builtins.isAttrs u then
-          if u ? __functor then u { } else u
-        else if !(builtins.isFunction u) then
-          u
-        else if (builtins.functionArgs u) ? config then
-          u
-        else
-          u { };
-
-      hostModule = (builtins.removeAttrs spec [ "users" ]) // {
-        imports = (spec.imports or [ ]) ++ map asModule (spec.users or [ ]);
-      };
-    in
     # No `system` here: each host declares its own platform via
     # `nixpkgs.hostPlatform` (hardware-configuration.nix already does).
     lib.nixosSystem {
@@ -48,15 +49,13 @@
       };
       modules = [
         { networking.hostName = lib.mkDefault hostName; }
-        hostModule
+        (resolveHostModule hostFile)
       ]
       # Option-only custom modules available to every host.
       ++ builtins.attrValues self.outputs.nixosModules;
     };
 
-  # Darwin hosts use a separate system constructor. User resolution remains
-  # intentionally deferred until the cross-platform factory contract is set.
-  # Like NixOS hosts, the host file declares its own `nixpkgs.hostPlatform`.
+  # Darwin uses the same host-spec and user-factory contract as NixOS.
   mkDarwinConfig =
     { hostName, hostFile }:
     self.inputs.nix-darwin.lib.darwinSystem {
@@ -69,7 +68,10 @@
           networking.hostName = lib.mkDefault hostName;
           system.configurationRevision = self.rev or (self.dirtyRev or "dirty");
         }
-        hostFile
-      ];
+        (resolveHostModule hostFile)
+      ]
+      # The system-side device option is platform-neutral despite the standard
+      # flake output name, and is mirrored into Home Manager by user factories.
+      ++ builtins.attrValues self.outputs.nixosModules;
     };
 }

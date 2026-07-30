@@ -10,6 +10,12 @@ whenever it feels like a checkpoint.
 
 ### Changed
 
+- **flake/lib**: Darwin hosts are directory-discovered under `hosts/darwin/`,
+  use a dedicated `nixpkgs-unstable` input, share the host-spec contract with
+  NixOS, and receive platform-matched flake build checks.
+- **home/noghartt**: the user factory now supports both NixOS and nix-darwin,
+  imports the same portable HM baseline on both, and keeps Home Manager's string
+  state version independent from nix-darwin's integer state version.
 - **flake/lib**: hosts now declare their own platform via `nixpkgs.hostPlatform`
   instead of a hardcoded `x86_64-linux` in `mkNixOSConfig`; per-system outputs
   (checks, devShells, formatter) are generated for x86_64-linux, aarch64-linux,
@@ -17,6 +23,9 @@ whenever it feels like a checkpoint.
 
 ### Added
 
+- **palantir**: first nix-darwin host for the M5 work MacBook Pro, with a minimal
+  host entrypoint reusing Mellon's Chrome, Firefox, Ghostty, and Claude Code
+  configuration through Home Manager, plus a dedicated bootstrap runbook.
 - **mellon**: TPM2 measured-boot preparation with PIN-based LUKS unlock and
   passphrase fallback, Steam and GameMode, and lock-before-sleep integration
   between logind and Noctalia.

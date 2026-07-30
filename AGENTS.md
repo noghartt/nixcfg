@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Unified NixOS + home-manager flake (nix-darwin foundation, host planned).
+Unified NixOS + nix-darwin + home-manager flake.
 Hosts are named after Lord of the Rings names/artifacts: lowercase, short, hostname-safe.
 Layout follows [Misterio77/Foundry](https://github.com/Misterio77/Foundry).
 
@@ -9,6 +9,7 @@ Layout follows [Misterio77/Foundry](https://github.com/Misterio77/Foundry).
 | Host | Type | Hardware |
 | --- | --- | --- |
 | `mellon` | NixOS desktop | AMD CPU, NVIDIA RTX 5070 Ti (Blackwell) |
+| `palantir` | nix-darwin work laptop | Apple M5 MacBook Pro |
 
 ## Layout
 
@@ -17,38 +18,39 @@ flake.nix                    inputs + outputs only; hosts directory-discovered v
 lib/                         mapDir, mkNixOSConfig, mkDarwinConfig
 modules/nixos/               custom NixOS options — OPTION-ONLY, auto-imported into every host
 modules/home-manager/        custom HM options — OPTION-ONLY, auto-imported into every user
-hosts/common/global/         imported by every host (nix settings, home-manager wiring)
+hosts/common/global/         imported by every NixOS host (nix settings, HM wiring)
+hosts/common/darwin/         imported by every Darwin host (nix settings, HM wiring)
 hosts/common/optional/       opt-in system modules shared by 2+ hosts (created when needed)
-hosts/<host>/                default.nix = host SPEC (function over { users, lib },
-                             mapped by mkNixOSConfig) + host modules (mellon: disk, boot,
-                             hardware, nvidia, desktop) + hardware-configuration.nix (generated)
-home/<user>/user.nix         user factory: overridable (functor + overrideAttrs) NIXOS module
-home/<user>/home.nix         default HM config, imported on every host
+hosts/<host>/                NixOS host specs mapped by mkNixOSConfig
+hosts/darwin/<host>/         Darwin host specs mapped by mkDarwinConfig
+home/<user>/user.nix         cross-platform user factory (functor + overrideAttrs)
+home/<user>/home.nix         portable HM baseline imported on every host
 home/<user>/features/cli/    shared shell/dev tools; agents/ holds Claude, Codex, OpenCode
 home/<user>/features/desktop/ portable desktop default + platform-specific modules
 home/<user>/features/pi/     standalone Pi feature: settings + packaged extensions
 home/<user>/<host>.nix       optional per-host HM overrides
 TASK.md                      living checklist of planned work — keep it updated
 INSTALL.md                   destructive install + LUKS/Secure Boot runbook
+DARWIN.md                    Darwin bootstrap and activation runbook
 ```
 
 ## Conventions
 
-- Host files are host SPECS consumed by `mkNixOSConfig`, not plain NixOS modules:
+- Host files are host SPECS consumed by `mkNixOSConfig` or `mkDarwinConfig`, not plain modules:
   functions of `{ users, lib, ... }` returning fields. `users` lists user factories
   (flake output `users`, auto-discovered from `home/<user>/user.nix`): bare name for
   defaults, `(name { ... })` to replace fields, `name.overrideAttrs (old: { ... })`
   to extend the defaults. `imports` holds inner modules;
-  everything else passes through as NixOS config. `mkNixOSConfig` maps the resolved
+  everything else passes through as system config. Both constructors map the resolved
   users into the host's module list.
 - Custom options (`device.*`, future `monitors.*`, ...) live in `modules/{nixos,home-manager}/`
   and declare options ONLY — never config. NixOS side: auto-imported by `mkNixOSConfig`.
   HM side: auto-imported via `home-manager.sharedModules`. Same namespace on both sides.
-- Users are colocated in `home/<user>/`: `user.nix` is an overridable factory
-  (functor attrset with `__functor` + `overrideAttrs`, nixpkgs-style) — the only
-  NixOS-level file there; everything else in that dir is HM config. It always imports
-  `./home.nix`, plus `./<host>.nix` when it exists, and forwards `inherit (config) device;`
-  into HM. Overrides are how one host customizes the user without touching the shared files.
+- Users are colocated in `home/<user>/`: `user.nix` is a cross-platform overridable
+  system module factory (functor attrset with `__functor` + `overrideAttrs`, nixpkgs-style);
+  everything else in that dir is HM config. It imports `./home.nix` and `./<host>.nix` when
+  present, and forwards `inherit (config) device;` into HM.
+  Home Manager's string state version is independent of nix-darwin's integer state version.
 - Hardware-specific modules live in the host dir (e.g. mellon's `nvidia.nix`); promote to
   `hosts/common/optional/` only when a second host needs them.
 - HM features are import-based (`home/<user>/features/<area>/`), not enable-flag-based.
@@ -72,18 +74,18 @@ INSTALL.md                   destructive install + LUKS/Secure Boot runbook
 - Modules access flake inputs/outputs through the `flake` specialArg (`flake.inputs.x`,
   `flake.outputs.x`), never by importing `../flake.nix`.
 - `hardware-configuration.nix` is machine-generated (`nixos-generate-config`); do not hand-edit.
-- `nixpkgs` tracks `nixos-unstable` for userspace. `nixpkgs-hardware` is independently
+- `nixpkgs` tracks `nixos-unstable` for NixOS, while `nixpkgs-darwin` tracks
+  `nixpkgs-unstable` for macOS. `nixpkgs-hardware` is independently
   locked and supplies mellon's kernel build stack, Linux firmware, wireless regulatory
   data, and AMD microcode. The NVIDIA version and source hashes are pinned in the host's
   `nvidia.nix` via that kernel package set's `mkDriver`. Update either only as a deliberate,
-  separately tested hardware-stack change. The Darwin constructor exists, but the macbook
-  still needs a dedicated nixpkgs branch and cross-platform user adapter — see TASK.md.
+  separately tested hardware-stack change. Palantir uses the Darwin branch through nix-darwin.
 - No frameworks (flake-parts, blueprint, den, ...). Vanilla `nixpkgs.lib` + `lib/`.
 - Extra inputs and why: `disko` (declarative disk layout for mellon),
   `lanzaboote` (Secure Boot signing and systemd-boot integration),
   `nixpkgs-hardware` (independently locked kernel/firmware package set),
   `nixos-hardware` (upstream hardware quirks; Mellon uses its Blackwell module),
-  `nix-darwin` (Darwin system constructor; first host wiring is still pending),
+  `nix-darwin` (Darwin system constructor for palantir),
   `firefox-addons` (rycee's packaged Firefox extensions, used by the desktop feature),
   `opnix` (1Password secrets — see Hard rules), `noctalia` (native desktop shell and
   its Home Manager module, newer than the legacy nixpkgs package).
@@ -94,8 +96,10 @@ INSTALL.md                   destructive install + LUKS/Secure Boot runbook
   nixfmt 1.4 it mis-invokes nixfmt and has already corrupted a file once (moved an attribute
   between attrsets). Format per-file, then check `git diff`.
 - `nix eval .#nixosConfigurations.mellon.config.system.build.toplevel.drvPath` — cheap eval smoke test
+- `nix eval .#darwinConfigurations.palantir.system.drvPath` — Darwin eval smoke test
 - `nix flake check` — full evaluation (builds; slow)
 - `sudo nixos-rebuild switch --flake .#mellon` — apply on the host
+- `sudo darwin-rebuild switch --flake .#palantir` — apply on the Mac after bootstrap
 - `nix flake update` — bump inputs; review the `flake.lock` diff after
 - `nix flake update nixpkgs` — update userspace without moving mellon's hardware stack
 - `nix flake update nixpkgs-hardware` — deliberately update the hardware stack
@@ -140,5 +144,6 @@ Patterns here are adapted from:
 - No personal data in the repo: no real names, emails, or other PII in any file
   (git identity, SSH config with personal hosts, etc. stay local).
 - Don't add flake inputs without a documented reason (note it in this file).
-- Don't run `nixos-rebuild switch` autonomously; evaluate only, let the user apply.
+- Don't run `nixos-rebuild switch` or `darwin-rebuild switch` autonomously; evaluate only,
+  let the user apply.
 - Update this file and TASK.md whenever structure or conventions change.

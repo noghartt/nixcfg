@@ -59,12 +59,22 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [ ] Bootstrap: create the `git` item in the Nix vault with the `[user]` ini block in its notes field
 - [ ] Declare secrets as env vars in `home/noghartt/features/cli/secrets-env.nix` as tools need them
 
-## mithril — macbook (later)
+## palantir — work macbook
 
 - [x] nix-darwin input + `mkDarwinConfig` helper
-- [ ] Second nixpkgs branch (`nixpkgs-unstable` for darwin, keep `nixos-unstable` for NixOS)
-- [ ] Design a Darwin user adapter or cross-platform user factory without coupling HM state version to nix-darwin's integer state version
-- [ ] homebrew module + macOS system defaults
+- [x] Second nixpkgs branch (`nixpkgs-unstable` for Darwin, keep `nixos-unstable` for NixOS)
+- [x] Directory-discovered Darwin hosts + build checks
+- [x] Cross-platform user factory with independent HM and nix-darwin state versions
+- [x] Palantir host composition reusing Mellon's Chrome, Firefox, Ghostty, and Claude Code configuration
+- [x] Official Nix installer + first nix-darwin activation runbook (`DARWIN.md`)
+- [ ] First activation on the Mac and validate app copying, Spotlight discovery, and browser launch
+- [ ] Add macOS system defaults only after the managed-device policy is known
+- [ ] Decide whether arm64 macOS CI is worth the hosted-runner cost; until then validate on palantir
+
+## mithril — personal macbook (later)
+
+- [ ] Create the personal Darwin host using the shared palantir foundation
+- [ ] homebrew module if an application is unavailable or unsuitable through nixpkgs
 - [ ] Karabiner/Hammerspoon-style key remaps (ref: fersilva16 darwin modules)
 
 ## Someday / maybe

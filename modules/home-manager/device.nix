@@ -1,6 +1,6 @@
 { lib, ... }:
-# Same option namespace as modules/nixos/device.nix, on the HM side. The
-# system-level value is forwarded by hosts/common/users/<user>.nix.
+# Same option namespace as modules/nixos/device.nix, on the HM side. User
+# factories forward the system-level value.
 {
   options.device.type = lib.mkOption {
     type = lib.types.enum [
