@@ -1,6 +1,7 @@
 { flake, ... }:
 {
   imports = [
+    ./homebrew.nix
     flake.inputs.home-manager.darwinModules.home-manager
   ];
 

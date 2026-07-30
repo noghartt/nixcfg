@@ -25,6 +25,11 @@
       inputs.nixpkgs.follows = "nixpkgs-darwin";
     };
 
+    # Declarative Homebrew installation on Darwin hosts; casks themselves are
+    # declared through nix-darwin's `homebrew` module (see hosts/common/darwin).
+    # No `follows`: its only input is the pinned Homebrew/brew source tree.
+    nix-homebrew.url = "github:zhaofengli/nix-homebrew";
+
     disko = {
       url = "github:nix-community/disko";
       inputs.nixpkgs.follows = "nixpkgs";

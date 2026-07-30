@@ -86,6 +86,8 @@ DARWIN.md                    Darwin bootstrap and activation runbook
   `nixpkgs-hardware` (independently locked kernel/firmware package set),
   `nixos-hardware` (upstream hardware quirks; Mellon uses its Blackwell module),
   `nix-darwin` (Darwin system constructor for palantir),
+  `nix-homebrew` (declarative, pinned Homebrew installation on Darwin; casks are
+  declared via nix-darwin's `homebrew` module with cleanup enabled),
   `firefox-addons` (rycee's packaged Firefox extensions, used by the desktop feature),
   `opnix` (1Password secrets — see Hard rules), `noctalia` (native desktop shell and
   its Home Manager module, newer than the legacy nixpkgs package).

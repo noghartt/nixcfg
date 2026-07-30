@@ -67,7 +67,8 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [x] Cross-platform user factory with independent HM and nix-darwin state versions
 - [x] Palantir host composition reusing Mellon's Chrome, Firefox, Ghostty, and Claude Code configuration
 - [x] Official Nix installer + first nix-darwin activation runbook (`DARWIN.md`)
-- [ ] First activation on the Mac and validate app copying, Spotlight discovery, and browser launch
+- [x] First activation on the Mac and validate app copying, Spotlight discovery, and browser launch
+- [x] Declarative Homebrew: nix-homebrew-managed installation + nix-darwin `homebrew` casks (1Password)
 - [ ] Add macOS system defaults only after the managed-device policy is known
 - [ ] Make the custom Pi Claude bridge package build natively on Darwin before enabling it on Palantir
 - [ ] Decide whether arm64 macOS CI is worth the hosted-runner cost; until then validate on palantir
