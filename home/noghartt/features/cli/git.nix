@@ -1,28 +1,46 @@
 # Git identity comes from 1Password via opnix, not from the repo (see
-# AGENTS.md): create an item "git" in the Nix vault whose NOTES field
-# holds exactly:
-#   [user]
-#   	name = <your name>
-#   	email = <your email>
-# opnix writes it to ~/.config/git/user at activation, and git includes it.
-{ config, ... }:
+# AGENTS.md): create an item "git" in the Nix vault with two text fields
+# labeled `name` and `email`. opnix can only map one reference to one file,
+# so the activation step below composes them into the ini include.
+{ config, lib, ... }:
+let
+  gitIdentityFile = "${config.home.homeDirectory}/.config/git/user";
+in
 {
+  # Runs after opnix has (re)written the field secrets; when retrieval was
+  # skipped (no token yet) the parts are absent and the include stays as-is.
+  home.activation.composeGitIdentity = lib.hm.dag.entryAfter [ "retrieveOpnixSecrets" ] ''
+    namePath="${config.programs.onepassword-secrets.secretPaths.gitUserName}"
+    emailPath="${config.programs.onepassword-secrets.secretPaths.gitUserEmail}"
+    if [ -s "$namePath" ] && [ -s "$emailPath" ]; then
+      printf '[user]\n\tname = %s\n\temail = %s\n' \
+        "$(cat "$namePath")" "$(cat "$emailPath")" > "${gitIdentityFile}"
+      chmod 600 "${gitIdentityFile}"
+    fi
+  '';
+
   programs = {
     onepassword-secrets = {
       enable = true;
       tokenFile = "${config.home.homeDirectory}/.config/opnix/token";
-      secrets.gitUser = {
-        reference = "op://Nix/git/notes";
-        path = ".config/git/user";
+      secrets = {
+        gitUserName = {
+          reference = "op://Nix/git/name";
+          path = ".config/git/user-name";
+        };
+        gitUserEmail = {
+          reference = "op://Nix/git/email";
+          path = ".config/git/user-email";
+        };
       };
     };
 
     git = {
       enable = true;
 
-      # Path interpolation, the safe kind: the include points at the secret
-      # file opnix writes, no value ever enters the store.
-      includes = [ { path = config.programs.onepassword-secrets.secretPaths.gitUser; } ];
+      # Path interpolation, the safe kind: the include points at the file the
+      # activation step composes, no value ever enters the store.
+      includes = [ { path = gitIdentityFile; } ];
 
       ignores = [ "**/.claude/settings.local.json" ];
 

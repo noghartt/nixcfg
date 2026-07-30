@@ -16,6 +16,9 @@ whenever it feels like a checkpoint.
 
 ### Changed
 
+- **home/noghartt/cli**: git identity now reads two plain `name`/`email` fields
+  from the 1Password `git` item instead of an ini blob in its notes; a Home
+  Manager activation step after opnix retrieval composes the git include file.
 - **flake/lib**: Darwin hosts are directory-discovered under `hosts/darwin/`,
   use a dedicated `nixpkgs-unstable` input, share the host-spec contract with
   NixOS, and receive platform-matched flake build checks.
