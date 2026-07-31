@@ -10,9 +10,10 @@ whenever it feels like a checkpoint.
 
 ### Fixed
 
-- **home/noghartt/pi**: gate the custom `pi-claude-bridge` npm package and its
-  model entries to Linux, avoiding its native `prefetch-npm-deps` build failure
-  on Palantir while retaining Pi and Claude Code on Darwin.
+- **home/noghartt/pi**: the custom `pi-claude-bridge` npm package and its model
+  entries are available on Darwin again — the `prefetch-npm-deps` build failure
+  that had them temporarily Linux-gated is fixed on the current
+  `nixpkgs-darwin` pin, so the gate is removed.
 
 ### Changed
 

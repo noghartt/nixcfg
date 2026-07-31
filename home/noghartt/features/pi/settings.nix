@@ -1,4 +1,3 @@
-{ lib, pkgs, ... }:
 {
   programs.pi-coding-agent = {
     settings = {
@@ -13,8 +12,6 @@
         "openai-codex/gpt-5.6-sol"
         "openai-codex/gpt-5.6-terra"
         "openai-codex/gpt-5.6-luna"
-      ]
-      ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [
         "claude-bridge/claude-opus-4-8"
         "claude-bridge/claude-sonnet-4-6"
         "claude-bridge/claude-haiku-4-5"
