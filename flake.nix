@@ -46,6 +46,11 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # Full VS Code Marketplace as Nix packages (home/noghartt/features/vscode).
+    # No `follows`: its per-system extension sets are prebuilt against its own
+    # pin, and this flake has two nixpkgs branches to choose between anyway.
+    nix-vscode-extensions.url = "github:nix-community/nix-vscode-extensions";
+
     # 1Password secrets (see home/noghartt/features/cli/git.nix for the first consumer).
     opnix = {
       url = "github:brizzbuzz/opnix";

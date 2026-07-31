@@ -1,0 +1,15 @@
+{
+  "$schema": "vscode://schemas/settings/user",
+
+  "editor.formatOnSave": true,
+  "editor.minimap.enabled": false,
+  "editor.tabSize": 2,
+
+  "nix.enableLanguageServer": true,
+  "nix.serverPath": "nixd",
+  "nix.formatterPath": "nixfmt",
+
+  "update.mode": "none",
+
+  "workbench.startupEditor": "none"
+}
