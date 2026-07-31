@@ -79,7 +79,13 @@ in
 
       modules = [
         {
-          networking.hostName = lib.mkDefault hostName;
+          # macOS keeps three names; default them all to the host's directory
+          # name so the user-facing ComputerName and Bonjour name follow suit.
+          networking = {
+            hostName = lib.mkDefault hostName;
+            computerName = lib.mkDefault hostName;
+            localHostName = lib.mkDefault hostName;
+          };
           system.configurationRevision = self.rev or (self.dirtyRev or "dirty");
         }
         (resolveHostModule hostFile)
