@@ -91,6 +91,9 @@ DARWIN.md                    Darwin bootstrap and activation runbook
   `nix-darwin` (Darwin system constructor for palantir),
   `nix-homebrew` (declarative, pinned Homebrew installation on Darwin; casks are
   declared via nix-darwin's `homebrew` module with cleanup enabled),
+  `brew-src` (temporary override of nix-homebrew's brew pin — cask definitions
+  are served live by the formulae API, so brew must stay new enough for their
+  DSL; drop when upstream's pin catches up),
   `firefox-addons` (rycee's packaged Firefox extensions, used by the desktop feature),
   `nix-vscode-extensions` (full VS Code Marketplace as Nix packages, used by
   the standalone vscode feature; no `follows` — prebuilt against its own pin),

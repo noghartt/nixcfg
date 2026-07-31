@@ -27,8 +27,19 @@
 
     # Declarative Homebrew installation on Darwin hosts; casks themselves are
     # declared through nix-darwin's `homebrew` module (see hosts/common/darwin).
-    # No `follows`: its only input is the pinned Homebrew/brew source tree.
-    nix-homebrew.url = "github:zhaofengli/nix-homebrew";
+    nix-homebrew = {
+      url = "github:zhaofengli/nix-homebrew";
+      inputs.brew-src.follows = "brew-src";
+    };
+
+    # Pinned brew itself, overriding nix-homebrew's own pin: cask definitions
+    # come live from the formulae.brew.sh API, so a lagging brew breaks on new
+    # cask DSL ("unknown install step: run" — needs >= 6.0.13). Drop the
+    # override once nix-homebrew's pin catches up.
+    brew-src = {
+      url = "github:Homebrew/brew/6.0.13";
+      flake = false;
+    };
 
     disko = {
       url = "github:nix-community/disko";

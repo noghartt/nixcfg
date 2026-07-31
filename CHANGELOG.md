@@ -13,6 +13,9 @@ whenever it feels like a checkpoint.
 - **palantir**: the existing Obsidian desktop feature (`programs.obsidian`)
   is now imported by the palantir HM entrypoint; it was previously
   mellon-only via `desktop/default.nix`.
+- **palantir**: OrbStack as a Homebrew cask for Docker + Compose — Apple's
+  native `container` 1.0 has no Docker API/compose support yet, so it can't
+  replace it.
 - **palantir**: Tailscale as a Homebrew cask (`tailscale-app` — the GUI app
   cask, renamed upstream from `tailscale`).
 - **home/noghartt/vscode**: VS Code as a standalone HM feature (adapted from
@@ -24,6 +27,11 @@ whenever it feels like a checkpoint.
   through the 1Password SSH agent.
 
 ### Fixed
+
+- **flake**: `brew-src` overridden to Homebrew 6.0.13 — nix-homebrew's own
+  pin (6.0.12) predates the cask `run` install step served by the live
+  formulae API, breaking `orbstack` install with "unknown install step: run".
+  Drop the override once upstream catches up.
 
 - **home/noghartt/pi**: the custom `pi-claude-bridge` npm package and its model
   entries are available on Darwin again — the `prefetch-npm-deps` build failure
