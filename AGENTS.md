@@ -27,6 +27,7 @@ home/<user>/home.nix         portable HM baseline imported on every host
 home/<user>/features/cli/    shared shell/dev tools; agents/ holds Claude, Codex, OpenCode
 home/<user>/features/desktop/ portable desktop default + platform-specific modules
 home/<user>/features/pi/     standalone Pi feature: settings + packaged extensions
+home/<user>/features/vscode/ standalone VS Code feature: marketplace extensions + live settings.json
 home/<user>/<host>.nix       optional per-host HM overrides
 TASK.md                      living checklist of planned work — keep it updated
 INSTALL.md                   destructive install + LUKS/Secure Boot runbook
@@ -91,6 +92,8 @@ DARWIN.md                    Darwin bootstrap and activation runbook
   `nix-homebrew` (declarative, pinned Homebrew installation on Darwin; casks are
   declared via nix-darwin's `homebrew` module with cleanup enabled),
   `firefox-addons` (rycee's packaged Firefox extensions, used by the desktop feature),
+  `nix-vscode-extensions` (full VS Code Marketplace as Nix packages, used by
+  the standalone vscode feature; no `follows` — prebuilt against its own pin),
   `opnix` (1Password secrets — see Hard rules), `noctalia` (native desktop shell and
   its Home Manager module, newer than the legacy nixpkgs package).
 

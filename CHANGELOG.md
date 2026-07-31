@@ -8,6 +8,21 @@ whenever it feels like a checkpoint.
 
 ## [Unreleased]
 
+### Added
+
+- **palantir**: the existing Obsidian desktop feature (`programs.obsidian`)
+  is now imported by the palantir HM entrypoint; it was previously
+  mellon-only via `desktop/default.nix`.
+- **palantir**: Tailscale as a Homebrew cask (`tailscale-app` — the GUI app
+  cask, renamed upstream from `tailscale`).
+- **home/noghartt/vscode**: VS Code as a standalone HM feature (adapted from
+  fersilva16/nix-config): Marketplace extensions via the new
+  `nix-vscode-extensions` input, a mutable extensions dir with a
+  `vscode-sync-extensions` snapshot script, and settings.json symlinked
+  out-of-store into the repo so UI edits persist. Imported on palantir.
+- **home/noghartt/cli**: gh clones over SSH (`git_protocol = "ssh"`), routed
+  through the 1Password SSH agent.
+
 ### Fixed
 
 - **home/noghartt/pi**: the custom `pi-claude-bridge` npm package and its model
@@ -17,6 +32,11 @@ whenever it feels like a checkpoint.
 
 ### Changed
 
+- **palantir**: interface language forced to English (`AppleLanguages`
+  en-US-first with pt-BR fallback, `AppleLocale` en_US) via freeform defaults.
+- **lib**: Darwin hosts now default `computerName` and `localHostName` (the
+  user-facing and Bonjour names) to the host directory name, alongside the
+  existing `hostName` default.
 - **home/noghartt/cli**: git identity now reads two plain `name`/`email` fields
   from the 1Password `git` item instead of an ini blob in its notes; a Home
   Manager activation step after opnix retrieval composes the git include file.
