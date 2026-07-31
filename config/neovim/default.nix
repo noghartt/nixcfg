@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ config, pkgs, ... }:
 {
   programs.neovim = {
     enable = true;
@@ -15,5 +15,9 @@
     stdenv.cc
   ];
 
-  xdg.configFile."nvim/lazy-lock.json".source = ./lazy-lock.json;
+  # Lazy rewrites the lockfile on install/update, so it must stay writable:
+  # out-of-store symlink into the repo (same pattern as the vscode feature),
+  # assuming the flake checkout lives at ~/www/nixcfg.
+  xdg.configFile."nvim/lazy-lock.json".source =
+    config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/www/nixcfg/config/neovim/lazy-lock.json";
 }

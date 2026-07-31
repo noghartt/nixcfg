@@ -28,6 +28,9 @@ whenever it feels like a checkpoint.
 
 ### Fixed
 
+- **config/neovim**: `lazy-lock.json` is now an out-of-store symlink into the
+  repo checkout — Lazy rewrites it on install/update, which "Permission
+  denied"-failed against the store-managed copy.
 - **flake**: `brew-src` overridden to Homebrew 6.0.13 — nix-homebrew's own
   pin (6.0.12) predates the cask `run` install step served by the live
   formulae API, breaking `orbstack` install with "unknown install step: run".
