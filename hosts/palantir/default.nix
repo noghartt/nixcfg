@@ -16,10 +16,21 @@
     "1password"
     "raycast"
     "slack"
+    "tailscale-app"
   ];
 
   system = {
     primaryUser = "noghartt";
     stateVersion = 7;
+
+    # English UI with pt-BR as fallback; not typed nix-darwin options, so they
+    # go through the freeform defaults writer.
+    defaults.CustomUserPreferences.NSGlobalDomain = {
+      AppleLanguages = [
+        "en-US"
+        "pt-BR"
+      ];
+      AppleLocale = "en_US";
+    };
   };
 }
