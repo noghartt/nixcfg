@@ -20,9 +20,11 @@ whenever it feels like a checkpoint.
 - **home/noghartt/cli**: git identity now reads two plain `name`/`email` fields
   from the 1Password `git` item instead of an ini blob in its notes; a Home
   Manager activation step after opnix retrieval composes the git include file.
-- **flake/lib**: Darwin hosts are directory-discovered under `hosts/darwin/`,
-  use a dedicated `nixpkgs-unstable` input, share the host-spec contract with
-  NixOS, and receive platform-matched flake build checks.
+- **flake/lib**: Darwin hosts are directory-discovered from the same `hosts/`
+  tree as NixOS — a `*-darwin` `nixpkgs.hostPlatform` in the spec routes the
+  host to `mkDarwinConfig`. They use a dedicated `nixpkgs-unstable` input,
+  share the host-spec contract with NixOS, and receive platform-matched flake
+  build checks.
 - **home/noghartt**: the user factory now supports both NixOS and nix-darwin,
   imports the same portable HM baseline on both, and keeps Home Manager's string
   state version independent from nix-darwin's integer state version.

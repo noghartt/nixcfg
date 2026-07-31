@@ -76,6 +76,10 @@
         inherit self;
         inherit (nixpkgs) lib;
       };
+
+      hostFiles = nixpkgs.lib.filterAttrs (name: _: name != "common") (
+        libEx.mapDir (hostName: ./hosts/${hostName}) ./hosts
+      );
     in
     {
       # Custom option-only modules, auto-imported everywhere.
@@ -87,35 +91,16 @@
       # overrides through either system constructor.
       users = libEx.mapDir (username: import ./home/${username}/user.nix) ./home;
 
-      # Every top-level host directory except common/ and darwin/ is NixOS.
-      nixosConfigurations =
-        nixpkgs.lib.filterAttrs
-          (
-            name: _:
-            !builtins.elem name [
-              "common"
-              "darwin"
-            ]
-          )
-          (
-            libEx.mapDir (
-              hostName:
-              libEx.mkNixOSConfig {
-                inherit hostName;
-                hostFile = ./hosts/${hostName};
-              }
-            ) ./hosts
-          );
+      # Every top-level host directory except common/ is a host; a spec that
+      # declares a *-darwin nixpkgs.hostPlatform is built with mkDarwinConfig,
+      # everything else with mkNixOSConfig.
+      nixosConfigurations = builtins.mapAttrs (
+        hostName: hostFile: libEx.mkNixOSConfig { inherit hostName hostFile; }
+      ) (nixpkgs.lib.filterAttrs (_: hostFile: !libEx.isDarwinHost hostFile) hostFiles);
 
-      # Darwin hosts live under hosts/darwin/ so both platforms remain
-      # directory-discovered without moving existing NixOS hosts.
-      darwinConfigurations = libEx.mapDir (
-        hostName:
-        libEx.mkDarwinConfig {
-          inherit hostName;
-          hostFile = ./hosts/darwin/${hostName};
-        }
-      ) ./hosts/darwin;
+      darwinConfigurations = builtins.mapAttrs (
+        hostName: hostFile: libEx.mkDarwinConfig { inherit hostName hostFile; }
+      ) (nixpkgs.lib.filterAttrs (_: hostFile: libEx.isDarwinHost hostFile) hostFiles);
 
       checks = forAllSystems (
         pkgs:

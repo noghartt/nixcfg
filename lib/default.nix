@@ -3,15 +3,19 @@
   lib,
 }:
 let
+  importSpec =
+    hostFile:
+    import hostFile {
+      inherit lib;
+      inherit (self.outputs) users;
+    };
+
   # Host files are specs rather than plain modules. Resolve their selected user
   # factories identically for NixOS and Darwin.
   resolveHostModule =
     hostFile:
     let
-      spec = import hostFile {
-        inherit lib;
-        inherit (self.outputs) users;
-      };
+      spec = importSpec hostFile;
 
       asModule =
         u:
@@ -38,6 +42,16 @@ in
       (lib.filterAttrs (_: type: type == "directory"))
       (builtins.mapAttrs (name: _: f name))
     ];
+
+  # Darwin hosts have no hardware-configuration.nix, so their spec must carry
+  # nixpkgs.hostPlatform inline — which doubles as the discovery signal that
+  # routes a hosts/ directory to mkDarwinConfig instead of mkNixOSConfig.
+  isDarwinHost =
+    hostFile:
+    let
+      platform = lib.attrByPath [ "nixpkgs" "hostPlatform" ] "" (importSpec hostFile);
+    in
+    lib.hasSuffix "-darwin" (if lib.isString platform then platform else platform.system or "");
 
   mkNixOSConfig =
     { hostName, hostFile }:

@@ -1,7 +1,7 @@
 { users, ... }:
 {
   imports = [
-    ../../common/darwin
+    ../common/darwin
   ];
 
   users = [

@@ -21,8 +21,7 @@ modules/home-manager/        custom HM options — OPTION-ONLY, auto-imported in
 hosts/common/global/         imported by every NixOS host (nix settings, HM wiring)
 hosts/common/darwin/         imported by every Darwin host (nix settings, HM wiring)
 hosts/common/optional/       opt-in system modules shared by 2+ hosts (created when needed)
-hosts/<host>/                NixOS host specs mapped by mkNixOSConfig
-hosts/darwin/<host>/         Darwin host specs mapped by mkDarwinConfig
+hosts/<host>/                host specs, routed to mkNixOSConfig or mkDarwinConfig
 home/<user>/user.nix         cross-platform user factory (functor + overrideAttrs)
 home/<user>/home.nix         portable HM baseline imported on every host
 home/<user>/features/cli/    shared shell/dev tools; agents/ holds Claude, Codex, OpenCode
@@ -68,6 +67,9 @@ DARWIN.md                    Darwin bootstrap and activation runbook
   owns model settings and Nix-packaged extensions.
 - Hosts declare their own platform via `nixpkgs.hostPlatform` (mellon: in
   `hardware-configuration.nix`); `mkNixOSConfig`/`mkDarwinConfig` take no `system`.
+  A `*-darwin` hostPlatform declared in the spec itself routes that hosts/
+  directory to `mkDarwinConfig` during discovery, so Darwin hosts must set it
+  inline; NixOS hosts may keep it in `hardware-configuration.nix`.
   Per-system flake outputs (checks, devShells, formatter) come from `forAllSystems`
   over the `systems` list in flake.nix — extend that list for a new platform. Each
   host's build check lands in its own platform's check set.
