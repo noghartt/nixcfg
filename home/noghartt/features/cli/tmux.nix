@@ -66,6 +66,7 @@ in
       bind-key o run-shell 'tmux split-window -h -c "$(${lib.getExe tmuxGitRootPath} "#{pane_current_path}")" opencode'
       bind-key l run-shell 'tmux split-window -h -c "$(${lib.getExe tmuxGitRootPath} "#{pane_current_path}")" lazygit'
       bind-key c run-shell 'tmux new-window -c "$(${lib.getExe tmuxGitRootPath} "#{pane_current_path}")"'
+      bind-key C new-window -c "#{pane_current_path}"
 
       # Splits inherit the current pane's directory.
       bind '"' split-window -v -c "#{pane_current_path}"
