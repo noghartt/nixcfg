@@ -2,6 +2,7 @@
 # Desktop and platform composition lives in <host>.nix next to this file.
 {
   imports = [
+    ../../config/neovim
     ./features/cli
     ./features/pi
   ];

@@ -42,7 +42,7 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [x] Desktop apps: Todoist, Calibre, Zotero, Slack, Discord, Spotify
 - [x] Jujutsu
 - [x] git identity strategy (opnix-generated local include; bootstrap remains below)
-- [x] editor (neovim, bare — plugins/config to grow)
+- [x] Editor: shared Neovim Lua config and locked Lazy plugins on Mellon and Palantir
 - [ ] prompt (starship?) + remaining shell tooling (zoxide)
 - [ ] Declare a monitor option schema for connector, mode, scale, position, and workspace
 - [ ] Add Mellon kanshi profiles after monitor connector names are known

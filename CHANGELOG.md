@@ -62,6 +62,9 @@ whenever it feels like a checkpoint.
   `raycast`, and `slack` casks as its first entries.
 - **home/noghartt/cli**: the 1Password CLI (`op`) joins the portable baseline,
   complementing the opnix-driven secrets on both hosts.
+- **config/neovim**: the existing Lua editor configuration and Lazy
+  plugin lockfile are now managed as a portable Home Manager feature shared by
+  Mellon and Palantir, with native plugin build dependencies included.
 - **palantir**: first nix-darwin host for the M5 work MacBook Pro, with a minimal
   host entrypoint reusing Mellon's Chrome, Firefox, Ghostty, and Claude Code
   configuration through Home Manager, plus a dedicated bootstrap runbook.
