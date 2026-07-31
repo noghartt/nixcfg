@@ -15,6 +15,7 @@ Layout follows [Misterio77/Foundry](https://github.com/Misterio77/Foundry).
 
 ```
 flake.nix                    inputs + outputs only; hosts directory-discovered via lib/mapDir
+config/neovim/               portable Neovim config + Home Manager integration
 lib/                         mapDir, mkNixOSConfig, mkDarwinConfig
 modules/nixos/               custom NixOS options — OPTION-ONLY, auto-imported into every host
 modules/home-manager/        custom HM options — OPTION-ONLY, auto-imported into every user
@@ -56,9 +57,10 @@ DARWIN.md                    Darwin bootstrap and activation runbook
 - HM features are import-based (`home/<user>/features/<area>/`), not enable-flag-based.
   Portable baseline areas are imported by `home.nix`; platform features are composed by the
   user host entrypoint. Do not nest a substantial feature under `cli/` merely because its
-  executable is a CLI. Use a directory when a feature has multiple concerns, as Pi does for
-  core settings and packaged extensions. Optional system modules use the same plain-file
-  pattern in `hosts/common/optional/`.
+  executable is a CLI. Native application config that should remain independent of a user or
+  host can live under `config/`, as Neovim does. Use a directory when a feature has multiple
+  concerns, as Pi does for core settings and packaged extensions. Optional system modules use
+  the same plain-file pattern in `hosts/common/optional/`.
 - Platform composition stays at the user host entrypoint: `home.nix` imports the portable
   baseline, while `<host>.nix` combines portable desktop features with the platform-specific
   modules it needs. `desktop/default.nix` must remain evaluable on both Linux and Darwin;

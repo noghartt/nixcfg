@@ -5,7 +5,6 @@
     ./jujutsu.nix
     ./zsh.nix
     ./tools.nix
-    ./neovim.nix
     ./tmux.nix
     ./direnv.nix
     ./onepassword.nix
