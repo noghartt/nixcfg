@@ -13,6 +13,7 @@ whenever it feels like a checkpoint.
 - **palantir**: the existing Obsidian desktop feature (`programs.obsidian`)
   is now imported by the palantir HM entrypoint; it was previously
   mellon-only via `desktop/default.nix`.
+- **palantir**: Granola as a Homebrew cask.
 - **palantir**: OrbStack as a Homebrew cask for Docker + Compose — Apple's
   native `container` 1.0 has no Docker API/compose support yet, so it can't
   replace it.
