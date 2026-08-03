@@ -21,6 +21,9 @@
     "orbstack"
     "raycast"
     "slack"
+    # Unfree, so never binary-cached: the nixpkgs package re-downloads ~300MB
+    # on every bump and blocks self-updates; the cask lets it update itself.
+    "spotify"
     "tailscale-app"
   ];
 

@@ -16,7 +16,9 @@ whenever it feels like a checkpoint.
 - **palantir**: Cloudflare WARP as a Homebrew cask, matching mellon's
   `services.cloudflare-warp`.
 - **palantir**: Granola as a Homebrew cask.
-- **palantir**: Spotify from nixpkgs (supported on aarch64-darwin). Built-in
+- **palantir**: Spotify as a Homebrew cask — the nixpkgs package is unfree
+  and thus never binary-cached (full re-download on every bump), and the
+  store copy blocks its self-updater. Built-in
   Night Shift covers blue-light filtering (configured in System Settings —
   not declaratively reachable).
 - **palantir**: `tailscale` shell alias to the app-bundled CLI — the GUI cask
