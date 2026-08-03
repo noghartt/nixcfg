@@ -14,9 +14,9 @@ whenever it feels like a checkpoint.
   is now imported by the palantir HM entrypoint; it was previously
   mellon-only via `desktop/default.nix`.
 - **palantir**: Granola as a Homebrew cask.
-- **palantir**: Spotify from nixpkgs (supported on aarch64-darwin) and f.lux
-  as a Homebrew cask for evening blue-light filtering, mirroring mellon's
-  hyprsunset.
+- **palantir**: Spotify from nixpkgs (supported on aarch64-darwin). Built-in
+  Night Shift covers blue-light filtering (configured in System Settings —
+  not declaratively reachable).
 - **palantir**: `tailscale` shell alias to the app-bundled CLI — the GUI cask
   links no binary onto PATH.
 - **palantir**: OrbStack as a Homebrew cask for Docker + Compose — Apple's

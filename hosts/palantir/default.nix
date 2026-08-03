@@ -14,9 +14,6 @@
   # Apps unavailable or unsuitable through nixpkgs on Darwin.
   homebrew.casks = [
     "1password"
-    # Blue-light filtering (hyprsunset's role on mellon); redshift itself has
-    # no macOS port and Night Shift isn't scriptable, so f.lux it is.
-    "flux-app"
     "granola"
     # Docker engine + CLI + compose; Apple's native `container` 1.0 still has
     # no Docker API or compose support, so OrbStack stays (revisit later).
