@@ -12,6 +12,10 @@
 
   programs.ghostty.package = pkgs.ghostty-bin;
 
+  # Cherry-picked from the desktop applications bundle; the rest of it is
+  # either cask-managed here (slack) or not wanted on the work laptop.
+  home.packages = [ pkgs.spotify ];
+
   # The tailscale-app cask links no CLI onto PATH; the bundled binary is the
   # supported way to get one (nixpkgs' tailscale ships a conflicting daemon
   # and would drift from the self-updating app).
