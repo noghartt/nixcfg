@@ -10,6 +10,12 @@ whenever it feels like a checkpoint.
 
 ### Added
 
+- **home/noghartt**: `$NIXCFG` points at the writable checkout and the `nixcfg`
+  shell alias changes to it.
+- **home/noghartt/pi**: a Nix-packaged destructive-action guard prompts before
+  dangerous shell commands, destructive custom tools, existing-file
+  overwrites, sensitive-path changes, and writes outside the active project;
+  non-interactive sessions fail closed.
 - **palantir**: the existing Obsidian desktop feature (`programs.obsidian`)
   is now imported by the palantir HM entrypoint; it was previously
   mellon-only via `desktop/default.nix`.
@@ -38,6 +44,12 @@ whenever it feels like a checkpoint.
 
 ### Fixed
 
+- **home/noghartt/cli**: tmux now establishes zsh as its early default shell
+  and lets Resurrect use disposable session `0` while restoring the first
+  server, preventing both `/bin/sh` panes and Ghostty's initial window closing.
+- **home/noghartt/cli**: Claude's global `settings.json` is now a writable
+  runtime file. Home Manager activation refreshes Nix-owned top-level keys
+  while preserving keys injected by setup tools, including Warcamp hooks.
 - **config/neovim**: `lazy-lock.json` is now an out-of-store symlink into the
   repo checkout — Lazy rewrites it on install/update, which "Permission
   denied"-failed against the store-managed copy.

@@ -36,7 +36,9 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [x] Terminal: Ghostty auto-attached to persistent tmux + zsh (autosuggestion, syntax-highlighting)
 - [x] cli tooling: eza, bat, fd, fzf, lazygit + browsers (firefox, chrome)
 - [x] AI coding agents: Claude Code, Codex, OpenCode, Pi + pi-claude-bridge
+- [x] Pi destructive-action guard with fail-closed confirmation for dangerous commands and out-of-project or sensitive writes
 - [x] Claude Bash/subagent sandbox with explicit approval for unsandboxed retries
+- [x] Writable Claude runtime settings with Nix-owned baseline keys and preserved injected hooks
 - [x] Desktop shell: Noctalia + rofi launcher + Polkit agent + lock/idle behavior + Hyprsunset night light
 - [x] Migrate i3 workflow: workspaces, focus/move/resize, audio, launcher, session controls
 - [x] Desktop apps: Todoist, Calibre, Zotero, Slack, Discord, Spotify

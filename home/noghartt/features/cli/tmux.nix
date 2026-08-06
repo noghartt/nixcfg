@@ -19,11 +19,12 @@ let
     bashOptions = [ ];
     runtimeInputs = [ pkgs.tmux ];
     text = ''
-      session=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | head -1)
-      if [ -z "$session" ]; then
-        exec tmux new-session -s main
+      if tmux has-session 2>/dev/null; then
+        exec tmux attach-session
       fi
-      exec tmux attach-session -t "$session"
+
+      # Resurrect safely replaces tmux's disposable session 0 during restore.
+      exec tmux new-session
     '';
   };
 in
@@ -39,7 +40,7 @@ in
 
   programs.tmux = {
     enable = true;
-    shell = "/bin/sh";
+    shell = "${pkgs.zsh}/bin/zsh";
     prefix = "C-space";
     keyMode = "vi";
     mouse = true;
@@ -49,9 +50,6 @@ in
     terminal = "tmux-256color";
 
     extraConfig = ''
-      # Keep tmux jobs fast while interactive panes still launch the user shell.
-      set -g default-command "${pkgs.zsh}/bin/zsh -l"
-
       set -ag terminal-overrides ",xterm-256color:RGB"
       set -g renumber-windows on
       set -g escape-time 1

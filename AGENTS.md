@@ -67,7 +67,11 @@ DARWIN.md                    Darwin bootstrap and activation runbook
   platform-only integrations are imported directly by the corresponding host entrypoint.
 - AI harnesses use their native Home Manager modules. Claude Code, Codex, and OpenCode remain
   small per-harness modules under `features/cli/agents/`; Pi is a standalone feature because it
-  owns model settings and Nix-packaged extensions.
+  owns model settings and Nix-packaged extensions. Claude's global `settings.json` is a writable
+  runtime file: activation refreshes Nix-owned top-level keys while preserving tool-injected keys
+  such as hooks.
+- The writable checkout is conventionally `~/www/nixcfg`, exposed as `$NIXCFG`; the `nixcfg`
+  shell alias changes to it. Store paths remain the source of evaluated configuration.
 - Hosts declare their own platform via `nixpkgs.hostPlatform` (mellon: in
   `hardware-configuration.nix`); `mkNixOSConfig`/`mkDarwinConfig` take no `system`.
   A `*-darwin` hostPlatform declared in the spec itself routes that hosts/

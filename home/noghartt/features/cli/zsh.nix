@@ -29,6 +29,7 @@
     # is safe for pipelines.
     shellAliases = {
       cat = "bat --paging=never --style=plain";
+      nixcfg = "cd \"$NIXCFG\"";
     };
   };
 
