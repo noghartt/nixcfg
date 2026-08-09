@@ -12,6 +12,13 @@ whenever it feels like a checkpoint.
 
 - **home/noghartt**: `$NIXCFG` points at the writable checkout and the `nixcfg`
   shell alias changes to it.
+- **home/noghartt/cli**: install the FFF terminal file manager alongside fzf.
+- **home/noghartt/cli**: tmux `prefix+F` opens an fzf popup over every live
+  pane's scrollback and jumps to the selected line in copy mode.
+- **home/noghartt/pi**: tmux `prefix+i` opens Pi at the checkout root, while
+  `prefix+P` opens an fzf popup that searches sessions in the current checkout
+  or every checkout, supports transcript search and previews, and resumes the
+  selection in a correctly rooted window.
 - **home/noghartt/pi**: a Nix-packaged destructive-action guard prompts before
   dangerous shell commands, destructive custom tools, existing-file
   overwrites, sensitive-path changes, and writes outside the active project;
@@ -48,6 +55,8 @@ whenever it feels like a checkpoint.
 
 ### Fixed
 
+- **home/noghartt/cli**: follow Pi's recommended tmux CSI-u setup so Shift+Enter,
+  Ctrl+Enter, and Option+Enter remain distinguishable from Enter.
 - **home/noghartt/cli**: define the custom tmux status bar before Continuum loads
   so its ten-minute Resurrect autosave hook is no longer overwritten.
 - **home/noghartt/pi**: update `pi-claude-bridge` to 0.6.3 so its model catalog

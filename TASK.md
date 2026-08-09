@@ -34,8 +34,10 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 ## Home Manager
 
 - [x] Terminal: Ghostty auto-attached to persistent tmux + zsh (autosuggestion, syntax-highlighting)
-- [x] cli tooling: eza, bat, fd, fzf, lazygit + browsers (firefox, chrome)
+- [x] tmux cross-session/window scrollback search with an fzf popup and copy-mode jump
+- [x] cli tooling: eza, bat, fd, fff, fzf, lazygit + browsers (firefox, chrome)
 - [x] AI coding agents: Claude Code, Codex, OpenCode, Pi + pi-claude-bridge
+- [x] Pi/tmux integration: CSI-u modified keys, checkout-rooted launcher, and cross-project transcript search popup
 - [x] Pi destructive-action guard with fail-closed confirmation for dangerous commands and out-of-project or sensitive writes
 - [x] Pi worktree agents for isolated parallel delegation, with an explicit current-checkout opt-out
 - [x] Claude Bash/subagent sandbox with explicit approval for unsandboxed retries

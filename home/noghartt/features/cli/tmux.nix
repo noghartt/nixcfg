@@ -14,6 +14,16 @@ let
     '';
   };
 
+  tmuxPaneSearch = pkgs.writeShellApplication {
+    name = "tmux-pane-search";
+    runtimeInputs = with pkgs; [
+      fzf
+      gawk
+      tmux
+    ];
+    text = builtins.readFile ./scripts/tmux-pane-search.sh;
+  };
+
   tmuxAttach = pkgs.writeShellApplication {
     name = "tmux-attach";
     bashOptions = [ ];
@@ -32,6 +42,7 @@ in
   home.packages = [
     tmuxAttach
     tmuxGitRootPath
+    tmuxPaneSearch
   ];
 
   programs.ghostty.settings = lib.mkIf config.programs.ghostty.enable {
@@ -56,6 +67,9 @@ in
       set -g display-time 4000
       set -g focus-events on
       setw -g aggressive-resize on
+
+      # Pi relies on CSI-u to distinguish modified Enter keys inside tmux.
+      set -g extended-keys on
       set -g extended-keys-format csi-u
 
       bind-key R source-file ~/.config/tmux/tmux.conf \; display-message "Config reloaded"
@@ -65,6 +79,9 @@ in
       bind-key l run-shell 'tmux split-window -h -c "$(${lib.getExe tmuxGitRootPath} "#{pane_current_path}")" lazygit'
       bind-key c run-shell 'tmux new-window -c "$(${lib.getExe tmuxGitRootPath} "#{pane_current_path}")"'
       bind-key C new-window -c "#{pane_current_path}"
+
+      # Search every live pane's scrollback and jump to a match in copy mode.
+      bind-key F display-popup -E -w 85% -h 75% '${lib.getExe tmuxPaneSearch}'
 
       # Splits inherit the current pane's directory.
       bind '"' split-window -v -c "#{pane_current_path}"
@@ -93,8 +110,6 @@ in
       set -g message-command-style "bg=#313244,fg=#cdd6f4"
 
       set -g allow-passthrough on
-      set -s extended-keys on
-      set -as terminal-features 'xterm*:extkeys'
 
       bind Escape copy-mode
     '';

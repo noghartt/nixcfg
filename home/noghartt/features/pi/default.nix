@@ -1,6 +1,7 @@
 {
   imports = [
     ./settings.nix
+    ./tmux.nix
     ./extensions/claude-bridge.nix
     ./extensions/destructive-guard.nix
     ./extensions/worktree-agents.nix
