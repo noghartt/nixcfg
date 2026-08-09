@@ -37,6 +37,7 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [x] cli tooling: eza, bat, fd, fzf, lazygit + browsers (firefox, chrome)
 - [x] AI coding agents: Claude Code, Codex, OpenCode, Pi + pi-claude-bridge
 - [x] Pi destructive-action guard with fail-closed confirmation for dangerous commands and out-of-project or sensitive writes
+- [x] Pi worktree agents for isolated parallel delegation, with an explicit current-checkout opt-out
 - [x] Claude Bash/subagent sandbox with explicit approval for unsandboxed retries
 - [x] Writable Claude runtime settings with Nix-owned baseline keys and preserved injected hooks
 - [x] Desktop shell: Noctalia + rofi launcher + Polkit agent + lock/idle behavior + Hyprsunset night light

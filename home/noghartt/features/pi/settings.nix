@@ -15,6 +15,7 @@
         "claude-bridge/claude-opus-4-8"
         "claude-bridge/claude-sonnet-4-6"
         "claude-bridge/claude-haiku-4-5"
+        "claude-bridge/claude-opus-5"
         "claude-bridge/claude-sonnet-5"
         "claude-bridge/claude-fable-5"
       ];

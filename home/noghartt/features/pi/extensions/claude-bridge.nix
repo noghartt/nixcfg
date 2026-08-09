@@ -12,16 +12,16 @@ let
 
   piClaudeBridge = pkgs.buildNpmPackage {
     pname = "pi-claude-bridge";
-    version = "0.5.0";
+    version = "0.6.3";
 
     src = pkgs.fetchFromGitHub {
       owner = "elidickinson";
       repo = "pi-claude-bridge";
-      rev = "0c0feef83284b71a7cf2b5779e86ca2e8f75ce4c";
-      hash = "sha256-N6hRLcbOlQyQ0coP6YTqn1k5JQlwP/qx/m8tWfySxyI=";
+      rev = "fac372c4fedabc247eda48ddec2363a52dc8c4d8";
+      hash = "sha256-nqGVZfiMb9g4NyP/WcPNvq8U8mtAT+a+JI0uwKaTTQE=";
     };
 
-    npmDepsHash = "sha256-ulsVwgw9cdZpQaOf21XvospYs6goPiF/jvpFe1OSAQo=";
+    npmDepsHash = "sha256-d/MUvK4pSmd8wH3Po9h8YH6l6IKUIKoN7JwobnlmeW0=";
     npmDepsFetcherVersion = 2;
     npmInstallFlags = [ "--omit=dev" ];
     dontNpmBuild = true;

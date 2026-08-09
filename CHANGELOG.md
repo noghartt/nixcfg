@@ -16,6 +16,10 @@ whenever it feels like a checkpoint.
   dangerous shell commands, destructive custom tools, existing-file
   overwrites, sensitive-path changes, and writes outside the active project;
   non-interactive sessions fail closed.
+- **home/noghartt/pi**: `worktree_agents` delegates independent implementation
+  tasks to parallel Pi processes in separate Git worktrees by default, supports
+  monorepo-relative working directories, and allows an explicit current-checkout
+  opt-out for tasks that do not need isolation.
 - **palantir**: the existing Obsidian desktop feature (`programs.obsidian`)
   is now imported by the palantir HM entrypoint; it was previously
   mellon-only via `desktop/default.nix`.
@@ -44,6 +48,11 @@ whenever it feels like a checkpoint.
 
 ### Fixed
 
+- **home/noghartt/cli**: define the custom tmux status bar before Continuum loads
+  so its ten-minute Resurrect autosave hook is no longer overwritten.
+- **home/noghartt/pi**: update `pi-claude-bridge` to 0.6.3 so its model catalog
+  includes Claude Fable 5, Sonnet 5, and Opus 5; Fable and Sonnet now request
+  their 1M-context variants.
 - **home/noghartt/cli**: tmux now establishes zsh as its early default shell
   and lets Resurrect use disposable session `0` while restoring the first
   server, preventing both `/bin/sh` panes and Ghostty's initial window closing.
