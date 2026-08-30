@@ -11,5 +11,6 @@
 
   "update.mode": "none",
 
-  "workbench.startupEditor": "none"
+  "workbench.startupEditor": "none",
+  "git.openRepositoryInParentFolders": "always"
 }
