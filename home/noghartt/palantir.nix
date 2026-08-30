@@ -10,6 +10,8 @@
     ./features/vscode
   ];
 
+  home.packages = [ pkgs.cloudflared ];
+
   programs.ghostty.package = pkgs.ghostty-bin;
 
   # The tailscale-app cask links no CLI onto PATH; the bundled binary is the
