@@ -7,7 +7,10 @@ let
   };
 in
 {
-  home.packages = [ fff ];
+  home.packages = [
+    fff
+    pkgs.ngrok
+  ];
 
   programs = {
     # eza is the maintained drop-in fork of exa; the zsh integration wires
