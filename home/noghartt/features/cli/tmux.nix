@@ -33,7 +33,6 @@ let
         exec tmux attach-session
       fi
 
-      # Resurrect safely replaces tmux's disposable session 0 during restore.
       exec tmux new-session
     '';
   };
@@ -98,6 +97,7 @@ in
       set -g status-left "#[bg=#89b4fa,fg=#1e1e2e,bold]  #S #[bg=#1e1e2e,fg=#89b4fa]"
 
       set -g status-right-length 50
+      set -g status-right "#[fg=#6c7086]│ #[fg=#cdd6f4]%H:%M #[fg=#6c7086]│ #[fg=#a6adc8]%d %b %Y "
 
       setw -g window-status-format "#[fg=#6c7086] #I#[fg=#585b70]:#[fg=#a6adc8]#W#{?window_flags,#{window_flags}, } "
       setw -g window-status-current-format "#[bg=#313244,fg=#89b4fa,bold] #I#[fg=#585b70]:#[fg=#cdd6f4]#W#{?window_flags,#{window_flags}, } #[bg=#1e1e2e]"
@@ -114,26 +114,6 @@ in
       bind Escape copy-mode
     '';
 
-    plugins = with pkgs.tmuxPlugins; [
-      better-mouse-mode
-      {
-        plugin = resurrect;
-        extraConfig = ''
-          set -g @resurrect-capture-pane-contents 'on'
-          set -g @resurrect-strategy-nvim 'session'
-          set -g @resurrect-restore-cwd 'on'
-        '';
-      }
-      {
-        plugin = continuum;
-        extraConfig = ''
-          set -g @continuum-restore 'on'
-          set -g @continuum-save-interval '10'
-
-          # Continuum must load after the custom bar so its periodic save hook survives.
-          set -g status-right "#[fg=#6c7086]│ #[fg=#cdd6f4]%H:%M #[fg=#6c7086]│ #[fg=#a6adc8]%d %b %Y "
-        '';
-      }
-    ];
+    plugins = with pkgs.tmuxPlugins; [ better-mouse-mode ];
   };
 }
