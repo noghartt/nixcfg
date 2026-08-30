@@ -27,6 +27,10 @@ whenever it feels like a checkpoint.
   tasks to parallel Pi processes in separate Git worktrees by default, supports
   monorepo-relative working directories, and allows an explicit current-checkout
   opt-out for tasks that do not need isolation.
+- **home/noghartt/pi**: `/tree` is transparently routed to a centered,
+  responsive undo-tree modal where linear history stays vertical and only real
+  branches open ASCII graph lanes; message categories remain color-coded while
+  search, filters, folding, labels, copy, and branch summaries are retained.
 - **palantir**: the existing Obsidian desktop feature (`programs.obsidian`)
   is now imported by the palantir HM entrypoint; it was previously
   mellon-only via `desktop/default.nix`.

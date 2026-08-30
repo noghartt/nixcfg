@@ -4,6 +4,7 @@
     ./tmux.nix
     ./extensions/claude-bridge.nix
     ./extensions/destructive-guard.nix
+    ./extensions/session-tree.nix
     ./extensions/worktree-agents.nix
   ];
 
