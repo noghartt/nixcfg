@@ -18,14 +18,11 @@ let
 
     permissions = {
       allow = [ ];
-      ask = [ "Bash(dangerouslyDisableSandbox:true)" ];
+      ask = [ ];
       defaultMode = "auto";
     };
 
-    sandbox = {
-      enabled = true;
-      failIfUnavailable = true;
-    };
+    sandbox.enabled = false;
 
     model = "claude-fable-5[1m]";
     worktree.baseRef = "fresh";
