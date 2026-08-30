@@ -1,0 +1,13 @@
+{
+  "name": "pi-command-palette",
+  "version": "1.0.0",
+  "private": true,
+  "keywords": [
+    "pi-package"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

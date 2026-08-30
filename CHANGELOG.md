@@ -33,7 +33,10 @@ whenever it feels like a checkpoint.
   tasks to parallel Pi processes in separate Git worktrees by default, supports
   monorepo-relative working directories, and allows an explicit current-checkout
   opt-out for tasks that do not need isolation.
-- **home/noghartt/pi**: `/tree` is transparently routed to a centered,
+- **home/noghartt/pi**: `Cmd+P` opens a centered, searchable command palette
+  with commands grouped by kind and scope; extension commands are removed from
+  slash autocomplete to keep prompts and skills distinct from harness actions.
+- **home/noghartt/pi**: the command palette's `tree-view` action opens a centered,
   responsive undo-tree modal where linear history stays centered and real
   branches fan into balanced left/right ASCII lanes; a Telescope-style side
   panel previews the selected node's wrapped content, with independent scrolling.

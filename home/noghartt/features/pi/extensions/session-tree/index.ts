@@ -1,6 +1,5 @@
 import {
 	copyToClipboard,
-	CustomEditor,
 	type ExtensionAPI,
 	type KeybindingsManager,
 	type SessionEntry,
@@ -582,32 +581,6 @@ export class SessionTreeModal implements Component, Focusable {
 }
 
 export default function sessionTree(pi: ExtensionAPI) {
-	let restoreEditor: (() => void) | undefined;
-
-	pi.on("session_start", (_event, ctx) => {
-		if (ctx.mode !== "tui") return;
-		const previousEditor = ctx.ui.getEditorComponent();
-		restoreEditor = () => ctx.ui.setEditorComponent(previousEditor);
-		ctx.ui.setEditorComponent((tui, theme, keybindings) => {
-			const editor = previousEditor?.(tui, theme, keybindings) ?? new CustomEditor(tui, theme, keybindings);
-			const handleInput = editor.handleInput.bind(editor);
-			editor.handleInput = (data: string) => {
-				const redirectsBuiltInTree =
-					keybindings.matches(data, "tui.input.submit") &&
-					!("isShowingAutocomplete" in editor && editor.isShowingAutocomplete()) &&
-					editor.getText().trim() === "/tree";
-				if (redirectsBuiltInTree) editor.setText("/tree-view");
-				handleInput(data);
-			};
-			return editor;
-		});
-	});
-
-	pi.on("session_shutdown", () => {
-		restoreEditor?.();
-		restoreEditor = undefined;
-	});
-
 	pi.registerCommand("tree-view", {
 		description: "Navigate the current session in a centered undo-tree graph",
 		handler: async (_args, ctx) => {
