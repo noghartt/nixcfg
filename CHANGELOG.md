@@ -10,9 +10,15 @@ whenever it feels like a checkpoint.
 
 ### Added
 
+- **palantir**: Zotero as a Homebrew cask.
+- **palantir**: install the `cloudflared` CLI through Home Manager.
+- **palantir**: Todoist as a Homebrew cask (`todoist-app`), since nixpkgs'
+  `todoist-electron` package is Linux-only.
+- **palantir**: Discord as a Homebrew cask.
 - **home/noghartt**: `$NIXCFG` points at the writable checkout and the `nixcfg`
   shell alias changes to it.
 - **home/noghartt/cli**: install the FFF terminal file manager alongside fzf.
+- **home/noghartt/cli**: install the `ngrok` tunnel CLI on every host.
 - **home/noghartt/cli**: tmux `prefix+F` opens an fzf popup over every live
   pane's scrollback and jumps to the selected line in copy mode.
 - **home/noghartt/pi**: tmux `prefix+i` opens Pi at the checkout root, while
@@ -28,9 +34,10 @@ whenever it feels like a checkpoint.
   monorepo-relative working directories, and allows an explicit current-checkout
   opt-out for tasks that do not need isolation.
 - **home/noghartt/pi**: `/tree` is transparently routed to a centered,
-  responsive undo-tree modal where linear history stays vertical and only real
-  branches open ASCII graph lanes; message categories remain color-coded while
-  search, filters, folding, labels, copy, and branch summaries are retained.
+  responsive undo-tree modal where linear history stays centered and real
+  branches fan into balanced left/right ASCII lanes; a Telescope-style side
+  panel previews the selected node's wrapped content, with independent scrolling.
+  Search, filters, folding, labels, copy, and branch summaries are retained.
 - **palantir**: the existing Obsidian desktop feature (`programs.obsidian`)
   is now imported by the palantir HM entrypoint; it was previously
   mellon-only via `desktop/default.nix`.
@@ -87,6 +94,8 @@ whenever it feels like a checkpoint.
 
 ### Changed
 
+- **home/noghartt/cli**: disable Claude Code's OS sandbox because it interfered
+  with automatic permission mode; Bash and subagents now run unsandboxed.
 - **palantir**: interface language forced to English (`AppleLanguages`
   en-US-first with pt-BR fallback, `AppleLocale` en_US) via freeform defaults.
 - **lib**: Darwin hosts now default `computerName` and `localHostName` (the
@@ -171,6 +180,8 @@ whenever it feels like a checkpoint.
 
 ### Removed
 
+- **home/noghartt/cli**: tmux Resurrect and Continuum session snapshots and
+  automatic restore; live tmux sessions still persist while the server runs.
 - **mellon**: an unpinned latest-kernel selection and unexplained `nowatchdog`;
   Linux is now explicitly selected from the independently locked hardware set.
 - **mellon/storage**: global Btrfs `autodefrag`; Docker and large-file workloads

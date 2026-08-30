@@ -35,13 +35,13 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 
 - [x] Terminal: Ghostty auto-attached to persistent tmux + zsh (autosuggestion, syntax-highlighting)
 - [x] tmux cross-session/window scrollback search with an fzf popup and copy-mode jump
-- [x] cli tooling: eza, bat, fd, fff, fzf, lazygit + browsers (firefox, chrome)
+- [x] cli tooling: eza, bat, fd, fff, fzf, lazygit, ngrok + browsers (firefox, chrome)
 - [x] AI coding agents: Claude Code, Codex, OpenCode, Pi + pi-claude-bridge
 - [x] Pi/tmux integration: CSI-u modified keys, checkout-rooted launcher, and cross-project transcript search popup
 - [x] Pi destructive-action guard with fail-closed confirmation for dangerous commands and out-of-project or sensitive writes
 - [x] Pi worktree agents for isolated parallel delegation, with an explicit current-checkout opt-out
-- [x] Pi `/tree` interception for a centered, responsive, color-coded ASCII undo-tree modal
-- [x] Claude Bash/subagent sandbox with explicit approval for unsandboxed retries
+- [x] Pi `/tree` interception for a centered ASCII undo tree with a responsive node preview pane
+- [x] Disable Claude's Bash/subagent sandbox after it proved unreliable with automatic permission mode
 - [x] Writable Claude runtime settings with Nix-owned baseline keys and preserved injected hooks
 - [x] Desktop shell: Noctalia + rofi launcher + Polkit agent + lock/idle behavior + Hyprsunset night light
 - [x] Migrate i3 workflow: workspaces, focus/move/resize, audio, launcher, session controls
@@ -74,6 +74,9 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [x] Directory-discovered Darwin hosts + build checks
 - [x] Cross-platform user factory with independent HM and nix-darwin state versions
 - [x] Palantir host composition reusing Mellon's Chrome, Firefox, Ghostty, and Claude Code configuration
+- [x] Install the Cloudflare Tunnel CLI (`cloudflared`) through Home Manager
+- [x] Install Todoist through Homebrew (`todoist-app`)
+- [x] Install Discord through Homebrew
 - [x] Official Nix installer + first nix-darwin activation runbook (`DARWIN.md`)
 - [x] First activation on the Mac and validate app copying, Spotlight discovery, and browser launch
 - [x] Declarative Homebrew: nix-homebrew-managed installation + nix-darwin `homebrew` casks (1Password)
