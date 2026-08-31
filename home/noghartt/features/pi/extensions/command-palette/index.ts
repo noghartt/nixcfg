@@ -3,6 +3,7 @@ import {
 	type ExtensionContext,
 	type SlashCommandInfo,
 	type Theme,
+	VERSION,
 } from "@earendil-works/pi-coding-agent";
 import {
 	type Focusable,
@@ -182,14 +183,32 @@ async function showCommandPalette(pi: ExtensionAPI, ctx: ExtensionContext): Prom
 			},
 		},
 	);
-	if (selected) pi.sendUserMessage(`/${selected.name}`);
+	if (!selected) return;
+	if (supportsCommandDispatch()) {
+		// expandPromptTemplates routes through session.prompt(), which executes
+		// extension commands and expands prompts/skills instead of hitting the LLM.
+		pi.sendUserMessage(`/${selected.name}`, { expandPromptTemplates: true } as never);
+	} else {
+		// Pi < 0.84.2 has no command dispatch API; sendUserMessage would ship the
+		// raw "/name" text to the model backend. Prefill the editor so Enter runs
+		// it through the same submit path as a typed command.
+		ctx.ui.setEditorText(`/${selected.name}`);
+		ctx.ui.notify(`Press enter to run /${selected.name}`, "info");
+	}
+}
+
+function supportsCommandDispatch(): boolean {
+	const [major = 0, minor = 0, patch = 0] = VERSION.split(".").map(Number);
+	return major > 0 || minor > 84 || (minor === 84 && patch >= 2);
 }
 
 export default function commandPalette(pi: ExtensionAPI) {
-	pi.registerShortcut(Key.super("p"), {
-		description: "Open command palette",
-		handler: async (ctx) => showCommandPalette(pi, ctx),
-	});
+	for (const shortcut of [Key.super("p"), Key.alt("p")]) {
+		pi.registerShortcut(shortcut, {
+			description: "Open command palette",
+			handler: async (ctx) => showCommandPalette(pi, ctx),
+		});
+	}
 
 	pi.on("session_start", (_event, ctx) => {
 		if (ctx.mode !== "tui") return;

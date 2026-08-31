@@ -8,6 +8,22 @@ whenever it feels like a checkpoint.
 
 ## [Unreleased]
 
+### Changed
+
+- **flake**: refreshed Darwin, Home Manager, desktop, secrets, and Mellon's
+  independently pinned hardware-stack inputs.
+
+### Fixed
+
+- **home/noghartt/pi**: the command palette accepts both `Super+P` and `Alt+P`;
+  Ghostty translates `Cmd+P` to explicit CSI-u `Alt+P`, avoiding ambiguous
+  legacy escape sequences and Super-modifier loss through tmux.
+- **home/noghartt/pi**: palette selections dispatch as slash commands instead of
+  reaching the model as chat text (which produced "Unknown command" replies from
+  the claude-bridge backend). On Pi ≥ 0.84.2 they run directly via
+  `sendUserMessage` with `expandPromptTemplates`; on older Pi the editor is
+  prefilled so Enter submits through the normal command path.
+
 ### Added
 
 - **palantir**: Zotero as a Homebrew cask.

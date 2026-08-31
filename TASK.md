@@ -40,7 +40,7 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [x] Pi/tmux integration: CSI-u modified keys, checkout-rooted launcher, and cross-project transcript search popup
 - [x] Pi destructive-action guard with fail-closed confirmation for dangerous commands and out-of-project or sensitive writes
 - [x] Pi worktree agents for isolated parallel delegation, with an explicit current-checkout opt-out
-- [x] Pi `Cmd+P` command palette with grouped search and extension commands hidden from slash autocomplete
+- [x] Pi `Cmd+P` command palette with Ghostty/tmux forwarding, grouped search, and extension commands hidden from slash autocomplete
 - [x] Pi command-palette tree view with a centered ASCII undo tree and responsive node preview pane
 - [x] Disable Claude's Bash/subagent sandbox after it proved unreliable with automatic permission mode
 - [x] Writable Claude runtime settings with Nix-owned baseline keys and preserved injected hooks
