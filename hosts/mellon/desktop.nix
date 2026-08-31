@@ -1,0 +1,60 @@
+# Wayland desktop stack: Hyprland + greetd + pipewire + bluetooth.
+{ pkgs, ... }:
+{
+  programs.hyprland = {
+    enable = true;
+    xwayland.enable = true;
+  };
+
+  security = {
+    polkit.enable = true;
+    rtkit.enable = true;
+  };
+
+  services = {
+    # Minimal greeter straight into the Hyprland session.
+    greetd = {
+      enable = true;
+      settings.default_session = {
+        command = "${pkgs.tuigreet}/bin/tuigreet --time --remember --cmd Hyprland";
+        user = "greeter";
+      };
+    };
+
+    pipewire = {
+      enable = true;
+      alsa.enable = true;
+      alsa.support32Bit = true;
+      pulse.enable = true;
+      jack.enable = true;
+    };
+
+    blueman.enable = true;
+    upower.enable = true;
+    systemd-lock-handler.enable = true;
+
+    # Give the user session time to acknowledge its lock before sleep.
+    logind.settings.Login.InhibitDelayMaxSec = "30s";
+
+    xserver.xkb = {
+      layout = "us";
+      variant = "intl";
+    };
+  };
+
+  # RTL8922AE has rough BT/WiFi coexistence (noted on fersilva16's identical
+  # NIC): if WiFi drops, test with bluetooth off before blaming the driver.
+  hardware.bluetooth = {
+    enable = true;
+    powerOnBoot = true;
+  };
+
+  # Chromium/Electron apps go Wayland-native.
+  environment.sessionVariables.NIXOS_OZONE_WL = "1";
+
+  fonts.packages = with pkgs; [
+    dejavu_fonts
+    noto-fonts
+    noto-fonts-color-emoji
+  ];
+}
