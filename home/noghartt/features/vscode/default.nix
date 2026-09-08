@@ -13,7 +13,10 @@
 }:
 let
   configDir =
-    if pkgs.stdenv.isDarwin then "Library/Application Support/Code/User" else ".config/Code/User";
+    if pkgs.stdenv.hostPlatform.isDarwin then
+      "Library/Application Support/Code/User"
+    else
+      ".config/Code/User";
 
   marketplace =
     flake.inputs.nix-vscode-extensions.extensions.${pkgs.stdenv.hostPlatform.system}.vscode-marketplace;

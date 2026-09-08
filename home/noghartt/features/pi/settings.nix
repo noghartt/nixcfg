@@ -1,3 +1,4 @@
+{ flake, ... }:
 {
   programs.pi-coding-agent = {
     settings = {
@@ -19,6 +20,7 @@
         "claude-bridge/claude-sonnet-5"
         "claude-bridge/claude-fable-5"
       ];
+      skills = [ "${flake.inputs.herdr}/skills/herdr" ];
     };
 
     keybindings."app.editor.external" = [ "alt+e" ];

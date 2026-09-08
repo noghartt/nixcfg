@@ -19,6 +19,7 @@ config/neovim/               portable Neovim config + Home Manager integration
 lib/                         mapDir, mkNixOSConfig, mkDarwinConfig
 modules/nixos/               custom NixOS options — OPTION-ONLY, auto-imported into every host
 modules/home-manager/        custom HM options — OPTION-ONLY, auto-imported into every user
+overlays/                    shared nixpkgs overlays applied to every host
 hosts/common/global/         imported by every NixOS host (nix settings, HM wiring)
 hosts/common/darwin/         imported by every Darwin host (nix settings, HM wiring)
 hosts/common/optional/       opt-in system modules shared by 2+ hosts (created when needed)
@@ -27,6 +28,7 @@ home/<user>/user.nix         cross-platform user factory (functor + overrideAttr
 home/<user>/home.nix         portable HM baseline imported on every host
 home/<user>/features/cli/    shared shell/dev tools; agents/ holds Claude, Codex, OpenCode
 home/<user>/features/desktop/ portable desktop default + platform-specific modules
+home/<user>/features/herdr/  standalone Herdr feature: native HM settings + pinned package
 home/<user>/features/pi/     standalone Pi feature: settings + packaged extensions
 home/<user>/features/vscode/ standalone VS Code feature: marketplace extensions + live settings.json
 home/<user>/<host>.nix       optional per-host HM overrides
@@ -54,13 +56,18 @@ DARWIN.md                    Darwin bootstrap and activation runbook
   Home Manager's string state version is independent of nix-darwin's integer state version.
 - Hardware-specific modules live in the host dir (e.g. mellon's `nvidia.nix`); promote to
   `hosts/common/optional/` only when a second host needs them.
+- Package overrides shared by Linux and Darwin live in `overlays/` and are applied by both
+  common host modules.
 - HM features are import-based (`home/<user>/features/<area>/`), not enable-flag-based.
   Portable baseline areas are imported by `home.nix`; platform features are composed by the
   user host entrypoint. Do not nest a substantial feature under `cli/` merely because its
   executable is a CLI. Native application config that should remain independent of a user or
   host can live under `config/`, as Neovim does. Use a directory when a feature has multiple
   concerns, as Pi does for core settings and packaged extensions. Optional system modules use
-  the same plain-file pattern in `hosts/common/optional/`.
+  the same plain-file pattern in `hosts/common/optional/`. Herdr is also standalone:
+  Home Manager owns its core settings. Plugins without upstream module options can be
+  packaged as immutable local plugins and registered idempotently with `herdr plugin link`
+  during activation; their configuration and state remain writable runtime data.
 - Platform composition stays at the user host entrypoint: `home.nix` imports the portable
   baseline, while `<host>.nix` combines portable desktop features with the platform-specific
   modules it needs. `desktop/default.nix` must remain evaluable on both Linux and Darwin;
@@ -104,7 +111,8 @@ DARWIN.md                    Darwin bootstrap and activation runbook
   `nix-vscode-extensions` (full VS Code Marketplace as Nix packages, used by
   the standalone vscode feature; no `follows` — prebuilt against its own pin),
   `opnix` (1Password secrets — see Hard rules), `noctalia` (native desktop shell and
-  its Home Manager module, newer than the legacy nixpkgs package).
+  its Home Manager module, newer than the legacy nixpkgs package), `herdr` (official,
+  release-pinned source build of the terminal workspace manager).
 
 ## Commands
 

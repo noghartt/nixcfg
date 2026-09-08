@@ -36,10 +36,12 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [x] Terminal: Ghostty auto-attached to persistent tmux + zsh (autosuggestion, syntax-highlighting)
 - [x] tmux cross-session/window scrollback search with an fzf popup and copy-mode jump
 - [x] cli tooling: eza, bat, fd, fff, fzf, lazygit, ngrok + browsers (firefox, chrome)
-- [x] AI coding agents: Claude Code, Codex, OpenCode, Pi + pi-claude-bridge
+- [x] Herdr through its native Home Manager module, with release-pinned packaging, settings, and the Nix-managed reviewr plugin
+- [x] AI coding agents: Claude Code, release-pinned Codex, OpenCode, Pi + pi-claude-bridge
 - [x] Pi/tmux integration: CSI-u modified keys, checkout-rooted launcher, and cross-project transcript search popup
 - [x] Pi destructive-action guard with fail-closed confirmation for dangerous commands and out-of-project or sensitive writes
 - [x] Pi worktree agents for isolated parallel delegation, with an explicit current-checkout opt-out
+- [x] Pi Workflows extension with its bundled workflow-authoring and automation skills
 - [x] Pi `Cmd+P` command palette with Ghostty/tmux forwarding, grouped search, and extension commands hidden from slash autocomplete
 - [x] Pi command-palette tree view with a centered ASCII undo tree and responsive node preview pane
 - [x] Disable Claude's Bash/subagent sandbox after it proved unreliable with automatic permission mode
@@ -76,6 +78,7 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [x] Cross-platform user factory with independent HM and nix-darwin state versions
 - [x] Palantir host composition reusing Mellon's Chrome, Firefox, Ghostty, and Claude Code configuration
 - [x] Install the Cloudflare Tunnel CLI (`cloudflared`) through Home Manager
+- [x] Install Beancount and Fava through Home Manager
 - [x] Install Todoist through Homebrew (`todoist-app`)
 - [x] Install Discord through Homebrew
 - [x] Official Nix installer + first nix-darwin activation runbook (`DARWIN.md`)

@@ -7,6 +7,36 @@
 let
   jsonFormat = pkgs.formats.json { };
 
+  claudeCodeVersion = "2.1.261";
+  # nixpkgs' claude-code now fetches the zstd-compressed binary and
+  # decompresses it in installPhase, so the pinned src must stay .zst.
+  claudeCodeRelease =
+    {
+      aarch64-darwin = {
+        platform = "darwin-arm64";
+        hash = "sha256-x5YKCNS2poNhij5zm4M4v/qYQp+ngGyzrjFlIAPkh9A=";
+      };
+      aarch64-linux = {
+        platform = "linux-arm64";
+        hash = "sha256-YMTOG2EGEZ/ypumS0ngt1Zc9ppGcQfUFtnJTXq3Ue7s=";
+      };
+      x86_64-linux = {
+        platform = "linux-x64";
+        hash = "sha256-6LGHUkOieraf/0wRztNxSxTsESSwBRKDOr0lAwLDoQo=";
+      };
+    }
+    .${pkgs.stdenv.hostPlatform.system};
+  claudeCode = pkgs.claude-code.overrideAttrs (oldAttrs: {
+    version = claudeCodeVersion;
+    src = pkgs.fetchurl {
+      url = "https://downloads.claude.ai/claude-code-releases/${claudeCodeVersion}/${claudeCodeRelease.platform}/claude.zst";
+      inherit (claudeCodeRelease) hash;
+    };
+    meta = oldAttrs.meta // {
+      changelog = "https://github.com/anthropics/claude-code/blob/v${claudeCodeVersion}/CHANGELOG.md";
+    };
+  });
+
   # These top-level keys remain Nix-owned. Claude and setup tools may add
   # other keys (notably hooks) directly to the writable runtime file.
   settings = {
@@ -78,7 +108,10 @@ let
   baselineStatePath = "${config.xdg.stateHome}/nixcfg/claude-settings-baseline.json";
 in
 {
-  programs.claude-code.enable = true;
+  programs.claude-code = {
+    enable = true;
+    package = claudeCode;
+  };
 
   # The upstream HM module links settings.json into the read-only Nix store.
   # Materialize it instead so Claude setup tools can inject runtime-only keys.

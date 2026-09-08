@@ -5,6 +5,7 @@
   imports = [
     ../../config/neovim
     ./features/cli
+    ./features/herdr
     ./features/pi
   ];
 

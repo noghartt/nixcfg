@@ -10,7 +10,11 @@
     ./features/vscode
   ];
 
-  home.packages = [ pkgs.cloudflared ];
+  home.packages = with pkgs; [
+    beancount
+    cloudflared
+    fava
+  ];
 
   programs.ghostty.package = pkgs.ghostty-bin;
 

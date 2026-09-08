@@ -73,6 +73,12 @@
       url = "github:noctalia-dev/noctalia";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # Terminal workspace manager for AI coding agents, built from its official flake.
+    herdr = {
+      url = "github:herdrdev/herdr/v0.8.2";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -98,6 +104,8 @@
       );
     in
     {
+      overlays.codex = import ./overlays/codex.nix;
+
       # Custom option-only modules, auto-imported everywhere.
       nixosModules = import ./modules/nixos;
       homeManagerModules = import ./modules/home-manager;

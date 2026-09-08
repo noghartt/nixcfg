@@ -1,4 +1,5 @@
 {
+  config,
   lib,
   pkgs,
   ...
@@ -48,7 +49,7 @@ in
     provider = {
       plan = "max";
       strictMcpConfig = true;
-      pathToClaudeCodeExecutable = lib.getExe pkgs.claude-code;
+      pathToClaudeCodeExecutable = lib.getExe config.programs.claude-code.package;
     };
   };
 }

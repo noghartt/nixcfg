@@ -8,13 +8,22 @@ whenever it feels like a checkpoint.
 
 ## [Unreleased]
 
+## [2026-09-08]
+
 ### Changed
 
+- **home/noghartt/cli**: pin Codex 0.153.2 from OpenAI's native Linux and
+  Apple Silicon release artifacts while nixpkgs remains on 0.149.0, bundling
+  the codex-code-mode-host companion binary Code Mode spawns at runtime.
+- **home/noghartt/cli**: pin Claude Code 2.1.261 directly from Anthropic's
+  native release, following upstream's switch to zstd-compressed binaries.
 - **flake**: refreshed Darwin, Home Manager, desktop, secrets, and Mellon's
   independently pinned hardware-stack inputs.
 
 ### Fixed
 
+- **mellon**: migrate journald retention limits to `services.journald.settings.Journal`;
+  nixpkgs removed `extraConfig`, which broke evaluation after the input bump.
 - **home/noghartt/pi**: the command palette accepts both `Super+P` and `Alt+P`;
   Ghostty translates `Cmd+P` to explicit CSI-u `Alt+P`, avoiding ambiguous
   legacy escape sequences and Super-modifier loss through tmux.
@@ -26,6 +35,14 @@ whenever it feels like a checkpoint.
 
 ### Added
 
+- **palantir**: install Beancount and its Fava web interface through Home Manager.
+- **home/noghartt/herdr**: package and register the release-pinned reviewr plugin
+  on Linux and macOS, while keeping its runtime configuration writable.
+- **home/noghartt/pi**: install the release-pinned pi-workflows extension and
+  its bundled workflow-authoring and automation skills.
+- **home/noghartt/herdr**: Herdr v0.8.2 from its official Nix flake on every
+  host, configured through Home Manager's native module, with its matching
+  control skill exposed to Pi.
 - **palantir**: Zotero as a Homebrew cask.
 - **palantir**: install the `cloudflared` CLI through Home Manager.
 - **palantir**: Todoist as a Homebrew cask (`todoist-app`), since nixpkgs'

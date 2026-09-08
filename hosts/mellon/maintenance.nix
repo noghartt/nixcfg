@@ -30,9 +30,9 @@
       };
     };
 
-    journald.extraConfig = ''
-      SystemMaxUse=2G
-      MaxRetentionSec=1month
-    '';
+    journald.settings.Journal = {
+      SystemMaxUse = "2G";
+      MaxRetentionSec = "1month";
+    };
   };
 }
