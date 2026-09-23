@@ -68,6 +68,8 @@ DARWIN.md                    Darwin bootstrap and activation runbook
   Home Manager owns its core settings. Plugins without upstream module options can be
   packaged as immutable local plugins and registered idempotently with `herdr plugin link`
   during activation; their configuration and state remain writable runtime data.
+  Plugin bundles without user-facing executables stay out of `home.packages`:
+  activation references retain them without merging their manifests into the user profile.
 - Platform composition stays at the user host entrypoint: `home.nix` imports the portable
   baseline, while `<host>.nix` combines portable desktop features with the platform-specific
   modules it needs. `desktop/default.nix` must remain evaluable on both Linux and Darwin;
@@ -75,6 +77,8 @@ DARWIN.md                    Darwin bootstrap and activation runbook
 - Tmux and Pi's tmux helpers are opt-in imports on Mellon. Palantir launches Herdr
   directly from Ghostty. Herdr's agent tree is a Nix-packaged native popup command
   under `features/herdr/`, bound to `Alt+A`; it uses live session metadata and pane IDs.
+  The `pr-tree/` plugin provides `Alt+P` for authored open GitHub PRs grouped by repo,
+  using the active `gh` account, with browser and clipboard actions.
 - AI harnesses use their native Home Manager modules. Claude Code, Codex, and OpenCode remain
   small per-harness modules under `features/cli/agents/`; Pi is a standalone feature because it
   owns model settings and Nix-packaged extensions. Claude's global `settings.json` is a writable

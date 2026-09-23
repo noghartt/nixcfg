@@ -2,6 +2,7 @@
 {
   imports = [
     ./agent-tree.nix
+    ./pr-tree
     ./reviewr.nix
   ];
 

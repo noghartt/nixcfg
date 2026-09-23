@@ -18,6 +18,7 @@
     beancount
     cloudflared
     fava
+    fswatch
     todoist
   ];
 
