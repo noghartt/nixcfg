@@ -86,6 +86,7 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [x] Palantir host composition reusing Mellon's Chrome, Firefox, Ghostty, and Claude Code configuration
 - [x] Install the Cloudflare Tunnel CLI (`cloudflared`) through Home Manager
 - [x] Install Beancount and Fava through Home Manager
+- [x] Install fswatch through Home Manager
 - [x] Install Todoist through Homebrew (`todoist-app`)
 - [x] Install Discord through Homebrew
 - [x] Official Nix installer + first nix-darwin activation runbook (`DARWIN.md`)

@@ -10,6 +10,7 @@ whenever it feels like a checkpoint.
 
 ### Added
 
+- **palantir**: install `fswatch` for filesystem change monitoring.
 - **home/herdr**: add the `Alt+P` pull-request tree plugin, grouped by repository with
   `gh` pagination, search, refresh, Enter to open in the default browser, and `y` to copy URLs.
 - **home/herdr**: show independent review and CI status badges with terminal colors,
