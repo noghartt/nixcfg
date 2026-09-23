@@ -72,6 +72,9 @@ DARWIN.md                    Darwin bootstrap and activation runbook
   baseline, while `<host>.nix` combines portable desktop features with the platform-specific
   modules it needs. `desktop/default.nix` must remain evaluable on both Linux and Darwin;
   platform-only integrations are imported directly by the corresponding host entrypoint.
+- Tmux and Pi's tmux helpers are opt-in imports on Mellon. Palantir launches Herdr
+  directly from Ghostty. Herdr's agent tree is a Nix-packaged native popup command
+  under `features/herdr/`, bound to `Alt+A`; it uses live session metadata and pane IDs.
 - AI harnesses use their native Home Manager modules. Claude Code, Codex, and OpenCode remain
   small per-harness modules under `features/cli/agents/`; Pi is a standalone feature because it
   owns model settings and Nix-packaged extensions. Claude's global `settings.json` is a writable
@@ -161,10 +164,17 @@ Patterns here are adapted from:
 
 ## Hard rules
 
+- Work directly in this checkout; dedicated worktrees are not required for this
+  repository. This overrides the general worktree-by-default rule. Preserve
+  unrelated edits, and keep any existing `.worktrees/` directories git-ignored.
 - Never commit secrets. Strategy: 1Password via opnix — user secrets as
   `programs.onepassword-secrets` (HM), system secrets as `services.onepassword-secrets`
   (NixOS, add when first needed). The service-account token lives outside the repo
   (`~/.config/opnix/token`, provisioned with `opnix token set`); never commit it.
+  Shell environment secrets are declared by reference in
+  `home/noghartt/features/cli/secrets-env.nix` and resolved at interactive zsh startup.
+  New mappings require configuration activation and a new shell; adding a vault
+  item alone does not export it. Never resolve secret values during Nix evaluation.
 - No personal data in the repo: no real names, emails, or other PII in any file
   (git identity, SSH config with personal hosts, etc. stay local).
 - Don't add flake inputs without a documented reason (note it in this file).

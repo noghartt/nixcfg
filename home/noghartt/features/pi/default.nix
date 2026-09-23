@@ -1,7 +1,6 @@
 {
   imports = [
     ./settings.nix
-    ./tmux.nix
     ./extensions/claude-bridge.nix
     ./extensions/command-palette.nix
     ./extensions/destructive-guard.nix

@@ -16,7 +16,11 @@ let
   opnix = "${flake.inputs.opnix.packages.${pkgs.stdenv.hostPlatform.system}.default}/bin/opnix";
 
   envVars = [
-    # { name = "GITHUB_TOKEN"; reference = "op://Nix/github/token"; }
+    {
+      name = "TELEPATIA_LITELLM_API_KEY";
+      # The key is stored in the item's notes field.
+      reference = "op://Nix/TELEPATIA_LITELLM_API_KEY/notesPlain";
+    }
   ];
 in
 {

@@ -33,10 +33,11 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 
 ## Home Manager
 
-- [x] Terminal: Ghostty auto-attached to persistent tmux + zsh (autosuggestion, syntax-highlighting)
+- [x] Terminal: Ghostty launches Herdr on Palantir and persistent tmux on Mellon, with zsh (autosuggestion, syntax-highlighting)
 - [x] tmux cross-session/window scrollback search with an fzf popup and copy-mode jump
 - [x] cli tooling: eza, bat, fd, fff, fzf, lazygit, ngrok + browsers (firefox, chrome)
 - [x] Herdr through its native Home Manager module, with release-pinned packaging, settings, and the Nix-managed reviewr plugin
+- [x] Herdr `Alt+A` agent tree popup: workspace/worktree groups, search, live status, and focus by pane ID
 - [x] AI coding agents: Claude Code, release-pinned Codex, OpenCode, Pi + pi-claude-bridge
 - [x] Pi/tmux integration: CSI-u modified keys, checkout-rooted launcher, and cross-project transcript search popup
 - [x] Pi destructive-action guard with fail-closed confirmation for dangerous commands and out-of-project or sensitive writes
@@ -58,6 +59,9 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 
 ## Tooling / CI
 
+- [x] Allow direct-checkout work in this repository and ignore `.worktrees/`
+- [x] Pin Codex 0.156.1 and Herdr 0.9.1 (2026-09-23)
+- [x] Retain Mellon's committed hardware pin while recording the userspace updates
 - [x] Flake checks: nixfmt + statix + deadnix formatting check and builds for every discovered NixOS host
 - [x] CI: run all flake checks on main/v2 pushes and pull requests
 - [x] Generation revision/label + immutable `/etc/nixcfg` and `/etc/nixpkgs` breadcrumbs
@@ -68,7 +72,7 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
       — done on palantir; repeat the token step when bootstrapping mellon
 - [x] Bootstrap: create the `git` item in the Nix vault with text fields `name` and `email`
       (an activation step composes them into the `~/.config/git/user` include)
-- [ ] Declare secrets as env vars in `home/noghartt/features/cli/secrets-env.nix` as tools need them
+- [x] Declare secrets as env vars in `home/noghartt/features/cli/secrets-env.nix`, starting with `TELEPATIA_LITELLM_API_KEY`
 
 ## palantir — work macbook
 

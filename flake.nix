@@ -76,7 +76,7 @@
 
     # Terminal workspace manager for AI coding agents, built from its official flake.
     herdr = {
-      url = "github:herdrdev/herdr/v0.8.2";
+      url = "github:herdrdev/herdr/v0.9.1";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };

@@ -1,6 +1,9 @@
 { flake, pkgs, ... }:
 {
-  imports = [ ./reviewr.nix ];
+  imports = [
+    ./agent-tree.nix
+    ./reviewr.nix
+  ];
 
   programs.herdr = {
     enable = true;

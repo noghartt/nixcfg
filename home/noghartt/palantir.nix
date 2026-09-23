@@ -1,6 +1,10 @@
-# Palantir shares portable application configuration with Mellon; only the
-# Ghostty package differs because Darwin uses the prebuilt package.
-{ pkgs, ... }:
+# Palantir uses the prebuilt Ghostty package and launches Herdr directly.
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 {
   imports = [
     ./features/desktop/chrome.nix
@@ -14,9 +18,13 @@
     beancount
     cloudflared
     fava
+    todoist
   ];
 
-  programs.ghostty.package = pkgs.ghostty-bin;
+  programs.ghostty = {
+    package = pkgs.ghostty-bin;
+    settings.command = lib.getExe config.programs.herdr.package;
+  };
 
   # The tailscale-app cask links no CLI onto PATH; the bundled binary is the
   # supported way to get one (nixpkgs' tailscale ships a conflicting daemon

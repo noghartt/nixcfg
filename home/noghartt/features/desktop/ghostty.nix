@@ -6,7 +6,8 @@
     package = lib.mkDefault null;
     settings = {
       keybind = [
-        # tmux does not preserve Super reliably; send unambiguous CSI-u Alt chords instead.
+        # Explicit CSI-u chords survive multiplexers and macOS Option-key text input.
+        "alt+a=text:\\x1b[97;3u"
         "super+p=text:\\x1b[112;3u"
         "super+r=text:\\x1b[114;3u"
       ];

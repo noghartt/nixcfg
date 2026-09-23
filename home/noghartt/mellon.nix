@@ -2,6 +2,8 @@
 { lib, pkgs, ... }:
 {
   imports = [
+    ./features/cli/tmux.nix
+    ./features/pi/tmux.nix
     ./features/desktop
     ./features/desktop/hyprland.nix
     ./features/desktop/hyprsunset.nix

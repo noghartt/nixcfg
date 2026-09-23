@@ -8,6 +8,36 @@ whenever it feels like a checkpoint.
 
 ## [Unreleased]
 
+## [2026-09-23]
+
+### Added
+
+- **home/noghartt/herdr**: `Alt+A` opens a searchable agent tree popup grouped by
+  workspace and linked worktree, with live status, folding, and Enter to focus.
+- **home/noghartt/cli**: resolve `TELEPATIA_LITELLM_API_KEY` from its 1Password
+  reference into interactive zsh environments through opnix.
+- **palantir**: install the Todoist CLI alongside the desktop app.
+
+### Changed
+
+- **flake**: update Herdr from 0.8.2 to 0.9.1, including remote-machine CLI
+  control, terminal input fixes, and improved agent status detection.
+- **repo**: allow work directly in the checkout and ignore `.worktrees/`.
+- **flake**: record the pending Darwin and userspace input refresh, including
+  Home Manager's OpenCode service PATH fixes, Noctalia's screenshot annotation
+  and enterprise Wi-Fi support, and updated Firefox and VS Code extensions.
+- **home/noghartt/cli**: update Claude Code from 2.1.261 to 2.1.280 on
+  Apple Silicon and Linux, using Anthropic's native release checksums.
+- **palantir**: Ghostty launches Herdr directly. Tmux and Pi's tmux helpers are
+  now opt-in imports on Mellon instead of part of the portable baseline.
+- **home/noghartt/cli**: update Codex from 0.153.2 to 0.156.1 on Linux and
+  Apple Silicon, including the matching Code Mode companion binary.
+
+### Fixed
+
+- **mellon**: retain the committed `nixpkgs-hardware` pin so Linux 7.1 remains
+  available; the pending hardware-input refresh removed that kernel.
+
 ## [2026-09-08]
 
 ### Changed
