@@ -38,6 +38,9 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [x] cli tooling: eza, bat, fd, fff, fzf, lazygit, ngrok + browsers (firefox, chrome)
 - [x] Herdr through its native Home Manager module, with release-pinned packaging, settings, and the Nix-managed reviewr plugin
 - [x] Herdr `Alt+A` agent tree popup: workspace/worktree groups, search, live status, and focus by pane ID
+- [x] Herdr `Alt+P` PR tree plugin: all authored open PRs via `gh`, repository groups, search, browser opening, and URL copying
+- [x] PR tree status badges: independent review/CI colors, draft/null/unknown states, status search, and narrow/monochrome rendering
+- [x] Retain the PR tree bundle through its activation reference to avoid profile manifest collisions
 - [x] AI coding agents: Claude Code, release-pinned Codex, OpenCode, Pi + pi-claude-bridge
 - [x] Pi/tmux integration: CSI-u modified keys, checkout-rooted launcher, and cross-project transcript search popup
 - [x] Pi destructive-action guard with fail-closed confirmation for dangerous commands and out-of-project or sensitive writes

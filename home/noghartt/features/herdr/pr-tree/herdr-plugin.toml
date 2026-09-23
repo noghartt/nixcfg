@@ -1,0 +1,18 @@
+id = "nixcfg.pr-tree"
+name = "My Pull Requests"
+version = "0.1.0"
+min_herdr_version = "0.9.1"
+platforms = ["macos", "linux"]
+description = "A searchable repository tree of your open GitHub pull requests."
+
+[[panes]]
+id = "tree"
+title = "My Pull Requests"
+placement = "popup"
+command = ["sh", "-c", 'exec sh "$HERDR_PLUGIN_ROOT/launch.sh"']
+
+[[actions]]
+id = "open"
+title = "GitHub: my open pull requests"
+contexts = ["pane", "workspace"]
+command = ["sh", "-c", 'exec "${HERDR_BIN_PATH:-herdr}" plugin pane open --plugin nixcfg.pr-tree --entrypoint tree --width 85% --height 80%']

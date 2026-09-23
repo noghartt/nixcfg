@@ -8,6 +8,18 @@ whenever it feels like a checkpoint.
 
 ## [Unreleased]
 
+### Added
+
+- **home/herdr**: add the `Alt+P` pull-request tree plugin, grouped by repository with
+  `gh` pagination, search, refresh, Enter to open in the default browser, and `y` to copy URLs.
+- **home/herdr**: show independent review and CI status badges with terminal colors,
+  searchable text, persistent draft markers, and compact labels for narrow popups.
+
+### Fixed
+
+- **home/herdr**: keep the PR tree bundle out of the merged Home Manager profile
+  to prevent its `herdr-plugin.toml` from colliding with reviewr's manifest.
+
 ## [2026-09-23]
 
 ### Added
