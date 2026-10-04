@@ -42,7 +42,11 @@ in
       # activation step composes, no value ever enters the store.
       includes = [ { path = gitIdentityFile; } ];
 
-      ignores = [ "**/.claude/settings.local.json" ];
+      ignores = [
+        "**/.claude/settings.local.json"
+        # OmO's per-project scratch state (plans, thread tools, task results).
+        ".omo/"
+      ];
 
       settings = {
         init.defaultBranch = "main";

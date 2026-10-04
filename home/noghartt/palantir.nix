@@ -11,6 +11,7 @@
     ./features/desktop/firefox.nix
     ./features/desktop/ghostty.nix
     ./features/desktop/obsidian.nix
+    ./features/omo
     ./features/vscode
   ];
 
