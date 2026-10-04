@@ -7,6 +7,7 @@
 }:
 {
   imports = [
+    ./features/cua
     ./features/desktop/chrome.nix
     ./features/desktop/firefox.nix
     ./features/desktop/ghostty.nix
