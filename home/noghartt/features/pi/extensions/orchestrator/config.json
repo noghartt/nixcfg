@@ -1,0 +1,67 @@
+{
+  "leader": { "model": "anthropic/claude-opus-5-5", "thinking": "xhigh" },
+  "jev": {
+    "model": "jev-latest",
+    "baseUrl": "https://api.typesafe.ai",
+    "strategyConfidence": 0.5,
+    "modelConfidence": 0.5,
+    "acceptThreshold": 0.7,
+    "blockedThreshold": 0.5,
+    "borderlineFloor": 0.4
+  },
+  "fallbackWorker": "sonnet",
+  "maxAttempts": 3,
+  "maxWorkers": 6,
+  "maxFixRounds": 2,
+  "pool": [
+    {
+      "key": "gpt-luna",
+      "models": ["openai-codex/gpt-5.6-luna", "chatgpt-subscription/gpt-5.6-luna"],
+      "thinking": "medium",
+      "tier": 1,
+      "use": "Mechanical, fully specified edits and fast implementation of an already decided plan across a few files"
+    },
+    {
+      "key": "sonnet",
+      "models": ["anthropic/claude-sonnet-5-5"],
+      "thinking": "medium",
+      "tier": 2,
+      "use": "Ordinary feature work, bug fixes, tests, and refactors inside one subsystem"
+    },
+    {
+      "key": "gpt-terra",
+      "models": ["openai-codex/gpt-5.6-terra", "chatgpt-subscription/gpt-5.6-terra"],
+      "thinking": "medium",
+      "tier": 2,
+      "use": "Backend or algorithmic implementation and test-driven fixes inside one subsystem"
+    },
+    {
+      "key": "opus",
+      "models": ["anthropic/claude-opus-5-5"],
+      "thinking": "high",
+      "tier": 3,
+      "use": "Cross-cutting changes, subtle debugging, and careful code review"
+    },
+    {
+      "key": "gpt-sol",
+      "models": ["openai-codex/gpt-5.6-sol", "chatgpt-subscription/gpt-5.6-sol"],
+      "thinking": "high",
+      "tier": 3,
+      "use": "Hard logic, performance work, and deep debugging across modules"
+    },
+    {
+      "key": "fable",
+      "models": ["anthropic/claude-fable-5-1"],
+      "thinking": "high",
+      "tier": 4,
+      "use": "Architecture and design decisions with no existing pattern to copy"
+    },
+    {
+      "key": "gpt-astra",
+      "models": ["openai-codex/gpt-6-astra", "chatgpt-subscription/gpt-6-astra"],
+      "thinking": "high",
+      "tier": 4,
+      "use": "The hardest reasoning: invariants, concurrency, and correctness arguments"
+    }
+  ]
+}

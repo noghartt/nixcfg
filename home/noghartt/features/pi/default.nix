@@ -5,6 +5,7 @@
     ./extensions/command-palette.nix
     ./extensions/destructive-guard.nix
     ./extensions/herdr-fork.nix
+    ./extensions/orchestrator.nix
     ./extensions/pi-workflows.nix
     ./extensions/session-tree.nix
     ./extensions/statusline.nix

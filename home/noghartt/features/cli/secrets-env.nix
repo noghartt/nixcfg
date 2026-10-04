@@ -21,6 +21,11 @@ let
       # The key is stored in the item's notes field.
       reference = "op://Nix/TELEPATIA_LITELLM_API_KEY/notesPlain";
     }
+    {
+      # Jev (TypeSafe) decisions for the Pi/OmO orchestrator extension.
+      name = "TYPESAFE_API_KEY";
+      reference = "op://Nix/TYPESAFE_API_KEY/notesPlain";
+    }
   ];
 in
 {
