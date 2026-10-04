@@ -26,11 +26,13 @@ hosts/common/optional/       opt-in system modules shared by 2+ hosts (created w
 hosts/<host>/                host specs, routed to mkNixOSConfig or mkDarwinConfig
 home/<user>/user.nix         cross-platform user factory (functor + overrideAttrs)
 home/<user>/home.nix         portable HM baseline imported on every host
-home/<user>/features/cli/    shared shell/dev tools; agents/ holds Claude, Codex, OpenCode
+home/<user>/features/cli/    shared shell/dev tools; agents/ holds Claude, Codex, OpenCode, agent-path gh shim
 home/<user>/features/desktop/ portable desktop default + platform-specific modules
 home/<user>/features/herdr/  standalone Herdr feature: native HM settings + pinned package
 home/<user>/features/pi/     standalone Pi feature: settings + packaged extensions
+home/<user>/features/omo/    standalone OmO Native (`omo`) feature: own agent dir, model chains (palantir)
 home/<user>/features/vscode/ standalone VS Code feature: marketplace extensions + live settings.json
+home/<user>/features/cua/    standalone Cua Driver feature: pinned app + daemon, skill and docs MCP for harnesses (palantir)
 home/<user>/<host>.nix       optional per-host HM overrides
 TASK.md                      living checklist of planned work — keep it updated
 INSTALL.md                   destructive install + LUKS/Secure Boot runbook
@@ -57,7 +59,8 @@ DARWIN.md                    Darwin bootstrap and activation runbook
 - Hardware-specific modules live in the host dir (e.g. mellon's `nvidia.nix`); promote to
   `hosts/common/optional/` only when a second host needs them.
 - Package overrides shared by Linux and Darwin live in `overlays/` and are applied by both
-  common host modules.
+  common host modules. `overlays/pi.nix` keeps Pi ahead of the lock and also builds
+  `pi-durable`, the experimental durable agent upstream runs only from source.
 - HM features are import-based (`home/<user>/features/<area>/`), not enable-flag-based.
   Portable baseline areas are imported by `home.nix`; platform features are composed by the
   user host entrypoint. Do not nest a substantial feature under `cli/` merely because its
@@ -78,12 +81,135 @@ DARWIN.md                    Darwin bootstrap and activation runbook
   directly from Ghostty. Herdr's agent tree is a Nix-packaged native popup command
   under `features/herdr/`, bound to `Alt+A`; it uses live session metadata and pane IDs.
   The `pr-tree/` plugin provides `Alt+P` for authored open GitHub PRs grouped by repo,
-  using the active `gh` account, with browser and clipboard actions.
+  using the active `gh` account, with browser and clipboard actions. The `lazygit/` plugin
+  binds `Alt+R` to a lazygit popup in the focused pane's cwd, so it follows worktrees. The
+  `close-worktrees/` plugin binds `Prefix Alt+D` (beside `close_workspace` on `Prefix Shift+D`)
+  to a confirmation popup that closes every open linked-worktree workspace of the focused
+  repo, either keeping the checkouts or removing them with `herdr worktree remove`, which
+  refuses dirty ones; the primary workspace is never touched. Because Herdr owns
+  `Alt+P`, the Pi/OmO command palette uses `Ctrl+P` (model cycling moves to `Shift+Ctrl+P`)
+  the session tree view uses `Ctrl+T` (the thinking-block toggle moves into the palette),
+  and `Ctrl+?` lists keybindings. In OmO, `ui-prompt` makes `Ctrl+X` a leader: `L` resume,
+  `A` cycle the primary agent (as does `Tab` on an empty prompt), `Y` OmO's original copy
+  action. Ghostty sends left
+  Option as Alt so Alt chords reach Herdr and Pi, and forwards `Ctrl+?` as CSI-u.
 - AI harnesses use their native Home Manager modules. Claude Code, Codex, and OpenCode remain
   small per-harness modules under `features/cli/agents/`; Pi is a standalone feature because it
   owns model settings and Nix-packaged extensions. Claude's global `settings.json` is a writable
   runtime file: activation refreshes Nix-owned top-level keys while preserving tool-injected keys
-  such as hooks.
+  such as hooks. Cua Driver gives Pi, Claude Code, and Codex computer use: its notarized
+  `CuaDriver.app` is pinned in Nix but copied to `/Applications` on activation, because macOS
+  permission grants, LaunchServices, and the CLI's relaunch check key on that path. Its skill is
+  pinned to the same release tag; OmO filters it out because its native `computer` tool covers
+  the same ground. Telemetry and the self-updater are off; bump `features/cua/package.nix`.
+  Every harness binary (Pi, `pi-durable`, OmO, Claude Code, Codex) is wrapped by
+  `cli/agents/agent-path.nix` (`agentPath.wrap`, or `agentPath.prependPath` in an existing
+  wrapper script) so only its process tree sees `~/.agents/bin` first on PATH. The `gh` shim
+  there refuses posting GitHub comments, reviews, and comment-bearing close/reopen (subcommands,
+  REST writes, GraphQL mutations); bodies and reads pass through to the real `gh`.
+  OmO keeps its own agent dir (`~/.omo/agent`) but follows Pi's packaged
+  extensions (minus `pi-workflows`, whose tool collides with `omo.js`), skills, and keybindings,
+  plus OmO-only packages auto-discovered from `features/omo/extensions/<name>/` (any subdirectory
+  with a `package.json`; used for extensions that hook OmO internals or OmO-only features);
+  its writable `settings.json` gets the same baseline merge, including Pi's quiet startup,
+  condensed changelog, and resume-hint exit output, plus `tips = false` and Nix-owned model
+  defaults: Opus 5.5 at `high`, a catalog of Opus 5.5, Sonnet 5.5, Fable 5.1, and the ChatGPT
+  models. Claude Haiku 4.5 is not used anywhere (catalogs, chains, orchestrator pool). `~/.omo/omo.jsonc` is a read-only
+  store link holding cross-provider model chains, with OmO's config migrations pre-recorded.
+- The Pi `orchestrator` extension (also loaded by OmO) runs a leader + worker mesh: `orch "<goal>"`
+  or `/orchestrate <goal>` sets the leader model (default Opus 5.5 at `xhigh`, `ORCH_LEADER_MODEL`
+  overrides), and Jev (TypeSafe, `TYPESAFE_API_KEY`) decides control flow — strategy
+  (solo/fan-out/mesh), each worker's model from the pool in `orchestrator/config.json`, and
+  accept/retry/escalate gating. Acceptance is a list of criteria that Jev judges one by one against
+  evidence the orchestrator collects itself (files changed since spawn, diff stat, commits, the
+  worker's tool calls), not the report alone. A clear miss retries with the failing criteria, on
+  the same model first and a stronger one on a repeat miss. A borderline result after a retry,
+  or a blocked worker, becomes `needs_leader`, and its dependents wait for the leader's
+  `orch_verdict` (which can also overrule a Jev rejection and revive skipped dependents).
+  The leader plans each goal as a dependency graph: `orch_spawn`
+  nodes take `after` (start once those are accepted; dependents of a failed node are skipped),
+  `workdir` (run in an upstream node's worktree), and `kind: "review"` with `fixes`, where a
+  `VERDICT: FAIL` reopens the reviewed node with the findings for up to `maxFixRounds` rounds;
+  the reviewer's re-review, not Jev, judges a fix round.
+  Pending nodes queue behind the `maxWorkers` concurrency limit.
+  Inside Herdr each worker is a visible, interactive harness in its worktree workspace's root
+  pane (`herdr worktree create`, under `~/.herdr/worktrees/<repo>/`, grouped under the repo's
+  main workspace and branched from the leader's commit even when the leader runs in a linked
+  worktree, since Herdr only creates worktrees from the main checkout); `workdir` nodes split the
+  upstream worker's pane and shared-checkout nodes split the leader's, and dialogs appear in the
+  worker's own pane. Outside Herdr, workers are hidden RPC children in `git worktree add`
+  checkouts at the same path, and their dialogs are relayed to the leader's UI. Either way the
+  leader drives workers through per-worker JSONL files in the run directory (`ctl/` for prompts,
+  model switches, and stop; `events/` for ready, mesh sends, settled reports, and exit), and
+  workers deliver their own mesh mail, into `mesh_wait` or as a steer. Workers never spawn or
+  redirect each other, and turns a user starts in a finished worker's pane are not gated.
+  Without the key it runs ungated. It publishes worker state on
+  `pi.events` (`orchestrator:state`) for the statusline sidebar. Every message the
+  orchestrator relays into a session (tasks, leader commands, mesh mail, leader notices) is
+  prefixed `[orchestrator] ` at one delivery point, and worker and leader system prompts vouch
+  for that prefix so mid-task steers are not discounted as injected text. `/agent
+  [omo|orchestrator]` (or `--agent`, or the `agents:cycle` event) switches the session's primary
+  agent: orchestrator mode applies the leader model, tools, and planning prompt so each typed
+  request becomes a run's goal, and switching back restores the saved model; the choice persists
+  as an `agents-active` session entry and is announced on `agents:active`. Workers
+  (`ORCH_ROLE=worker`) always stay `omo`.
+- The Pi `statusline` extension (also loaded by OmO) replaces the footer, filtering OmO's
+  `"  omo-native"` badge status, and adds an OpenCode-style right sidebar column (title,
+  context, session tokens with a tokens-per-turn sparkline, Claude/ChatGPT limits, agent tree,
+  files edited this session with `git diff HEAD` stats, git branch/upstream/status, harness
+  version). Git runs via `pi.exec` off the render path. Limits (`statusline/limits.ts`): Claude
+  (5h, 7d, per-model weekly, extra-usage spend from `api/oauth/usage`, accounts with identical
+  tokens deduped and pooled) and ChatGPT (`chatgpt.com/backend-api/wham/usage`). Tokens are read
+  read-only from Pi's and OmO's `auth.json` and Codex CLI's `~/.codex/auth.json`, never
+  refreshed. Every process shares one secret-free cache in `$TMPDIR` behind an exclusive lock
+  file, so only one TUI process fetches per 5 minutes (after-turn refreshes pass the same gate),
+  and failures wait out the TTL. Bars carry a pace tick (even-burn position) and turn amber when
+  ahead of it; a window burning at 1.1x the even rate or more adds "running hot"/"at risk" and
+  the projected time it hits 100% (bands from fersilva16's config). A Todo section mirrors
+  OmO's todo list (latest `senpi.todo-state` entry or `todo` result on the branch): phase
+  progress, the active phase's tasks, and OmO's `todo_owed_reminder` state (`reminded n/2`,
+  `stopped · N open`, cleared on user input). The statusline emits `statusline:sidebar`
+  (`{ shown }`) on `pi.events`, and OmO's `ui-chrome` blanks OmO's own `todo-sidebar`
+  widget above the prompt while the column is on screen. The column wraps the fullscreen TUI's layout root
+  in a pi-tui `HStack`, so it only exists with `tuiMode = "fullscreen"`, which Pi's settings
+  set and OmO's baseline inherits; regular mode and narrow terminals fall back to a full footer.
+  Subagents come from `task` tool results and the `omo-senpi:wake` completion entries in the
+  session branch; OmO exposes no task events.
+- The Pi `destructive-guard` (also loaded by OmO) approves in layers: self-harm is blocked
+  outright, temp-dir deletions, session-created files, and session-started processes pass
+  deterministically, system-level categories always ask, and the rest goes to Jev with the
+  session's user messages and recent tool calls; unresolved calls ask, or are refused when no UI.
+  Subagents have no UI, so their writes to agent configuration (anything under `~/.omo`,
+  including OmO's isolated task clones in `~/.omo/wt`, and extension sources) are refused: have
+  them stage edits under `/tmp` and copy the result in from the parent session.
+- OmO's opencode-style UI is two OmO-only extensions that leave the statusline's footer and
+  sidebar alone. `ui-prompt` replaces the editor (public `CustomEditor`) with a card: accent bar,
+  filled background, an `agent · model provider · thinking` info line that also carries the
+  working indicator, and ask-user questions drawn inside the card (via the `ask-user:*` bus). It
+  also sets the terminal title (session name or first prompt, cwd, busy `●`), appends a
+  TUI-only `▣ agent · model · duration` turn footer entry, and switches to a blinking bar
+  hardware cursor for the session. Engine internals it needs (InteractiveMode's editor
+  container for questions, paste state, `Editor.prototype.render`) are confined to its
+  `host.ts`, guarded and `Symbol.for`-idempotent across `/reload`; recheck them on OmO bumps.
+  `ui-chrome` redraws everything else, all through internals listed in its `core/host.ts`
+  header (the public route cannot reach MCP/plugin tool rows or OmO's built-in screens):
+  every screen OmO puts in the editor's place (extension dialogs, model/thinking pickers,
+  `/tree`, `/resume`, `/settings`, `/login`, ...), `/help`, `/history`, `/hotkeys`, `/session`,
+  `/changelog`, and multi-line notifies become centred modals over a faded backdrop while OmO
+  keeps their keys; tool rows collapse to one header plus three output lines until Ctrl+O; user
+  messages, thinking, `!cmd`, summaries, code blocks, notices, and selected widgets become
+  cards. Components that must stay inline set `Symbol.for("omo-ui-chrome.inline")` (ui-prompt's
+  question card does). ui-chrome re-wraps the editor container's `addChild` from OmO's original
+  on `/reload`, so ui-prompt re-installs its own hook before each question.
+- The Pi `herdr-fork` extension (also loaded by OmO): inside Herdr, `/fork` writes the fork as a
+  new session file (parent = the original, which stays untouched) and opens it in a new focused
+  Herdr pane split from the current one, running the same harness with the forked message
+  prefilled; `/clone` and non-Herdr sessions keep native behaviour.
+- The OmO-only `findings-cache` extension saves finished `explore`/`librarian` results (foreground
+  `task` results and background wake entries) to `<git-common-dir>/omo-findings/`, shared by every
+  worktree of a repo, and injects a once-per-session "Cached research" index (newest 30, framed
+  as leads to re-verify) into the system prompt. Reading a finding refreshes its mtime;
+  findings untouched for 14 days are pruned.
 - The writable checkout is conventionally `~/www/nixcfg`, exposed as `$NIXCFG`; the `nixcfg`
   shell alias changes to it. Store paths remain the source of evaluated configuration.
 - Hosts declare their own platform via `nixpkgs.hostPlatform` (mellon: in

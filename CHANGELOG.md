@@ -10,16 +10,168 @@ whenever it feels like a checkpoint.
 
 ### Added
 
+- **home/noghartt/pi**: the statusline sidebar gains a Todo section (phase progress, the
+  active phase's tasks, and OmO's todo reminder state, replacing the "todos stalled" line)
+  and pace words under hot limit bars ("running hot"/"at risk" with the projected time the
+  window runs out), adapted from fersilva16/nix-config. While the sidebar is shown, OmO's
+  todo widget above the prompt is hidden.
+- **home/noghartt/cli**: AI harnesses (Pi, `pi-durable`, OmO, Claude Code, Codex) run with
+  `~/.agents/bin` first on PATH, where a `gh` shim refuses posting GitHub comments, reviews,
+  and comment-bearing close/reopen through subcommands, REST writes, or GraphQL mutations,
+  so the never-comment-on-my-behalf rule is enforced instead of only stated. The interactive
+  shell keeps the real `gh`.
+- **home/noghartt/pi**: `/agent [omo|orchestrator]` (also `--agent` and the `agents:cycle`
+  event) switches a session into orchestrator leader mode and back, restoring the previous model
+  and thinking level; the choice survives `/resume`. Every orchestrator-relayed message now
+  carries the `[orchestrator]` prefix consistently, and worker and leader system prompts say
+  it comes from the user, so steers that arrive mid-task are not ignored as injected text.
+- **home/noghartt/omo**: `ui-chrome` extension: OmO's dialogs, pickers, session navigation,
+  settings, help/hotkeys/session panels, and multi-line notifications open as centred modals over
+  a faded backdrop; tool calls collapse to compact one-line rows (Ctrl+O expands); user
+  messages, thinking, shell runs, summaries, code blocks, notices, and subagent/`/btw` widgets
+  are drawn as cards. It hooks OmO internals and falls back to stock rendering if one moves.
+- **home/noghartt/omo**: `ui-prompt` extension: an opencode-style prompt card with an
+  `agent · model provider · thinking` line and the working status, ask-user questions drawn
+  inside the prompt (no typing while one waits; esc returns the prompt), `Ctrl+X` chords (`L`
+  resume, `A` cycle agent, `Y` copy) and `Tab` on an empty prompt to cycle between OmO and
+  orchestrator mode, a terminal title with the session name and a busy dot, a per-turn
+  `▣ agent · model · duration` footer, and a blinking bar cursor.
+- **home/noghartt/pi**: `herdr-fork` extension for Pi and OmO: inside Herdr, `/fork` opens the
+  fork in a new focused pane split from the current one, with the forked message prefilled, while
+  the original pane stays on its session.
+- **home/noghartt/omo**: `findings-cache` extension: explore/librarian subagent results are saved
+  in the repository's git common dir, so every worktree (including orchestrator workers) sees
+  prior research as a "Cached research" index of leads instead of re-exploring; unused findings
+  expire after 14 days.
+- **home/noghartt/omo**: OmO-only extension packages are discovered from
+  `features/omo/extensions/<name>/` and appended to the packages OmO inherits from Pi.
+
+- **home/noghartt/pi**: Jev gates orchestrator workers per acceptance criterion against
+  evidence the orchestrator gathers (changed files, diff stat, commits, and the worker's tool
+  calls) instead of one holistic score on the report text. Retries name the failing criteria and
+  keep the same model until a repeat miss; borderline results go to the leader as `needs_leader`
+  instead of being rejected, and the new `orch_verdict` tool lets the leader accept or reject a
+  node over Jev. Replayed against two earlier false rejections, both now pass every criterion,
+  while a report contradicted by its evidence still fails.
+- **home/noghartt/pi**: inside Herdr, orchestrator workers run as visible, interactive OmO/Pi
+  sessions in their worktree workspace's pane (review nodes split the reviewed node's pane), so
+  each one can be watched and typed into. The leader drives workers through per-run control and
+  event files instead of an RPC stream; outside Herdr they remain hidden RPC children.
+- **home/noghartt/pi**: the orchestrator leader runs Opus 5.5 at `xhigh` and plans each goal
+  as a dependency graph: nodes start when their `after` dependencies are accepted, can build on
+  an upstream node's worktree, and review nodes send `VERDICT: FAIL` findings back to the
+  node they review for bounded fix rounds, which the reviewer (not Jev) re-judges. Nodes
+  beyond the concurrency limit queue instead of being refused.
+- **home/omo**: route the `explore` and `librarian` agents to Claude Sonnet 5.5 (low
+  reasoning) with GPT-6 Luna Fast as fallback; the builtin chains fell through to
+  Claude Haiku 4.5 for our logins.
+- **home/noghartt/herdr**: `Alt+R` opens lazygit in a Herdr popup at the focused pane's
+  cwd, so it lands in the worktree being worked on.
+- **home/noghartt/herdr**: `Prefix Alt+D` closes every open worktree workspace of the
+  focused repository after a confirmation popup, keeping the checkouts or removing them
+  (dirty checkouts are kept); the primary workspace stays open.
+- **home/noghartt/pi**: the statusline sidebar shows a tokens-per-turn sparkline under
+  Session and a "Claude plan" section with meters for the 5-hour, weekly, and per-model weekly
+  limits (with time to reset) plus extra-usage spend, read from the Claude subscription usage
+  endpoint every 5 minutes and after agent turns.
+- **home/noghartt/pi**: `statusline` extension for Pi and OmO: an OpenCode-style fixed right
+  sidebar column with the session title, context usage and cost, session token totals, turns
+  and duration, an agent tree of the main agent, its `task` subagents, and orchestrator
+  workers, the files edited this session with their `+/-` diff against `HEAD`, and git state
+  (branch, upstream, ahead/behind, staged/modified/untracked counts) plus harness version;
+  OmO's "OmO Native" footer badge is dropped. Pi and OmO now default to the fullscreen TUI,
+  which the column needs. Below 120 columns, in regular mode, or toggled off with
+  `Ctrl+Shift+B` / `/sidebar`, the footer shows the same information on one line.
+- **home/noghartt/cua**: Cua Driver 0.33.1 on palantir for background computer use from Pi,
+  Claude Code, and Codex: the notarized app is pinned and copied to `/Applications`, a launchd
+  agent keeps its daemon running, and the upstream `cua-driver` skill is pinned to the same tag.
+  Claude Code and Codex also get Cua's read-only docs MCP. OmO skips the skill in favor of its
+  native `computer` tool; Cua telemetry and self-updates are disabled.
+- **home/noghartt/pi**: `orchestrator` extension and `orch` launcher: a leader (Opus 5.5
+  by default) spawns worker agents that coordinate through a message hub and shared board,
+  while Jev picks the execution strategy and each worker's model (Anthropic or GPT) and gates
+  results, retrying on a stronger model when acceptance criteria are not met. Worker worktrees
+  are Herdr-managed under `~/.herdr/worktrees/<repo>/` instead of next to the repo. OmO loads it too;
+  `TYPESAFE_API_KEY` is resolved from 1Password at shell startup.
+- **home/noghartt/pi**: `pi-durable`, the experimental Pi Durable coding agent, packaged
+  from the same Pi source and run from TypeScript on Node 24; it shares Pi's auth and settings
+  and keeps sessions under `~/.pi/agent/experimental/durable-sessions/`.
+- **home/omo**: add OmO Native (`omo`) on palantir as a pinned release binary, with its
+  agent dir pinned to `~/.omo/agent` so it stays isolated from the Pi config.
+- **home/omo**: generate `~/.omo/omo.jsonc` with agent and category model chains that end
+  in a same-tier model from the other provider, so OmO's runtime fallback survives a
+  provider-wide outage.
 - **palantir**: install `fswatch` for filesystem change monitoring.
 - **home/herdr**: add the `Alt+P` pull-request tree plugin, grouped by repository with
   `gh` pagination, search, refresh, Enter to open in the default browser, and `y` to copy URLs.
 - **home/herdr**: show independent review and CI status badges with terminal colors,
   searchable text, persistent draft markers, and compact labels for narrow popups.
 
+### Changed
+
+- **home/noghartt/omo**: OmO starts on Claude Opus 5.5 at high thinking, with Sonnet 5.5 as
+  the lighter Claude option. Claude Haiku 4.5 is gone from OmO's and Pi's model lists, from
+  OmO's `quick` chain (now GPT-6 Luna Fast, then Sonnet 5.5), and from the orchestrator's
+  worker pool.
+- **home/noghartt/pi**: the statusline's "Claude plan" section becomes "Limits": one shared,
+  lock-guarded cache in `$TMPDIR` so all Pi/OmO processes make a single usage fetch per 5
+  minutes (many orchestrator panes polled separately and drew HTTP 429s), ChatGPT limits
+  alongside Claude, pooled Claude accounts, read-only token reads that never refresh, and a pace
+  tick per bar that turns it amber when usage outruns an even burn. OmO's capped todo reminder
+  shows as "todos stalled" under Agents.
+- **home/noghartt/pi**: Pi and OmO start quietly (no startup header or resource listing),
+  condense the post-update changelog, and restore the previous screen on exit with only the
+  resume hint; OmO's rotating tips are off.
+- **home/noghartt/cli**: `.omo/` (OmO's per-project scratch state) is git-ignored globally.
+- **home/noghartt/pi**: the destructive guard approves from session context instead of
+  prompting on every match, after Claude Code's auto-mode security monitor. It hard-blocks
+  self-harm (stopping the agent or its parents, touching `~/.pi`, `~/.omo`, `~/.claude`, or
+  credentials, wiping `$HOME`), auto-allows deletions confined to temp directories or files the
+  session created, kills of processes the session started, and overwrites Git can restore, and
+  asks Jev whether the user named the step or it only touches disposable state before asking you.
+  Orchestrator workers' approval dialogs now reach the leader's UI instead of hanging.
+- **home/omo**: bump OmO to 5.1.13. `deep-low` now leads with `gpt-6.1-sol` and `deep-high`
+  runs at `high`, following the new builtin chains; the new `opencode-routing-notice`
+  migration is pre-recorded so OmO does not try to rewrite the read-only `omo.jsonc`.
+- **overlays**: Pi moves to 1.0.1 through `overlays/pi.nix`, ahead of nixpkgs (0.85.1 on
+  Darwin, 1.0.0 on master); drop the override once the lock catches up.
+- **home/noghartt/pi**: the session tree handles Pi 1.0's `context_edit` entries and
+  previews entry types it does not know yet instead of rendering nothing.
+- **home/noghartt/pi**: the command palette opens with `Ctrl+P` (Herdr owns `Alt+P`) and
+  lists built-in commands such as `/tree`, `/model`, and `/resume` beside extension commands,
+  prompts, and skills, OpenCode-style. Model cycling moves to `Shift+Ctrl+P`.
+- **home/noghartt/pi**: `Ctrl+T` opens the session tree view. Pi's thinking-block toggle
+  leaves `Ctrl+T` and becomes a `toggle-thinking` action in the command palette.
+- **home/noghartt/desktop**: Ghostty sends left Option as Alt (`macos-option-as-alt = left`),
+  so Pi/OmO Alt bindings such as `Alt+E`, `Alt+B`/`Alt+F`, and `Alt+D` work instead of
+  typing macOS characters; the per-key `Alt+A`/`Alt+P`/`Alt+T` CSI-u workarounds are gone.
+- **home/noghartt/pi**: `Ctrl+?` opens a searchable keybindings modal grouped by action;
+  Ghostty sends it as CSI-u because legacy terminals encode it as Backspace.
+- **home/noghartt/pi**: the command palette leaves out skills (still reachable through
+  `/skill:` autocomplete), cutting OmO's list from 98 to 71 entries.
+- **home/herdr**: stop resuming agent conversations after a Herdr server restart
+  (`session.resume_agents_on_restore = false`).
+
 ### Fixed
 
+- **home/noghartt/pi**: inside Herdr, an orchestrator leader running in a linked worktree
+  workspace can spawn workers: their worktrees are created from the repo's main checkout
+  (Herdr rejected the linked one) and branch from the leader's commit, not the main
+  checkout's HEAD.
+- **home/omo**: OmO's `settings.json` packages and skills, and its `keybindings.json`, now
+  follow Pi's on every activation; they had been frozen as store paths when OmO adopted
+  Pi's config, which would break once those generations were garbage-collected.
 - **home/herdr**: keep the PR tree bundle out of the merged Home Manager profile
   to prevent its `herdr-plugin.toml` from colliding with reviewr's manifest.
+
+### Removed
+
+- **home/noghartt/herdr**: drop the reviewr plugin in favor of the lazygit popup on
+  `Alt+R`; activation unlinks its stale registration.
+- **home/noghartt/pi**: drop the `pi-claude-bridge` package and its config; Pi's
+  Claude models now use the native `anthropic` provider (`/login anthropic`). Under
+  OmO the bridge's Claude Code query is aborted at every tool call, so sessions that
+  inherited it failed with "Model returned an empty response twice".
 
 ## [2026-09-23]
 

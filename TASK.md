@@ -36,18 +36,40 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [x] Terminal: Ghostty launches Herdr on Palantir and persistent tmux on Mellon, with zsh (autosuggestion, syntax-highlighting)
 - [x] tmux cross-session/window scrollback search with an fzf popup and copy-mode jump
 - [x] cli tooling: eza, bat, fd, fff, fzf, lazygit, ngrok + browsers (firefox, chrome)
-- [x] Herdr through its native Home Manager module, with release-pinned packaging, settings, and the Nix-managed reviewr plugin
+- [x] Herdr through its native Home Manager module, with release-pinned packaging, settings, and the Nix-managed lazygit popup plugin (`Alt+R`)
 - [x] Herdr `Alt+A` agent tree popup: workspace/worktree groups, search, live status, and focus by pane ID
 - [x] Herdr `Alt+P` PR tree plugin: all authored open PRs via `gh`, repository groups, search, browser opening, and URL copying
 - [x] PR tree status badges: independent review/CI colors, draft/null/unknown states, status search, and narrow/monochrome rendering
 - [x] Retain the PR tree bundle through its activation reference to avoid profile manifest collisions
-- [x] AI coding agents: Claude Code, release-pinned Codex, OpenCode, Pi + pi-claude-bridge
+- [x] AI coding agents: Claude Code, release-pinned Codex, OpenCode, Pi
+- [x] Pi 1.0.1 overlay ahead of nixpkgs, plus the experimental `pi-durable` agent
 - [x] Pi/tmux integration: CSI-u modified keys, checkout-rooted launcher, and cross-project transcript search popup
 - [x] Pi destructive-action guard with fail-closed confirmation for dangerous commands and out-of-project or sensitive writes
+- [x] Context-aware destructive guard: self-harm hard blocks, deterministic temp-file and session-process approvals, Jev-judged gray zone, worker dialogs relayed to the orchestrator leader
 - [x] Pi worktree agents for isolated parallel delegation, with an explicit current-checkout opt-out
 - [x] Pi Workflows extension with its bundled workflow-authoring and automation skills
+- [x] Pi/OmO orchestrator: Opus 5.5 (xhigh) leader + worker mesh, Jev-decided strategy, worker models, and result gating (`orch`)
+- [x] Orchestrator dependency graphs: `after`/`workdir` nodes and review nodes with bounded fix loops
+- [ ] Store the TypeSafe key as `op://Nix/TYPESAFE_API_KEY/notesPlain` and run a first real-Jev orchestration
 - [x] Pi `Cmd+P` command palette with Ghostty/tmux forwarding, grouped search, and extension commands hidden from slash autocomplete
 - [x] Pi command-palette tree view with a centered ASCII undo tree and responsive node preview pane
+- [x] `Ctrl+P` command palette listing built-in commands too, and `Alt+T` for the session tree view
+- [x] `Ctrl+?` keybindings modal; skills left out of the command palette
+- [x] OmO settings follow Pi's extensions, skills, and keybindings instead of a frozen adopted copy
+- [x] OmO `omo.jsonc` model chains with same-tier cross-provider fallbacks
+- [x] OmO 5.1.13 with chains re-derived from its builtin `omo-task.js`
+- [x] Pi/OmO statusline: badge-free footer and fixed right sidebar column (fullscreen TUI) with title, context, subagents, orchestrator workers, a tokens-per-turn sparkline, Claude plan limit meters with pace words and run-out time, and a Todo section mirroring OmO's todo list
+- [x] Cua Driver 0.33.1 on Palantir: pinned app + launchd daemon, skill for Pi/Claude/Codex (not OmO), Cua docs MCP
+- [x] Agent PATH `gh` shim refusing GitHub comments/reviews for every harness (Pi, pi-durable, OmO, Claude Code, Codex)
+- [x] Global `.omo/` git ignore; quiet Pi/OmO startup, condensed changelog, resume-hint exit, OmO tips off
+- [x] OmO-only extension packages auto-discovered from `features/omo/extensions/`
+- [x] Orchestrator: consistent `[orchestrator]` relay prefix + system-prompt note; `/agent` switch between omo and leader mode
+- [x] OmO `ui-prompt`: prompt card + info line, in-prompt questions, `Ctrl+X` chords, `Tab` agent cycle, title with busy dot, turn footer, bar cursor
+- [x] OmO `ui-chrome`: modal dialogs/pickers/panels over a faded backdrop, compact tool rows, transcript/code/notice/widget cards
+- [ ] Recheck `ui-prompt`/`ui-chrome` internal hooks (their `host.ts` headers) on every OmO version bump
+- [x] Herdr `/fork` into a new pane (Pi + OmO) and OmO findings cache shared across worktrees
+- [x] Statusline limits: shared cross-process cache + lock, ChatGPT group, pooled Claude accounts, pace ticks, todos-stalled marker
+- [ ] Cua Driver first run: grant Accessibility and Screen Recording (`cua-driver permissions grant`), then check `cua-driver doctor`
 - [x] Disable Claude's Bash/subagent sandbox after it proved unreliable with automatic permission mode
 - [x] Writable Claude runtime settings with Nix-owned baseline keys and preserved injected hooks
 - [x] Desktop shell: Noctalia + rofi launcher + Polkit agent + lock/idle behavior + Hyprsunset night light
