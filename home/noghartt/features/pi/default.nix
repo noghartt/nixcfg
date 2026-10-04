@@ -1,3 +1,4 @@
+{ pkgs, agentPath, ... }:
 {
   imports = [
     ./settings.nix
@@ -9,6 +10,11 @@
     ./extensions/worktree-agents.nix
   ];
 
-  programs.pi-coding-agent.enable = true;
+  programs.pi-coding-agent = {
+    enable = true;
+    package = agentPath.wrap pkgs.pi-coding-agent;
+  };
+  # Experimental durable agent; shares Pi's auth, settings, and keybindings.
+  home.packages = [ (agentPath.wrap pkgs.pi-durable) ];
   home.sessionVariables.PI_OFFLINE = true;
 }

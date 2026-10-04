@@ -17,7 +17,10 @@
   };
 
   nixpkgs.config.allowUnfree = true;
-  nixpkgs.overlays = [ flake.outputs.overlays.codex ];
+  nixpkgs.overlays = [
+    flake.outputs.overlays.codex
+    flake.outputs.overlays.pi
+  ];
 
   home-manager = {
     useGlobalPkgs = true;
