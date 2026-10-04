@@ -2,8 +2,8 @@
 {
   imports = [
     ./agent-tree.nix
+    ./lazygit
     ./pr-tree
-    ./reviewr.nix
   ];
 
   programs.herdr = {
@@ -15,13 +15,6 @@
         auto_switch = false;
       };
       ui.agent_panel_sort = "priority";
-      keys.command = [
-        {
-          key = "alt+r";
-          type = "plugin_action";
-          command = "persiyanov.reviewr.toggle";
-        }
-      ];
     };
   };
 

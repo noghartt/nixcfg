@@ -1,0 +1,18 @@
+id = "nixcfg.lazygit"
+name = "Lazygit"
+version = "0.1.0"
+min_herdr_version = "0.9.1"
+platforms = ["macos", "linux"]
+description = "Lazygit for the focused pane's repository or worktree, in a popup."
+
+[[panes]]
+id = "lazygit"
+title = "Lazygit"
+placement = "popup"
+command = ["sh", "-c", 'exec sh "$HERDR_PLUGIN_ROOT/launch.sh"']
+
+[[actions]]
+id = "open"
+title = "Lazygit: focused pane's repository"
+contexts = ["pane", "workspace"]
+command = ["sh", "-c", 'exec "${HERDR_BIN_PATH:-herdr}" plugin pane open --plugin nixcfg.lazygit --entrypoint lazygit --width 90% --height 90%']
