@@ -1,11 +1,30 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { lstat, realpath } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { judge, judgeAvailable } from "./judge.ts";
+import {
+	buildFacts,
+	canonicalize,
+	deletionVerdict,
+	type Exec,
+	exists,
+	type Facts,
+	isProtected,
+	isWithin,
+	resolvePath,
+	selfHarm,
+	terminationVerdict,
+	type Verdict,
+} from "./policy.ts";
+import { invocationOf, operands, type ParsedCommand, parseCommand } from "./shell.ts";
 
 interface DestructivePattern {
 	label: string;
 	pattern: RegExp;
 }
+
+const DELETION = "file or directory deletion";
+const TERMINATION = "process termination";
 
 const destructivePatterns: DestructivePattern[] = [
 	{
@@ -13,12 +32,12 @@ const destructivePatterns: DestructivePattern[] = [
 		pattern: /(^|[;&|()\n]\s*)sudo\b/i,
 	},
 	{
-		label: "file or directory deletion",
-		pattern: /(^|[;&|()\n]\s*)(?:command\s+)?(?:rm|rmdir|unlink|shred)\b/i,
+		label: DELETION,
+		pattern: /(^|[;&|()\n]\s*)(?:command\s+)?(?:rm|rmdir|unlink|shred)\b|\bxargs\b[^\n;&|]*\b(?:rm|unlink|shred)\b/i,
 	},
 	{
 		label: "find deletion",
-		pattern: /\bfind\b[^\n;&|]*\s-delete\b/i,
+		pattern: /\bfind\b[^\n;&|]*\s(?:-delete\b|-exec(?:dir)?\s+(?:rm|unlink|shred)\b)/i,
 	},
 	{
 		label: "filesystem or block-device overwrite",
@@ -46,8 +65,8 @@ const destructivePatterns: DestructivePattern[] = [
 		pattern: /\bgit\s+push\b[^\n;&|]*(?:--force(?:-with-lease)?\b|\s--delete\b|\s:\S+)/i,
 	},
 	{
-		label: "process termination",
-		pattern: /(^|[;&|()\n]\s*)(?:kill|killall|pkill)\b/i,
+		label: TERMINATION,
+		pattern: /(^|[;&|()\n]\s*)(?:kill|killall|pkill)\b|\bxargs\b[^\n;&|]*\bkill\b/i,
 	},
 	{
 		label: "system shutdown or restart",
@@ -55,8 +74,7 @@ const destructivePatterns: DestructivePattern[] = [
 	},
 	{
 		label: "service removal or shutdown",
-		pattern:
-			/\b(?:systemctl\s+(?:disable|mask|stop)|launchctl\s+(?:bootout|remove|unload))\b/i,
+		pattern: /\b(?:systemctl\s+(?:disable|mask|stop)|launchctl\s+(?:bootout|remove|unload))\b/i,
 	},
 	{
 		label: "container deletion or pruning",
@@ -88,6 +106,19 @@ const destructivePatterns: DestructivePattern[] = [
 	},
 ];
 
+// Shared, remote, or irreversible at system level: only the user approves these.
+const CONFIRM_ONLY = new Set([
+	"privileged command",
+	"filesystem or block-device overwrite",
+	"destructive Git remote operation",
+	"system shutdown or restart",
+	"infrastructure destruction",
+	"database destruction",
+	"package removal",
+	"system configuration activation",
+	"write to a protected system or credential path",
+]);
+
 const sensitivePathPatterns = [
 	/(^|\/)\.git(?:\/|$)/,
 	/(^|\/)\.env(?:\.|\/|$)/i,
@@ -98,6 +129,26 @@ const sensitivePathPatterns = [
 	/(^|\/)\.config\/opnix(?:\/|$)/,
 ];
 
+const SHELLS = new Set(["bash", "sh", "zsh", "dash"]);
+
+// Wording adapted from Claude Code's dangerous-removal reminder, so a refused
+// agent finishes the rest of the task instead of routing around the guard.
+const NOT_RUN =
+	"The command was NOT run; do not claim it succeeded. Do not work around this check by splitting, scripting, or re-issuing it through another tool or shell. Finish the rest of the task without it, tell the user what you wanted to do and why, and leave this step to them.";
+
+interface Unresolved {
+	category: string;
+	why: string;
+	confirmOnly: boolean;
+	facts?: Record<string, unknown>;
+}
+
+interface Evaluation {
+	self?: string;
+	allowed: string[];
+	unresolved: Unresolved[];
+}
+
 function classifyCommand(command: string): string | undefined {
 	return destructivePatterns.find(({ pattern }) => pattern.test(command))?.label;
 }
@@ -106,61 +157,205 @@ function display(value: string, maxLength = 1200): string {
 	return value.length <= maxLength ? value : `${value.slice(0, maxLength)}\n…`;
 }
 
-function isWithin(root: string, target: string): boolean {
-	const pathFromRoot = relative(root, target);
-	return pathFromRoot === "" || (!pathFromRoot.startsWith("..") && !isAbsolute(pathFromRoot));
-}
-
-async function canonicalize(path: string): Promise<string> {
-	try {
-		return await realpath(path);
-	} catch {
-		const parent = dirname(path);
-		if (parent === path) return resolve(path);
-		return join(await canonicalize(parent), basename(path));
-	}
-}
-
-async function exists(path: string): Promise<boolean> {
-	try {
-		await lstat(path);
-		return true;
-	} catch (error) {
-		return (error as { code?: string }).code !== "ENOENT";
-	}
-}
-
 function isSensitivePath(path: string): boolean {
 	return sensitivePathPatterns.some((pattern) => pattern.test(path));
 }
 
-async function confirmOrBlock(
-	ctx: ExtensionContext,
-	title: string,
-	details: string,
-): Promise<{ block: true; reason: string } | undefined> {
-	if (!ctx.hasUI) {
-		return {
-			block: true,
-			reason: `${title} blocked because confirmation is unavailable`,
-		};
-	}
+function textOf(content: unknown): string {
+	if (typeof content === "string") return content;
+	if (!Array.isArray(content)) return "";
+	return content
+		.flatMap((block: { type?: string; text?: string }) => (block.type === "text" && block.text ? [block.text] : []))
+		.join("\n");
+}
 
-	const confirmed = await ctx.ui.confirm(title, details);
-	if (!confirmed) {
-		return { block: true, reason: `${title} declined by user` };
+function sessionContext(ctx: ExtensionContext): { userMessages: string[]; recentActions: string[] } {
+	const userMessages: string[] = [];
+	const recentActions: string[] = [];
+	for (const entry of ctx.sessionManager.getBranch()) {
+		if (entry.type !== "message") continue;
+		const message = entry.message as { role?: string; content?: unknown };
+		if (message.role === "user") {
+			const text = textOf(message.content).trim();
+			if (text) userMessages.push(text);
+		} else if (message.role === "assistant" && Array.isArray(message.content)) {
+			for (const block of message.content as { type?: string; name?: string; arguments?: unknown }[]) {
+				if (block.type === "toolCall") recentActions.push(`${block.name}: ${JSON.stringify(block.arguments)}`);
+			}
+		}
 	}
-
-	return undefined;
+	return { userMessages: userMessages.slice(-6), recentActions: recentActions.slice(-12) };
 }
 
 export default function destructiveGuard(pi: ExtensionAPI) {
+	const guardDir = dirname(fileURLToPath(import.meta.url));
+	const sessionFiles = new Set<string>();
+	const pendingCreates = new Map<string, string>();
+	let sessionStartedAt = Date.now();
+
+	const exec = (cwd?: string): Exec => async (command, args) => {
+		const result = await pi.exec(command, args, cwd ? { cwd } : undefined);
+		return { stdout: result.stdout, code: result.code };
+	};
+
+	const gitRoot = async (cwd: string): Promise<string | undefined> => {
+		const result = await exec(cwd)("git", ["rev-parse", "--show-toplevel"]);
+		return result.code === 0 ? canonicalize(result.stdout.trim()) : undefined;
+	};
+
+	const evaluate = async (
+		parsed: ParsedCommand,
+		startCwd: string,
+		facts: Facts,
+		depth = 0,
+	): Promise<Evaluation> => {
+		const result: Evaluation = { allowed: [], unresolved: [] };
+		let cwd: string | undefined = startCwd;
+		let repoRoot: string | undefined | null = null;
+		for (const segment of parsed.segments) {
+			const invocation = invocationOf(segment);
+			if (cwd) {
+				const harm = await selfHarm(segment, invocation, cwd, facts);
+				if (harm) return { ...result, self: harm };
+			}
+			if (invocation?.name === "cd") {
+				const target = operands(invocation.args)[0];
+				cwd = segment.dynamic || !cwd ? undefined : await resolvePath(target?.text ?? "~", cwd, facts.home);
+				continue;
+			}
+			const inner =
+				invocation && SHELLS.has(invocation.name)
+					? invocation.args[invocation.args.findIndex((arg) => arg.text === "-c") + 1]?.text
+					: invocation?.name === "eval"
+						? invocation.args.map((arg) => arg.text).join(" ")
+						: undefined;
+			if (inner !== undefined && depth < 3) {
+				if (segment.dynamic || !cwd) {
+					if (classifyCommand(inner)) result.unresolved.push({ category: "nested shell", why: "nested command is only known at run time", confirmOnly: false });
+					continue;
+				}
+				const nested = await evaluate(parseCommand(inner), cwd, facts, depth + 1);
+				if (nested.self) return { ...result, self: nested.self };
+				result.allowed.push(...nested.allowed);
+				result.unresolved.push(...nested.unresolved);
+				continue;
+			}
+			const category = classifyCommand(segment.text);
+			if (!category) continue;
+			let verdict: Verdict;
+			if (segment.dynamic || !cwd) {
+				verdict = { kind: "unresolved", why: "its arguments are only known at run time" };
+			} else if (category === DELETION && invocation && /^(?:rm|rmdir|unlink|shred)$/.test(invocation.name)) {
+				if (repoRoot === null) repoRoot = await gitRoot(cwd);
+				verdict = await deletionVerdict(invocation, cwd, facts, repoRoot);
+			} else if (category === TERMINATION && invocation && /^(?:kill|pkill|killall)$/.test(invocation.name)) {
+				verdict = await terminationVerdict(invocation, exec(cwd), facts);
+			} else {
+				verdict = { kind: "unresolved", why: category, confirmOnly: CONFIRM_ONLY.has(category) };
+			}
+			if (verdict.kind === "self") return { ...result, self: verdict.why };
+			if (verdict.kind === "allow") result.allowed.push(verdict.why);
+			else {
+				result.unresolved.push({
+					category,
+					why: verdict.why,
+					confirmOnly: Boolean(verdict.confirmOnly) || CONFIRM_ONLY.has(category),
+					facts: verdict.facts,
+				});
+			}
+		}
+		for (const body of parsed.heredocs) {
+			const category = classifyCommand(body);
+			if (category) {
+				result.unresolved.push({ category: `${category} in heredoc`, why: "a heredoc carries a destructive command", confirmOnly: CONFIRM_ONLY.has(category) });
+			}
+		}
+		return result;
+	};
+
+	const audit = (decision: string, tool: string, subject: string, reason: string) => {
+		pi.appendEntry("destructive-guard", { decision, tool, subject: display(subject, 400), reason });
+	};
+
+	const confirmOrBlock = async (
+		ctx: ExtensionContext,
+		title: string,
+		details: string,
+	): Promise<{ block: true; reason: string } | undefined> => {
+		if (!ctx.hasUI) return { block: true, reason: `${title} Confirmation is unavailable. ${NOT_RUN}` };
+		if (await ctx.ui.confirm(title, details)) return undefined;
+		return { block: true, reason: `${title} Declined by the user. ${NOT_RUN}` };
+	};
+
+	const judgeOrConfirm = async (
+		ctx: ExtensionContext,
+		tool: string,
+		subject: string,
+		unresolved: Unresolved[],
+		title: string,
+		details: string,
+	) => {
+		let note = "";
+		if (unresolved.some((item) => item.confirmOnly)) note = "Needs your approval: shared, remote, or system-level effect.";
+		else if (!judgeAvailable()) note = "Jev unavailable (TYPESAFE_API_KEY unset).";
+		else {
+			try {
+				const verdict = await judge(
+					{
+						...sessionContext(ctx),
+						action: {
+							tool,
+							input: display(subject, 2000),
+							cwd: ctx.cwd,
+							concerns: unresolved.map(({ category, why, facts }) => ({ category, why, facts })),
+						},
+					},
+					ctx.signal,
+				);
+				if (verdict.allow) {
+					audit("jev-allow", tool, subject, verdict.summary);
+					if (ctx.hasUI) ctx.ui.notify(`Auto-approved by Jev (${verdict.summary})`, "info");
+					return undefined;
+				}
+				note = `Jev did not clear it: ${verdict.summary}`;
+			} catch (error) {
+				note = `Jev failed: ${(error as Error).message}`;
+			}
+		}
+		const outcome = await confirmOrBlock(ctx, title, `${details}\n\n${unresolved.map((item) => `- ${item.category}: ${item.why}`).join("\n")}\n${note}`);
+		audit(outcome ? "blocked" : "user-allow", tool, subject, note);
+		return outcome;
+	};
+
+	const selfBlock = (tool: string, subject: string, why: string) => {
+		audit("self-block", tool, subject, why);
+		return { block: true as const, reason: `Blocked: ${why}. The agent may not stop itself or change its own configuration or credentials. ${NOT_RUN}` };
+	};
+
+	pi.on("session_start", () => {
+		sessionStartedAt = Date.now();
+		sessionFiles.clear();
+	});
+
+	pi.on("tool_result", (event) => {
+		const path = pendingCreates.get(event.toolCallId);
+		if (path === undefined) return;
+		pendingCreates.delete(event.toolCallId);
+		if (!event.isError) sessionFiles.add(path);
+	});
+
 	pi.on("tool_call", async (event, ctx) => {
+		const facts = await buildFacts(sessionFiles, sessionStartedAt, guardDir);
+
 		if (/(^|[_-])(delete|remove|destroy|drop|truncate|wipe|prune)([_-]|$)/i.test(event.toolName)) {
-			return confirmOrBlock(
+			const subject = JSON.stringify(event.input, null, 2);
+			return judgeOrConfirm(
 				ctx,
+				event.toolName,
+				subject,
+				[{ category: "destructive tool", why: event.toolName, confirmOnly: false }],
 				"Allow destructive tool?",
-				`Tool: ${event.toolName}\nWorking directory: ${ctx.cwd}\n\n${display(JSON.stringify(event.input, null, 2))}`,
+				`Tool: ${event.toolName}\nWorking directory: ${ctx.cwd}\n\n${display(subject)}`,
 			);
 		}
 
@@ -168,13 +363,19 @@ export default function destructiveGuard(pi: ExtensionAPI) {
 			const command = (event.input as { command?: unknown }).command;
 			if (typeof command !== "string") return undefined;
 
-			const category = classifyCommand(command);
-			if (!category) return undefined;
-
-			return confirmOrBlock(
+			const evaluation = await evaluate(parseCommand(command), await canonicalize(ctx.cwd), facts);
+			if (evaluation.self) return selfBlock("bash", command, evaluation.self);
+			if (!evaluation.unresolved.length) {
+				if (evaluation.allowed.length) audit("auto-allow", "bash", command, evaluation.allowed.join("; "));
+				return undefined;
+			}
+			return judgeOrConfirm(
 				ctx,
+				"bash",
+				command,
+				evaluation.unresolved,
 				"Allow destructive command?",
-				`Category: ${category}\nWorking directory: ${ctx.cwd}\n\n${display(command)}`,
+				`Working directory: ${ctx.cwd}\n\n${display(command)}`,
 			);
 		}
 
@@ -185,26 +386,43 @@ export default function destructiveGuard(pi: ExtensionAPI) {
 
 		const inputPath = rawPath.startsWith("@") ? rawPath.slice(1) : rawPath;
 		const resolvedPath = resolve(ctx.cwd, inputPath);
-		const [projectRoot, targetPath] = await Promise.all([
-			canonicalize(ctx.cwd),
-			canonicalize(resolvedPath),
-		]);
-		const outsideProject = !isWithin(projectRoot, targetPath);
+		const [projectRoot, targetPath] = await Promise.all([canonicalize(ctx.cwd), canonicalize(resolvedPath)]);
+		if (isProtected(targetPath, facts) || isProtected(resolvedPath, facts)) {
+			return selfBlock(event.toolName, targetPath, `${event.toolName} to the agent's own configuration or credentials (${targetPath})`);
+		}
+
+		const existed = await exists(resolvedPath);
+		if (event.toolName === "write" && !existed) pendingCreates.set(event.toolCallId, targetPath);
+
+		const inTmp = facts.tmpRoots.some((root) => root !== targetPath && isWithin(root, targetPath));
+		const outsideProject = !isWithin(projectRoot, targetPath) && !inTmp;
 		const sensitive = isSensitivePath(targetPath);
-		const overwritesFile = event.toolName === "write" && (await exists(resolvedPath));
+		let overwritesFile = event.toolName === "write" && existed && !sessionFiles.has(targetPath) && !inTmp;
+		if (overwritesFile && !outsideProject && !sensitive) {
+			const git = exec(dirname(targetPath));
+			const tracked = await git("git", ["ls-files", "--error-unmatch", "--", basename(targetPath)]);
+			const unchanged = tracked.code === 0 && (await git("git", ["diff", "--quiet", "HEAD", "--", basename(targetPath)])).code === 0;
+			// A tracked file with no uncommitted changes can be restored from Git.
+			if (unchanged) overwritesFile = false;
+		}
 
 		if (!outsideProject && !sensitive && !overwritesFile) return undefined;
 
-		const reasons = [
-			outsideProject ? "target is outside the current project" : undefined,
-			sensitive ? "target looks sensitive" : undefined,
-			overwritesFile ? "write will replace an existing path" : undefined,
-		].filter((reason): reason is string => reason !== undefined);
+		const unresolved: Unresolved[] = [
+			outsideProject ? { category: "outside project", why: "target is outside the current project", confirmOnly: false } : undefined,
+			sensitive ? { category: "sensitive path", why: "target looks sensitive", confirmOnly: true } : undefined,
+			overwritesFile
+				? { category: "overwrite", why: "write replaces a file with uncommitted or untracked content", confirmOnly: false }
+				: undefined,
+		].filter((item): item is Unresolved => item !== undefined);
 
-		return confirmOrBlock(
+		return judgeOrConfirm(
 			ctx,
+			event.toolName,
+			targetPath,
+			unresolved,
 			`Allow ${event.toolName} operation?`,
-			`${reasons.join("; ")}\nProject: ${projectRoot}\nTarget: ${targetPath}`,
+			`Project: ${projectRoot}\nTarget: ${targetPath}`,
 		);
 	});
 }
