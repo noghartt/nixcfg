@@ -6,46 +6,117 @@ import {
 	VERSION,
 } from "@earendil-works/pi-coding-agent";
 import {
+	type AutocompleteProvider,
 	type Focusable,
 	Input,
 	Key,
+	type Keybinding,
+	type KeybindingsManager,
 	matchesKey,
 	truncateToWidth,
 	type TUI,
 	visibleWidth,
 } from "@earendil-works/pi-tui";
 
-type CommandSource = SlashCommandInfo["source"];
+type CommandSource = SlashCommandInfo["source"] | "builtin" | "action";
 
-const SOURCE_ORDER: CommandSource[] = ["extension", "prompt", "skill"];
+type PaletteCommand = {
+	name: string;
+	description?: string;
+	source: CommandSource;
+	scope: string;
+	sequence?: string;
+};
+
+type ModalItem<T> = {
+	label: string;
+	description?: string;
+	group: string;
+	hint?: string;
+	searchText: string;
+	value: T;
+};
+
+// Skills are left out: they are prompt context rather than actions, outnumber the
+// commands, and stay reachable through `/skill:` autocomplete.
+const SOURCE_ORDER: CommandSource[] = ["action", "builtin", "extension", "prompt"];
 const SOURCE_LABELS: Record<CommandSource, string> = {
+	action: "ACTIONS",
+	builtin: "BUILT-IN",
 	extension: "COMMANDS",
 	prompt: "PROMPTS",
 	skill: "SKILLS",
 };
 
-function commandSearchText(command: SlashCommandInfo): string {
-	return [
-		command.name,
-		command.description ?? "",
-		command.source,
-		command.sourceInfo.scope,
-		command.sourceInfo.source,
-	]
-		.join(" ")
-		.toLowerCase();
+// Extension shortcuts have no listing API; these are the ones this config ships.
+const EXTENSION_SHORTCUTS: [key: string, description: string][] = [
+	["ctrl+p", "Open command palette"],
+	["ctrl+?", "Show keybindings"],
+	["ctrl+t", "Open session tree view"],
+];
+
+// Editor actions with neither a command nor an extension API. The palette fires
+// them by sending their keybinding, which pi/settings.nix pins to these chords.
+const PALETTE_ACTIONS: PaletteCommand[] = [
+	{
+		name: "toggle-thinking",
+		description: "Show or hide thinking blocks",
+		source: "action",
+		scope: "action",
+		sequence: "\x1b[116;8u", // shift+ctrl+alt+t
+	},
+];
+
+// The engine's own slash completion, captured when the palette wraps it. Built-in
+// commands are absent from pi.getCommands(), and Pi and OmO ship different sets,
+// so the completion list is the one engine-agnostic place to read them from.
+let engineAutocomplete: AutocompleteProvider | undefined;
+
+async function builtinCommands(registered: Set<string>): Promise<PaletteCommand[]> {
+	if (!engineAutocomplete) return [];
+	const suggestions = await engineAutocomplete.getSuggestions(["/"], 0, 1, { signal: new AbortController().signal });
+	return (suggestions?.items ?? [])
+		.filter((item) => !registered.has(item.value))
+		.map((item) => ({ name: item.value, description: item.description, source: "builtin" as const, scope: "built-in" }));
 }
 
-function compareCommands(left: SlashCommandInfo, right: SlashCommandInfo): number {
+function commandItem(command: PaletteCommand): ModalItem<PaletteCommand> {
+	const builtin = command.source === "builtin" || command.source === "action";
+	const scope = command.scope === "project" || command.scope === "user" ? command.scope : "temporary";
+	return {
+		label: command.name,
+		description: command.description,
+		group: builtin ? SOURCE_LABELS[command.source] : `${SOURCE_LABELS[command.source]} · ${command.scope.toUpperCase()}`,
+		hint: builtin ? undefined : scope,
+		searchText: [command.name, command.description ?? "", command.source, command.scope].join(" ").toLowerCase(),
+		value: command,
+	};
+}
+
+function compareCommands(left: PaletteCommand, right: PaletteCommand): number {
 	const sourceDifference = SOURCE_ORDER.indexOf(left.source) - SOURCE_ORDER.indexOf(right.source);
 	if (sourceDifference !== 0) return sourceDifference;
-	const scopeDifference = left.sourceInfo.scope.localeCompare(right.sourceInfo.scope);
+	const scopeDifference = left.scope.localeCompare(right.scope);
 	if (scopeDifference !== 0) return scopeDifference;
 	return left.name.localeCompare(right.name);
 }
 
-function commandGroup(command: SlashCommandInfo): string {
-	return `${SOURCE_LABELS[command.source]} · ${command.sourceInfo.scope.toUpperCase()}`;
+function keybindingItems(keybindings: KeybindingsManager): ModalItem<null>[] {
+	const item = (keys: string, description: string, group: string): ModalItem<null> => ({
+		label: keys,
+		description,
+		group,
+		searchText: [keys, description, group].join(" ").toLowerCase(),
+		value: null,
+	});
+	const builtin = Object.entries(keybindings.getResolvedBindings())
+		.map(([id, keys]) => [id, [keys ?? []].flat()] as const)
+		.filter(([, keys]) => keys.length > 0)
+		.sort(([left], [right]) => Number(left.startsWith("tui.")) - Number(right.startsWith("tui.")) || left.localeCompare(right))
+		.map(([id, keys]) =>
+			item(keys.join(" / "), keybindings.getDefinition(id as Keybinding)?.description ?? id, id.split(".").slice(0, 2).join(".").toUpperCase()),
+		);
+	return [...EXTENSION_SHORTCUTS.map(([key, description]) => item(key, description, "EXTENSIONS")), ...builtin];
 }
 
 function padToWidth(value: string, width: number): string {
@@ -53,9 +124,9 @@ function padToWidth(value: string, width: number): string {
 	return clipped + " ".repeat(Math.max(0, width - visibleWidth(clipped)));
 }
 
-class CommandPalette implements Focusable {
+class SearchModal<T> implements Focusable {
 	private readonly search = new Input();
-	private filtered: SlashCommandInfo[] = [];
+	private filtered: ModalItem<T>[] = [];
 	private selectedIndex = 0;
 	private _focused = false;
 
@@ -69,12 +140,15 @@ class CommandPalette implements Focusable {
 	}
 
 	constructor(
-		private readonly commands: SlashCommandInfo[],
+		private readonly title: string,
+		private readonly footer: string,
+		private readonly labelWidth: number | undefined,
+		private readonly items: ModalItem<T>[],
 		private readonly theme: Theme,
 		private readonly tui: TUI,
-		private readonly done: (command: SlashCommandInfo | null) => void,
+		private readonly done: (item: ModalItem<T> | null) => void,
 	) {
-		this.filtered = commands;
+		this.filtered = items;
 		this.search.onSubmit = () => {
 			const selected = this.filtered[this.selectedIndex];
 			if (selected) this.done(selected);
@@ -84,11 +158,14 @@ class CommandPalette implements Focusable {
 
 	private updateFilter(): void {
 		const tokens = this.search.getValue().toLowerCase().split(/\s+/).filter(Boolean);
-		this.filtered = this.commands.filter((command) => {
-			const searchable = commandSearchText(command);
-			return tokens.every((token) => searchable.includes(token));
-		});
-		this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, this.filtered.length - 1));
+		// Description matches would otherwise bury `/session` under `/clone`; rank by
+		// label first, keeping group order within each rank.
+		const rank = (item: ModalItem<T>) =>
+			item.label.startsWith(tokens[0] ?? "") ? 0 : tokens.some((token) => item.label.includes(token)) ? 1 : 2;
+		this.filtered = this.items
+			.filter((item) => tokens.every((token) => item.searchText.includes(token)))
+			.sort((left, right) => rank(left) - rank(right));
+		this.selectedIndex = 0;
 	}
 
 	handleInput(data: string): void {
@@ -113,42 +190,40 @@ class CommandPalette implements Focusable {
 		const row = (text: string) => `${border("│")}${padToWidth(text, innerWidth)}${border("│")}`;
 
 		lines.push(border(`╭${"─".repeat(innerWidth)}╮`));
-		lines.push(row(` ${this.theme.bold(this.theme.fg("accent", "COMMAND PALETTE"))}`));
-		lines.push(row(` ${this.theme.fg("muted", "Search names, descriptions, groups, or scope")}`));
+		lines.push(row(` ${this.theme.bold(this.theme.fg("accent", this.title))}`));
 		lines.push(border(`├${"─".repeat(innerWidth)}┤`));
-		const searchLine = this.search.render(Math.max(1, innerWidth - 4))[0] ?? "";
-		lines.push(row(` ${this.theme.fg("accent", "> ")}${searchLine}`));
+		// Input draws its own "> " prompt.
+		lines.push(row(` ${this.search.render(Math.max(1, innerWidth - 2))[0] ?? ""}`));
 		lines.push(border(`├${"─".repeat(innerWidth)}┤`));
 
 		if (this.filtered.length === 0) {
-			lines.push(row(` ${this.theme.fg("warning", "No matching commands")}`));
+			lines.push(row(` ${this.theme.fg("warning", "No matches")}`));
 		} else {
-			const maxCommandRows = 8;
-			const start = Math.max(0, Math.min(this.selectedIndex - 5, this.filtered.length - maxCommandRows));
-			const visible = this.filtered.slice(start, start + maxCommandRows);
+			const maxRows = 12;
+			const start = Math.max(0, Math.min(this.selectedIndex - 5, this.filtered.length - maxRows));
+			const visible = this.filtered.slice(start, start + maxRows);
 			let previousGroup: string | undefined;
 			for (let offset = 0; offset < visible.length; offset++) {
-				const command = visible[offset]!;
-				const group = commandGroup(command);
-				if (group !== previousGroup) {
-					lines.push(row(` ${this.theme.bold(this.theme.fg("borderAccent", group))}`));
-					previousGroup = group;
+				const item = visible[offset]!;
+				if (item.group !== previousGroup) {
+					lines.push(row(` ${this.theme.bold(this.theme.fg("borderAccent", item.group))}`));
+					previousGroup = item.group;
 				}
 				const index = start + offset;
 				const prefix = index === this.selectedIndex ? "› " : "  ";
-				const scope = command.sourceInfo.scope === "project" ? "project" : command.sourceInfo.scope === "user" ? "user" : "temporary";
-				const description = command.description ? `  ${this.theme.fg("muted", command.description)}` : "";
-				const commandLine = `${prefix}${this.theme.bold(command.name)}${description}  ${this.theme.fg("dim", scope)}`;
-				const fitted = ` ${truncateToWidth(commandLine, innerWidth - 2, "…")}`;
+				const label = this.labelWidth ? padToWidth(item.label, this.labelWidth) : item.label;
+				const description = item.description ? `  ${this.theme.fg("muted", item.description)}` : "";
+				const hint = item.hint ? `  ${this.theme.fg("dim", item.hint)}` : "";
+				const fitted = ` ${truncateToWidth(`${prefix}${this.theme.bold(label)}${description}${hint}`, innerWidth - 2, "…")}`;
 				lines.push(row(index === this.selectedIndex ? this.theme.bg("selectedBg", padToWidth(fitted, innerWidth)) : fitted));
 			}
-			if (this.filtered.length > maxCommandRows) {
+			if (this.filtered.length > maxRows) {
 				lines.push(row(` ${this.theme.fg("dim", `${this.selectedIndex + 1}/${this.filtered.length}`)}`));
 			}
 		}
 
 		lines.push(border(`├${"─".repeat(innerWidth)}┤`));
-		lines.push(row(` ${this.theme.fg("dim", "type to filter · ↑↓ navigate · enter run · esc close")}`));
+		lines.push(row(` ${this.theme.fg("dim", this.footer)}`));
 		lines.push(border(`╰${"─".repeat(innerWidth)}╯`));
 		return lines.map((line) => truncateToWidth(line, width, ""));
 	}
@@ -158,6 +233,27 @@ class CommandPalette implements Focusable {
 	}
 }
 
+function overlayOptions() {
+	return {
+		overlay: true,
+		overlayOptions: {
+			width: Math.max(1, Math.min(100, (process.stdout.columns ?? 120) - 4)),
+			maxHeight: Math.max(12, Math.min(28, (process.stdout.rows ?? 40) - 4)),
+			anchor: "center" as const,
+			margin: 2,
+		},
+	};
+}
+
+async function showKeybindings(ctx: ExtensionContext): Promise<void> {
+	if (ctx.mode !== "tui") return;
+	await ctx.ui.custom<ModalItem<null> | null>(
+		(tui, theme, keybindings, done) =>
+			new SearchModal("KEYBINDINGS", "type to filter · ↑↓ navigate · esc close", 24, keybindingItems(keybindings), theme, tui, done),
+		overlayOptions(),
+	);
+}
+
 async function showCommandPalette(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
 	if (ctx.mode !== "tui") return;
 	if (!ctx.isIdle()) {
@@ -165,26 +261,53 @@ async function showCommandPalette(pi: ExtensionAPI, ctx: ExtensionContext): Prom
 		return;
 	}
 
-	const commands = pi.getCommands().sort(compareCommands);
+	const registered = pi.getCommands();
+	const commands = [
+		...PALETTE_ACTIONS,
+		...(await builtinCommands(new Set(registered.map((command) => command.name)))),
+		...registered
+			.filter((command) => command.source !== "skill")
+			.map((command) => ({
+				name: command.name,
+				description: command.description,
+				source: command.source,
+				scope: command.sourceInfo.scope,
+			})),
+	].sort(compareCommands);
 	if (commands.length === 0) {
 		ctx.ui.notify("No commands are registered", "info");
 		return;
 	}
 
-	const selected = await ctx.ui.custom<SlashCommandInfo | null>(
-		(tui, theme, _keybindings, done) => new CommandPalette(commands, theme, tui, done),
-		{
-			overlay: true,
-			overlayOptions: {
-				width: Math.max(1, Math.min(100, (process.stdout.columns ?? 120) - 4)),
-				maxHeight: Math.max(12, Math.min(24, (process.stdout.rows ?? 40) - 4)),
-				anchor: "center",
-				margin: 2,
-			},
-		},
+	const picked = await ctx.ui.custom<ModalItem<PaletteCommand> | null>(
+		(tui, theme, _keybindings, done) =>
+			new SearchModal(
+				"COMMAND PALETTE",
+				"type to filter · ↑↓ navigate · enter run · esc close",
+				undefined,
+				commands.map(commandItem),
+				theme,
+				tui,
+				done,
+			),
+		overlayOptions(),
 	);
+	const selected = picked?.value;
 	if (!selected) return;
-	if (supportsCommandDispatch()) {
+	if (selected.sequence) {
+		const sequence = selected.sequence;
+		setImmediate(() => process.stdin.emit("data", sequence));
+	} else if (selected.source === "builtin") {
+		// Built-in commands run only from the interactive editor's submit handler;
+		// no extension API reaches them. Submit the prefilled editor with the same
+		// Enter a user would type, then put any draft back once the command took it.
+		const draft = ctx.ui.getEditorText();
+		ctx.ui.setEditorText(`/${selected.name}`);
+		setImmediate(() => {
+			process.stdin.emit("data", "\r");
+			if (draft) setImmediate(() => ctx.ui.setEditorText(draft));
+		});
+	} else if (supportsCommandDispatch()) {
 		// expandPromptTemplates routes through session.prompt(), which executes
 		// extension commands and expands prompts/skills instead of hitting the LLM.
 		pi.sendUserMessage(`/${selected.name}`, { expandPromptTemplates: true } as never);
@@ -203,29 +326,38 @@ function supportsCommandDispatch(): boolean {
 }
 
 export default function commandPalette(pi: ExtensionAPI) {
-	for (const shortcut of [Key.super("p"), Key.alt("p")]) {
-		pi.registerShortcut(shortcut, {
-			description: "Open command palette",
-			handler: async (ctx) => showCommandPalette(pi, ctx),
-		});
-	}
+	// Ctrl+P is free only because keybindings move model cycling off it; Herdr
+	// owns Alt+P for its pull-request tree.
+	pi.registerShortcut(Key.ctrl("p"), {
+		description: "Open command palette",
+		handler: async (ctx) => showCommandPalette(pi, ctx),
+	});
+	// Ctrl+? is DEL in legacy terminals; Ghostty sends it as CSI-u instead.
+	pi.registerShortcut(Key.ctrl("?"), {
+		description: "Show keybindings",
+		handler: async (ctx) => showKeybindings(ctx),
+	});
 
 	pi.on("session_start", (_event, ctx) => {
 		if (ctx.mode !== "tui") return;
-		ctx.ui.addAutocompleteProvider((current) => ({
-			triggerCharacters: current.triggerCharacters,
-			async getSuggestions(lines, line, column, options) {
-				const suggestions = await current.getSuggestions(lines, line, column, options);
-				if (!suggestions) return suggestions;
-				const extensionCommands = new Set(
-					pi.getCommands().filter((command) => command.source === "extension").map((command) => command.name),
-				);
-				const items = suggestions.items.filter((item) => !extensionCommands.has(item.value.split(/\s/, 1)[0]!));
-				return items.length > 0 ? { ...suggestions, items } : null;
-			},
-			applyCompletion: (lines, line, column, item, prefix) => current.applyCompletion(lines, line, column, item, prefix),
-			shouldTriggerFileCompletion: (lines, line, column) =>
-				current.shouldTriggerFileCompletion?.(lines, line, column) ?? true,
-		}));
+		ctx.ui.addAutocompleteProvider((current) => {
+			engineAutocomplete = current;
+			return {
+				triggerCharacters: current.triggerCharacters,
+				async getSuggestions(lines, line, column, options) {
+					const suggestions = await current.getSuggestions(lines, line, column, options);
+					if (!suggestions) return suggestions;
+					const extensionCommands = new Set(
+						pi.getCommands().filter((command) => command.source === "extension").map((command) => command.name),
+					);
+					const items = suggestions.items.filter((item) => !extensionCommands.has(item.value.split(/\s/, 1)[0]!));
+					return items.length > 0 ? { ...suggestions, items } : null;
+				},
+				applyCompletion: (lines, line, column, item, prefix) =>
+					current.applyCompletion(lines, line, column, item, prefix),
+				shouldTriggerFileCompletion: (lines, line, column) =>
+					current.shouldTriggerFileCompletion?.(lines, line, column) ?? true,
+			};
+		});
 	});
 }

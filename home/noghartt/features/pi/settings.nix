@@ -27,6 +27,15 @@
       fullscreenExitOutput = "resume-hint";
     };
 
-    keybindings."app.editor.external" = [ "alt+e" ];
+    keybindings = {
+      "app.editor.external" = [ "alt+e" ];
+      # Ctrl+P opens the command palette extension; Pi reserves model-cycling keys
+      # against extension shortcuts, so cycling moves to Shift+Ctrl+P.
+      "app.model.cycleForward" = [ "shift+ctrl+p" ];
+      "app.model.cycleBackward" = [ ];
+      # Ctrl+T opens the session tree extension; thinking blocks toggle from the
+      # command palette, which sends this chord because Pi exposes no API for it.
+      "app.thinking.toggle" = [ "shift+ctrl+alt+t" ];
+    };
   };
 }

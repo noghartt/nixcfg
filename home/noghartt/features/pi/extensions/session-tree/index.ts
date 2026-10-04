@@ -9,6 +9,7 @@ import {
 import {
 	type Component,
 	type Focusable,
+	Key,
 	matchesKey,
 	truncateToWidth,
 	type TUI,
@@ -96,6 +97,10 @@ function entrySummary(entry: SessionEntry): string {
 			return entry.label ?? "cleared";
 		case "session_info":
 			return entry.name ?? "empty";
+		case "context_edit":
+			return entry.replacement === null ? "omitted from context" : oneLine(textContent(entry.replacement.content));
+		default:
+			return "";
 	}
 }
 
@@ -150,6 +155,13 @@ function detailText(entry: SessionEntry): string {
 			return `TARGET · ${entry.targetId}\nLABEL · ${entry.label ?? "(cleared)"}`;
 		case "session_info":
 			return entry.name ?? "(empty title)";
+		case "context_edit":
+			return `TARGET · ${entry.targetId}\n\n${
+				entry.replacement === null ? "OMITTED FROM CONTEXT" : textContent(entry.replacement.content)
+			}`;
+		default:
+			// Entry types newer than this extension still get a readable preview.
+			return JSON.stringify(entry, null, 2);
 	}
 }
 
@@ -233,7 +245,9 @@ export class SessionTreeModal implements Component, Focusable {
 
 	private passesFilter(node: SessionTreeNode): boolean {
 		const entry = node.entry;
-		const isSettings = ["label", "custom", "model_change", "thinking_level_change", "session_info"].includes(entry.type);
+		const isSettings = ["label", "custom", "model_change", "thinking_level_change", "session_info", "context_edit"].includes(
+			entry.type,
+		);
 		if (entry.type === "message" && entry.message.role === "assistant" && entry.id !== this.leafId) {
 			const message = entry.message;
 			const hasText = "content" in message && textContent(message.content).trim().length > 0;
@@ -581,6 +595,14 @@ export class SessionTreeModal implements Component, Focusable {
 }
 
 export default function sessionTree(pi: ExtensionAPI) {
+	// Shortcut handlers get no navigateTree; routing through the command gives the
+	// tree its command context. Ctrl+T is free because settings.nix moves the
+	// thinking-block toggle into the command palette.
+	pi.registerShortcut(Key.ctrl("t"), {
+		description: "Open session tree view",
+		handler: async () => pi.sendUserMessage("/tree-view", { expandPromptTemplates: true }),
+	});
+
 	pi.registerCommand("tree-view", {
 		description: "Navigate the current session in a centered undo-tree graph",
 		handler: async (_args, ctx) => {
