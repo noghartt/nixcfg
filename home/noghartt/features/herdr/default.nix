@@ -2,6 +2,7 @@
 {
   imports = [
     ./agent-tree.nix
+    ./close-worktrees
     ./lazygit
     ./pr-tree
   ];

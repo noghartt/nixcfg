@@ -1,0 +1,18 @@
+id = "nixcfg.close-worktrees"
+name = "Close Worktrees"
+version = "0.1.0"
+min_herdr_version = "0.9.1"
+platforms = ["macos", "linux"]
+description = "Close every linked-worktree workspace of the focused repository, optionally removing the checkouts."
+
+[[panes]]
+id = "confirm"
+title = "Close Worktrees"
+placement = "popup"
+command = ["sh", "-c", 'exec sh "$HERDR_PLUGIN_ROOT/launch.sh"']
+
+[[actions]]
+id = "open"
+title = "Worktrees: close all of the focused repository"
+contexts = ["pane", "workspace"]
+command = ["sh", "-c", 'exec "${HERDR_BIN_PATH:-herdr}" plugin pane open --plugin nixcfg.close-worktrees --entrypoint confirm --width 70% --height 60%']
