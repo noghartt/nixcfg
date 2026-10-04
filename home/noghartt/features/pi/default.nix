@@ -6,6 +6,7 @@
     ./extensions/destructive-guard.nix
     ./extensions/pi-workflows.nix
     ./extensions/session-tree.nix
+    ./extensions/statusline.nix
     ./extensions/worktree-agents.nix
   ];
 

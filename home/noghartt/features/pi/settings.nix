@@ -18,6 +18,13 @@
         "anthropic/claude-fable-5-1"
       ];
       skills = [ "${flake.inputs.herdr}/skills/herdr" ];
+      # The statusline sidebar is a layout column, which only the alt-screen TUI has;
+      # regular mode writes to scrollback and falls back to a full footer.
+      tuiMode = "fullscreen";
+      quietStartup = true;
+      collapseChangelog = true;
+      # Restore the previous screen on exit instead of dumping the transcript.
+      fullscreenExitOutput = "resume-hint";
     };
 
     keybindings."app.editor.external" = [ "alt+e" ];
