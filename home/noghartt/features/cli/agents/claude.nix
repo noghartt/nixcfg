@@ -2,6 +2,7 @@
   config,
   lib,
   pkgs,
+  agentPath,
   ...
 }:
 let
@@ -110,7 +111,7 @@ in
 {
   programs.claude-code = {
     enable = true;
-    package = claudeCode;
+    package = agentPath.wrap claudeCode;
   };
 
   # The upstream HM module links settings.json into the read-only Nix store.
