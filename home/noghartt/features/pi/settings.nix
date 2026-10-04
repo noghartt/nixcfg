@@ -13,12 +13,9 @@
         "openai-codex/gpt-5.6-sol"
         "openai-codex/gpt-5.6-terra"
         "openai-codex/gpt-5.6-luna"
-        "claude-bridge/claude-opus-4-8"
-        "claude-bridge/claude-sonnet-4-6"
-        "claude-bridge/claude-haiku-4-5"
-        "claude-bridge/claude-opus-5"
-        "claude-bridge/claude-sonnet-5"
-        "claude-bridge/claude-fable-5"
+        "anthropic/claude-opus-5"
+        "anthropic/claude-sonnet-5"
+        "anthropic/claude-fable-5-1"
       ];
       skills = [ "${flake.inputs.herdr}/skills/herdr" ];
     };
