@@ -1,0 +1,67 @@
+{
+  "leader": { "model": "anthropic/claude-opus-5-5", "thinking": "xhigh" },
+  "member": { "model": "anthropic/claude-sonnet-5-5", "thinking": "high" },
+  "backend": "sbx",
+  "podSize": 5,
+  "podMemory": "3g",
+  "maxMembers": 30,
+  "maxGenerations": 5,
+  "hostMemoryShare": 0.75,
+  "fitnessTimeoutSeconds": 900,
+  "permissionTimeoutSeconds": 900,
+  "jev": {
+    "model": "jev-latest",
+    "baseUrl": "https://api.typesafe.ai",
+    "strategyConfidence": 0.5,
+    "modelConfidence": 0.5,
+    "acceptThreshold": 0.7,
+    "blockedThreshold": 0.5,
+    "borderlineFloor": 0.4
+  },
+  "pool": [
+    {
+      "key": "sonnet-medium",
+      "models": ["anthropic/claude-sonnet-5-5"],
+      "thinking": "medium",
+      "tier": 1,
+      "use": "Well-specified, mostly mechanical work inside one area: edits, tests, and small fixes"
+    },
+    {
+      "key": "sonnet-high",
+      "models": ["anthropic/claude-sonnet-5-5"],
+      "thinking": "high",
+      "tier": 2,
+      "use": "Ordinary feature work, debugging, refactors, and exploring an approach inside one subsystem"
+    },
+    {
+      "key": "gpt-terra",
+      "models": ["chatgpt-subscription/gpt-5.6-terra"],
+      "thinking": "medium",
+      "tier": 2,
+      "use": "Backend or algorithmic implementation and test-driven fixes inside one subsystem"
+    },
+    {
+      "key": "gpt-sol",
+      "models": ["chatgpt-subscription/gpt-5.6-sol"],
+      "thinking": "high",
+      "tier": 3,
+      "use": "Hard logic, performance work, and deep debugging across modules"
+    },
+    {
+      "key": "haiku",
+      "models": ["anthropic/claude-haiku-5-5"],
+      "thinking": "medium",
+      "tier": 0,
+      "optIn": true,
+      "use": "Trivial lookups, bulk mechanical edits, and quick probes"
+    },
+    {
+      "key": "gpt-luna",
+      "models": ["chatgpt-subscription/gpt-5.6-luna"],
+      "thinking": "medium",
+      "tier": 1,
+      "optIn": true,
+      "use": "Mechanical, fully specified edits"
+    }
+  ]
+}

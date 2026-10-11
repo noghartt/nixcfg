@@ -1,0 +1,25 @@
+# syntax=docker/sandbox-kit:3
+schemaVersion: "3"
+kind: workload
+description: OmO swarm members, launched by swarmd as tmux sessions
+
+capabilities:
+  - type: com.docker.sandbox/sbx@1
+  - type: com.docker.sandbox/network-policy@1
+    config:
+      runtime:
+        allow:
+          - api.anthropic.com
+          - console.anthropic.com
+          - platform.claude.com
+          - claude.ai
+          - chatgpt.com
+          - auth.openai.com
+          - api.openai.com
+          - github.com
+          - api.github.com
+          - codeload.github.com
+          - "*.githubusercontent.com"
+          - registry.npmjs.org
+          - pypi.org
+          - files.pythonhosted.org

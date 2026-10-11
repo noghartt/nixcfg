@@ -13,6 +13,7 @@
     ./features/desktop/ghostty.nix
     ./features/desktop/obsidian.nix
     ./features/omo
+    ./features/swarm
     ./features/vscode
   ];
 
@@ -33,4 +34,7 @@
   # supported way to get one (nixpkgs' tailscale ships a conflicting daemon
   # and would drift from the self-updating app).
   home.shellAliases.tailscale = "/Applications/Tailscale.app/Contents/MacOS/Tailscale";
+
+  # sbx reports every CLI invocation; swarms call it constantly.
+  home.sessionVariables.SBX_NO_TELEMETRY = 1;
 }

@@ -29,7 +29,16 @@
     "todoist-app"
     "zotero"
     "openlogi"
+    # Docker Sandboxes CLI: microVM sandboxes for swarm members (SWARM.md).
+    # Docker ships it as a cask, not a formula; brew refuses untrusted taps.
+    {
+      name = "docker/tap/sbx";
+      trusted = true;
+    }
   ];
+
+  # Declared so `zap` cleanup keeps the tap.
+  homebrew.taps = [ "docker/tap" ];
 
   system = {
     primaryUser = "noghartt";
