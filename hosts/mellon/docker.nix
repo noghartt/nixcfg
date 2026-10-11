@@ -5,6 +5,11 @@
   virtualisation.docker = {
     enable = true;
 
+    # Published ports (`-p 8080:80`) go through Docker's own iptables rules,
+    # which bypass the NixOS firewall and would expose them to the LAN.
+    # Default them to loopback; reach them over SSH or `tailscale serve`.
+    daemon.settings.ip = "127.0.0.1";
+
     # Bound root-volume growth without deleting persistent volumes.
     autoPrune = {
       enable = true;

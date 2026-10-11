@@ -29,9 +29,16 @@ in
     inherit package;
     modesetting.enable = true;
     nvidiaSettings = true;
+  };
 
-    # Preserve VRAM across suspend and hibernate; fine-grained RTD3 is only
-    # appropriate for PRIME offload laptops.
-    powerManagement.enable = true;
+  # CUDA builds are unfree, so cache.nixos.org never has them; without this
+  # cache any CUDA package (agent sandboxes, ollama) compiles from source. Set
+  # on the host, not in flake nixConfig, which non-interactive sudo rebuilds
+  # ignore. Key from wiki.nixos.org/wiki/CUDA; adapted from fersilva16.
+  nix.settings = {
+    extra-substituters = [ "https://cache.nixos-cuda.org" ];
+    extra-trusted-public-keys = [
+      "cache.nixos-cuda.org:74DUi4Ye579gUqzH4ziL9IyiJBlDpMRn9MBN8oNan9M="
+    ];
   };
 }

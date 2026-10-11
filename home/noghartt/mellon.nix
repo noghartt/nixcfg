@@ -2,6 +2,7 @@
 { lib, pkgs, ... }:
 {
   imports = [
+    ./features/cli/ssh-server.nix
     ./features/cli/tmux.nix
     ./features/pi/tmux.nix
     ./features/desktop
@@ -9,6 +10,7 @@
     ./features/desktop/hyprsunset.nix
     ./features/desktop/noctalia.nix
     ./features/desktop/rofi.nix
+    ./features/omo
   ];
 
   home.packages = with pkgs; [

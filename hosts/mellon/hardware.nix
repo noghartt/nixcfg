@@ -44,6 +44,14 @@ in
     # Establish the legal channel and power limits before userspace starts;
     # the matching pinned regulatory database is supplied above.
     kernelParams = [ "cfg80211.ieee80211_regdom=BR" ];
+
+    # Mains-powered, so keep the RTL8922AE radio and its PCIe link awake: its
+    # power saving causes latency spikes and "failed to update RXBD info"
+    # errors. Adapted from github:fersilva16/nix-config (polaris.nix).
+    extraModprobeConfig = ''
+      options rtw89_core disable_ps_mode=y
+      options rtw89_pci disable_aspm_l1=y disable_aspm_l1ss=y
+    '';
   };
 
   services.fwupd.enable = true;

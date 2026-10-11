@@ -17,6 +17,9 @@
     ./desktop.nix
     ./gaming.nix
     ./networking.nix
+    ./ssh.nix
+    ./power.nix
+    ./agents.nix
     ./maintenance.nix
     ./1password.nix
     ./docker.nix
@@ -38,6 +41,9 @@
   i18n.defaultLocale = "en_US.UTF-8";
   console.keyMap = "us";
   time.timeZone = "America/Sao_Paulo";
+  # Windows shares the machine and keeps the hardware clock in local time;
+  # matching it stops each OS from shifting the other's clock.
+  time.hardwareClockInLocalTime = true;
 
   system.stateVersion = "26.11";
 }

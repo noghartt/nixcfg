@@ -5,27 +5,31 @@ the same progression as the
 [previous Arch guide](https://gist.github.com/noghartt/8388f7d8543e3eb1777cb6ed4a3d7807),
 but NixOS, Disko, Home Manager, and Lanzaboote now own the system declaratively.
 
-The storage step is destructive. It wipes the configured 2 TB Kingston NVMe and
-creates this layout:
+Mellon shares its NVMe with an existing Windows install. The storage steps add
+two partitions in the space Windows left free and format only those; Windows'
+partitions, including its own ESP, are never touched. The Linux side is sized to
+whatever free space it gets (at least about 1 TB for the sizes below):
 
 ```text
-GPT
-├── 2 GiB ESP mounted at /boot
-└── LUKS2 cryptlvm
+GPT (shared with Windows: its ESP, MSR, C:, and recovery partitions stay as-is)
+├── disk-main-ESP: 2 GiB Linux ESP mounted at /boot
+└── disk-main-lvm: LUKS2 cryptlvm
     └── LVM volume group vg
         ├── root: 500 GiB Btrfs
         │   ├── @          -> /
         │   ├── @nix       -> /nix
         │   ├── @var_log   -> /var/log
-        │   ├── @snapshots -> /.snapshots
-        │   └── @swap      -> /swap (64 GiB swapfile)
+        │   └── @snapshots -> /.snapshots
+        ├── agents: 300 GiB Btrfs
+        │   └── @agent     -> /agent (agent sandboxes)
         └── home: remaining space, Btrfs
             └── @home      -> /home
 ```
 
 The normal boot flow is UEFI -> Lanzaboote-signed systemd-boot -> encrypted
-systemd initrd -> LUKS -> LVM -> Btrfs. No encryption or Secure Boot private key
-is stored in Git or the Nix store.
+systemd initrd -> LUKS -> LVM -> Btrfs. Swap is zram (compressed RAM); Mellon
+runs 24/7 and never hibernates. No encryption or Secure Boot private key is
+stored in Git or the Nix store.
 
 ## Before Installation
 
@@ -39,8 +43,24 @@ is stored in Git or the Nix store.
    device.
 5. Create or verify a 1Password Emergency Kit and recovery path.
 
-Disko creates a new partition table and filesystems. It is not a forensic erase;
-use the NVMe manufacturer's sanitize procedure separately if that is required.
+### Prepare Windows
+
+Do this in Windows before touching the firmware:
+
+1. Save the BitLocker recovery key (Settings > Privacy & security > Device
+   encryption, or `manage-bde -protectors -get C:`) somewhere off the machine,
+   such as 1Password. Erasing the Platform Key and enrolling Mellon's own
+   Secure Boot keys changes what the TPM measures, so Windows asks for this key
+   once on its next boot. Alternatively suspend BitLocker for a few reboots:
+   `manage-bde -protectors -disable C: -RebootCount 3`.
+2. Turn off Fast Startup (Control Panel > Power Options > Choose what the power
+   buttons do), so Windows fully shuts down instead of hibernating its disk.
+3. Make sure the free space for Linux is unallocated: in Disk Management it must
+   show as a black "Unallocated" bar, not an empty NTFS volume. Shrink C: there
+   if needed.
+
+Windows keeps the hardware clock in local time; Mellon is configured to match
+(`time.hardwareClockInLocalTime`), so neither OS shifts the other's clock.
 
 ### Prepare the installer
 
@@ -68,7 +88,7 @@ before running it.
    can erase the forbidden-signature database (`dbx`). The local keys are
    created after NixOS is installed.
 4. Disable overclocking, PBO, Curve Optimizer, and EXPO until the base system
-   passes stress, suspend, and hibernation tests.
+   passes stress tests.
 5. Select the NixOS USB's UEFI boot entry.
 
 ## Installer Environment
@@ -84,44 +104,78 @@ nmtui
 ping -c 3 cache.nixos.org
 ```
 
-### Confirm UEFI mode and the target disk
+### Confirm UEFI mode and select the target disk
+
+`hosts/mellon/disk.nix` names no drive: it formats the partitions labelled
+`disk-main-ESP` and `disk-main-lvm`, which you create below, so the drive is
+chosen here, once, and a new SSD needs no repository change. Disconnect every
+drive you are not installing to, then identify the target by model, serial,
+and size:
 
 ```bash
 test -d /sys/firmware/efi/efivars
 sudo bootctl status
-readlink -f /dev/disk/by-id/nvme-KINGSTON_SFYRDK2000G_50026B7283A261E1
-lsblk -o NAME,SIZE,MODEL,SERIAL,FSTYPE,MOUNTPOINTS
+lsblk -d -o NAME,SIZE,MODEL,SERIAL,TRAN
+ls -l /dev/disk/by-id/ | grep -v -- '-part[0-9]*$' | grep nvme-
 ```
 
-Stop if the by-id path is absent or resolves to anything other than Mellon's
-Kingston 2 TB system drive. Disconnect every drive that cannot safely be wiped.
-Do not substitute another path merely to make the command succeed; first update
-`hosts/mellon/disk.nix` after verifying the physical device.
+Pick the `nvme-<MODEL>_<SERIAL>` entry whose serial matches the drive's label
+(not an `nvme-eui.*` alias), and keep it in this shell for the rest of the
+installation:
+
+```bash
+disk=/dev/disk/by-id/nvme-<MODEL>_<SERIAL>
+readlink -f "$disk"
+lsblk -o NAME,SIZE,MODEL,SERIAL,FSTYPE,MOUNTPOINTS "$disk"
+```
+
+Stop if `readlink` fails or `lsblk` shows anything other than the intended
+system drive, with Windows' partitions on it.
 
 ### Clone the configuration
 
-The Mellon work currently lives on the `v2` branch. Clone it into the live
-environment:
+Clone the `main` branch into the live environment. The old `v2` branch is
+stale; do not install from it.
 
 ```bash
-git clone --branch v2 https://github.com/noghartt/nixcfg.git /tmp/nixcfg
+git clone --branch main https://github.com/noghartt/nixcfg.git /tmp/nixcfg
 cd /tmp/nixcfg
 git status --short
-required_commit=d22f22b7078aa13d1f015a3c85251c48a18aecc3
-git merge-base --is-ancestor "$required_commit" HEAD || {
-  printf 'Refusing install: origin/v2 does not contain %s\n' "$required_commit"
-  exit 1
-}
+git log -1 --format='%h %s'
 nix --extra-experimental-features 'nix-command flakes' \
   eval .#nixosConfigurations.mellon.config.system.build.toplevel.drvPath
-unset required_commit
 ```
 
-Commit `d22f22b` must be pushed from the trusted development machine before
-install day; without it, `origin/v2` has the old unencrypted layout. Both the
-ancestry check and evaluation must succeed before touching the disk.
+Push every pending change from the development machine before install day.
+The evaluation must succeed before touching the disk.
 
 ## Disk Installation
+
+### Add the Linux partitions
+
+Print the partition table and check the free space Windows left. The
+`Total free space` line and the gaps between partition boundaries must show one
+block large enough for Linux:
+
+```bash
+sudo sgdisk -p "$disk"
+```
+
+Create the two Linux partitions. A start or end of `0` means the start and end
+of the largest free block, so both land in that block and no existing
+partition moves; partition number `0` takes the next free number:
+
+```bash
+sudo sgdisk --new=0:0:+2G --typecode=0:ef00 --change-name=0:disk-main-ESP "$disk"
+sudo sgdisk --new=0:0:0 --typecode=0:8309 --change-name=0:disk-main-lvm "$disk"
+sudo partprobe "$disk"
+sudo udevadm settle
+sudo sgdisk -p "$disk"
+ls -l /dev/disk/by-partlabel/disk-main-ESP /dev/disk/by-partlabel/disk-main-lvm
+```
+
+Check that Windows' partitions are unchanged and that the two new ones are the
+sizes you expect before continuing.
 
 ### Create the temporary LUKS secret
 
@@ -150,19 +204,18 @@ This initial passphrase is required at every boot until another LUKS key slot is
 configured. Use a strong passphrase that can be entered with the US console
 layout.
 
-### Run the locked Disko version
+### Partition, encrypt, and mount
 
-Read Disko's exact revision from `flake.lock`, then partition, encrypt, format,
-and mount the drive at `/mnt`:
+Build Mellon's Disko format-and-mount script from the flake's own locked Disko.
+It formats only the two labelled partitions: the ESP as vfat, and the other as
+LUKS with LVM and Btrfs inside. It never repartitions the drive. Do not use
+Disko's `destroy` modes on this machine.
 
 ```bash
-disko_rev="$(nix --extra-experimental-features 'nix-command flakes' \
-  eval --raw --impure --expr \
-  '(builtins.fromJSON (builtins.readFile ./flake.lock)).nodes.disko.locked.rev')"
-
-sudo nix --extra-experimental-features 'nix-command flakes' \
-  run "github:nix-community/disko/${disko_rev}#disko" -- \
-  --mode disko --flake .#mellon
+script="$(nix --extra-experimental-features 'nix-command flakes' \
+  build --no-link --print-out-paths \
+  .#nixosConfigurations.mellon.config.system.build.formatMount)"
+sudo "$script"/bin/disko-format-mount
 ```
 
 Regardless of whether Disko succeeds, immediately remove the passphrase file
@@ -172,16 +225,15 @@ before investigating or continuing:
 sudo rm -f /run/disko-luks-password
 trap - EXIT INT TERM
 unset -f cleanup_luks_secret
-unset disko_rev
+unset script
 ```
 
-Confirm the resulting mounts and swapfile:
+Confirm the resulting mounts:
 
 ```bash
 findmnt --real --submounts /mnt
 sudo btrfs subvolume list /mnt
-sudo test -f /mnt/swap/swapfile
-sudo btrfs inspect-internal map-swapfile /mnt/swap/swapfile
+sudo btrfs subvolume list /mnt/agent
 sudo lvs
 sudo cryptsetup status cryptlvm
 ```
@@ -306,6 +358,25 @@ sudo stat -c '%n %s bytes' /sys/firmware/efi/efivars/dbx-*
 Investigate if no `dbx` variable exists or its payload is empty before treating
 Secure Boot as complete.
 
+### Boot Windows
+
+Windows Boot Manager stays on Windows' own ESP, which systemd-boot does not
+scan, so it is not in Mellon's boot menu. Choose it from the firmware boot menu
+(F8 on ASUS boards), or boot it once from Linux:
+
+```bash
+sudo efibootmgr                      # note Windows Boot Manager's BootXXXX number
+sudo efibootmgr --bootnext XXXX && systemctl reboot
+```
+
+Boot Windows once now. If it asks for the BitLocker recovery key, enter the one
+saved before installation; it re-seals to the new Secure Boot state. Windows
+updates sometimes move Windows Boot Manager to the front of the boot order; put
+"Linux Boot Manager" back first with `sudo efibootmgr --bootorder` or in the
+firmware. Windows' Secure Boot `dbx` updates can also change what the TPM
+measures, so expect one LUKS passphrase boot and TPM re-enrollment afterwards
+(see below).
+
 ## First Boot Setup
 
 ### Check out and record the generated hardware file
@@ -413,33 +484,43 @@ mode. The organization-managed WARP profile must exclude `100.64.0.0/10` and
 tunnels, request those settings from the WARP administrator rather than adding
 manual default routes. Do not use a Tailscale exit node while WARP is connected.
 
-## Hibernation
+### Enable SSH over the tailnet
 
-The swapfile's physical offset exists only after Disko creates the filesystem.
-Calculate it:
-
-```bash
-sudo btrfs inspect-internal map-swapfile -r /swap/swapfile
-```
-
-Add the returned integer to `boot.kernelParams` in `hosts/mellon/boot.nix`:
-
-```nix
-kernelParams = [ "resume_offset=<returned-integer>" ];
-```
-
-Build the next boot generation, reboot so the kernel receives the parameter,
-then test hibernation:
+Mellon runs 24/7 and never suspends. sshd accepts keys only and listens only
+on the tailnet interface, so `tailscale up` above must have succeeded first.
+Authorized keys come from 1Password: in the `Nix` vault, create an item named
+`ssh-authorized-keys` whose Notes field holds the public keys allowed to log in,
+one per line (copy them from the SSH Key items in 1Password). Then rebuild and
+check that opnix wrote them:
 
 ```bash
-sudo nixos-rebuild boot --flake ~/www/nixcfg#mellon
-sudo reboot
-cat /sys/power/resume
-cat /sys/power/resume_offset
-systemctl hibernate
+sudo nixos-rebuild switch --flake ~/www/nixcfg#mellon
+ls -l ~/.ssh/authorized_keys
+systemctl status sshd
 ```
 
-Recalculate the offset whenever `/swap/swapfile` is recreated.
+On the Mac, forward the 1Password agent to Mellon so Git and SSH there sign
+through the Mac while a session is open. Add to `~/.ssh/config`:
+
+```sshconfig
+Host mellon
+  ForwardAgent "~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
+```
+
+sshd allows three authentication attempts, and the 1Password agent offers
+every key it holds. If 1Password holds more than three SSH keys, download the
+key's public half to `~/.ssh/mellon.pub` and add `IdentityFile ~/.ssh/mellon.pub`
+and `IdentitiesOnly yes` to that block. Then, from the Mac:
+
+```bash
+ssh mellon 'echo ok'
+ssh -t mellon 'ls -l ~/.ssh/agent.sock && ssh -T git@github.com'
+```
+
+`~/.ssh/agent.sock` points at the forwarded agent of the latest interactive
+login, so tmux or Herdr sessions that outlive a connection keep signing through
+the next one. With no live forwarded agent, Mellon falls back to its local
+1Password app.
 
 ## Validation Checklist
 
@@ -450,7 +531,7 @@ systemctl --failed
 systemctl list-timers --all
 journalctl -b -p warning
 findmnt -t btrfs,vfat
-swapon --show
+zramctl
 sudo snapper -c root list
 sudo smartctl -a /dev/nvme0
 fwupdmgr get-devices
@@ -479,9 +560,9 @@ lsmod | grep '^nvidia'
 docker run --rm --gpus all nvidia/cuda:13.0.0-base-ubuntu24.04 nvidia-smi
 ```
 
-Verify greetd login, Hyprland, Noctalia, screen locking, idle suspend, audio,
-Firefox hardware acceleration, repeated suspend/resume, and hibernation while
-GPU memory is in use.
+Verify greetd login, Hyprland, Noctalia, screen locking, idle screen-off,
+audio, and Firefox hardware acceleration. `systemctl suspend` must be refused:
+Mellon stays up 24/7.
 
 Mellon's kernel, firmware, wireless regulatory data, and AMD microcode come from
 the independently locked `nixpkgs-hardware` input. NVIDIA 595.84 is pinned in
@@ -501,11 +582,11 @@ sudo cryptsetup open /dev/disk/by-partlabel/disk-main-lvm cryptlvm
 sudo vgchange -ay
 
 sudo mount -o subvol=@ /dev/vg/root /mnt
-sudo mkdir -p /mnt/{boot,nix,home,var/log,.snapshots,swap}
+sudo mkdir -p /mnt/{boot,nix,home,agent,var/log,.snapshots}
 sudo mount -o subvol=@nix /dev/vg/root /mnt/nix
 sudo mount -o subvol=@var_log /dev/vg/root /mnt/var/log
 sudo mount -o subvol=@snapshots /dev/vg/root /mnt/.snapshots
-sudo mount -o subvol=@swap /dev/vg/root /mnt/swap
+sudo mount -o subvol=@agent /dev/vg/agents /mnt/agent
 sudo mount -o subvol=@home /dev/vg/home /mnt/home
 sudo mount /dev/disk/by-partlabel/disk-main-ESP /mnt/boot
 sudo nixos-enter --root /mnt

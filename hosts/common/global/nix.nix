@@ -9,6 +9,12 @@
       ];
       auto-optimise-store = true;
       trusted-users = [ "@wheel" ];
+
+      # Collect garbage during a build once free space drops below 25 GiB,
+      # up to 100 GiB free, so parallel agent builds cannot fill the disk
+      # between weekly GCs. Adapted from github:fersilva16/nix-config.
+      min-free = 25 * 1024 * 1024 * 1024;
+      max-free = 100 * 1024 * 1024 * 1024;
     };
 
     gc = {
