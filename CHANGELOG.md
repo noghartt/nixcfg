@@ -10,6 +10,10 @@ whenever it feels like a checkpoint.
 
 ### Added
 
+- **mellon**: `reboot-windows` reboots once into Windows Boot Manager through the firmware
+  (`efibootmgr --bootnext`), keeping BitLocker's measured boot path unchanged; INSTALL.md
+  documents the matching `bcdedit` one-shot for rebooting from Windows back to Linux.
+
 - **home/noghartt/omo**: `cloud-mode` extension. `omo --cloud <host[:path]>` or
   `/cloud <host[:path]> | off` keeps OmO on this machine but makes the model's environment a
   remote host: read/write/edit/grep and bash (including eval's `tool.*` helpers, background

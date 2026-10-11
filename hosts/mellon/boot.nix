@@ -51,5 +51,22 @@
     # Windows Boot Manager lives on Windows' own ESP, outside systemd-boot's
     # menu; `efibootmgr --bootnext` reboots into it once.
     pkgs.efibootmgr
+    # One-shot firmware boot keeps Windows' TPM measurements identical to a
+    # direct boot, so BitLocker never sees systemd-boot in its chain. The entry
+    # is found by label because its BootXXXX number moves when firmware or
+    # Windows rewrites the boot entries.
+    (pkgs.writeShellApplication {
+      name = "reboot-windows";
+      runtimeInputs = [ pkgs.efibootmgr ];
+      text = ''
+        entry=$(efibootmgr | sed -n 's/^Boot\([0-9A-Fa-f]\{4\}\)\*\{0,1\} Windows Boot Manager\t.*/\1/p' | head -n 1)
+        if [ -z "$entry" ]; then
+          echo "reboot-windows: no 'Windows Boot Manager' entry in efibootmgr" >&2
+          exit 1
+        fi
+        sudo efibootmgr --quiet --bootnext "$entry"
+        systemctl reboot
+      '';
+    })
   ];
 }

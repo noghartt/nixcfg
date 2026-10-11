@@ -365,8 +365,19 @@ scan, so it is not in Mellon's boot menu. Choose it from the firmware boot menu
 (F8 on ASUS boards), or boot it once from Linux:
 
 ```bash
-sudo efibootmgr                      # note Windows Boot Manager's BootXXXX number
-sudo efibootmgr --bootnext XXXX && systemctl reboot
+reboot-windows    # efibootmgr --bootnext <Windows Boot Manager>, then reboot
+```
+
+The next boot after Windows returns to Linux, because Linux Boot Manager stays
+first in the firmware boot order. To reboot straight into Linux from Windows,
+find the Linux Boot Manager GUID once in an admin terminal with
+`bcdedit /enum firmware`, then save this as `reboot-linux.cmd` and run it as
+administrator (or hold Shift on Restart and pick Use a device > Linux Boot
+Manager):
+
+```bat
+bcdedit /set {fwbootmgr} bootsequence {LINUX-BOOT-MANAGER-GUID}
+shutdown /r /t 0
 ```
 
 Boot Windows once now. If it asks for the BitLocker recovery key, enter the one
