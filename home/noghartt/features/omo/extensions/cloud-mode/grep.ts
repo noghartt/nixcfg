@@ -94,7 +94,7 @@ export async function remoteGrep(target: Target, params: GrepToolInput, signal?:
 	const timeoutMs = params.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 	const rg = rgArgs(target, params).map(q).join(" ");
 	const command = `cd ${q(target.cwd)} && exec timeout ${Math.ceil(timeoutMs / 1000)} ${rg}`;
-	const result = await run(target.dest, command, {
+	const result = await run(target, command, {
 		signal,
 		timeoutMs,
 		onStdout: (chunk, kill) => {

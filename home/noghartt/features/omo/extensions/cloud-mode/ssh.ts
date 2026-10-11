@@ -11,7 +11,10 @@ import type {
 	WriteOperations,
 } from "@earendil-works/pi-coding-agent";
 
-export type Target = { dest: string; home: string; cwd: string };
+/** `box` names an agentbox sandbox on `dest`; every command then runs inside it. */
+export type Host = { dest: string; box?: string };
+/** `served` is the sandbox's tailnet DNS name, for servers bound to 0.0.0.0. */
+export type Target = Host & { home: string; cwd: string; served?: string };
 
 export type RunResult = { code: number | null; stdout: Buffer; stderr: string };
 
@@ -37,14 +40,17 @@ export function sshOptions(shared = true): string[] {
 
 export const remoteShell = (cwd: string, command: string): string => `cd ${q(cwd)} && exec bash -c ${q(command)}`;
 
+const onHost = (host: Host, command: string): string =>
+	host.box ? `agentbox exec ${q(host.box)} -- bash -c ${q(command)}` : command;
+
 export function run(
-	dest: string,
+	host: Host,
 	command: string,
 	options: { input?: string | Buffer; signal?: AbortSignal; timeoutMs?: number; onStdout?: (chunk: Buffer, kill: () => void) => void } = {},
 ): Promise<RunResult> {
 	return new Promise((resolve, reject) => {
 		if (options.signal?.aborted) return reject(new Error("Operation aborted"));
-		const child = spawn("ssh", [...sshOptions(), "-T", "--", dest, command], {
+		const child = spawn("ssh", [...sshOptions(), "-T", "--", host.dest, onHost(host, command)], {
 			stdio: [options.input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
 		});
 		const out: Buffer[] = [];
@@ -65,9 +71,9 @@ export function run(
 	});
 }
 
-export async function exec(dest: string, command: string, input?: string | Buffer): Promise<Buffer> {
-	const result = await run(dest, command, { input });
-	if (result.code !== 0) throw new Error(result.stderr.trim() || `ssh ${dest}: exit ${result.code}`);
+export async function exec(host: Host, command: string, input?: string | Buffer): Promise<Buffer> {
+	const result = await run(host, command, { input });
+	if (result.code !== 0) throw new Error(result.stderr.trim() || `ssh ${host.dest}: exit ${result.code}`);
 	return result.stdout;
 }
 
@@ -91,14 +97,14 @@ const IMAGE_MAGIC: Array<[string, (b: Buffer) => boolean]> = [
 
 export function readOps(target: Target): ReadOperations {
 	return {
-		readFile: (path) => exec(target.dest, `cat -- ${q(toRemote(target, path))}`),
+		readFile: (path) => exec(target, `cat -- ${q(toRemote(target, path))}`),
 		access: async (path) => {
-			if ((await run(target.dest, `test -r ${q(toRemote(target, path))}`)).code !== 0) throw notFound(path);
+			if ((await run(target, `test -r ${q(toRemote(target, path))}`)).code !== 0) throw notFound(path);
 		},
 		// Only image-named files pay the extra round trip for their magic bytes.
 		detectImageMimeType: async (path) => {
 			if (!/\.(png|jpe?g|gif|webp|bmp)$/i.test(path)) return null;
-			const head = (await run(target.dest, `head -c 12 -- ${q(toRemote(target, path))}`)).stdout;
+			const head = (await run(target, `head -c 12 -- ${q(toRemote(target, path))}`)).stdout;
 			return IMAGE_MAGIC.find(([, matches]) => matches(head))?.[0] ?? null;
 		},
 	};
@@ -108,10 +114,10 @@ export function writeOps(target: Target): WriteOperations {
 	return {
 		// Content travels on stdin, so size is not bounded by the command line.
 		writeFile: async (path, content) => {
-			await exec(target.dest, `cat > ${q(toRemote(target, path))}`, content);
+			await exec(target, `cat > ${q(toRemote(target, path))}`, content);
 		},
 		mkdir: async (dir) => {
-			await exec(target.dest, `mkdir -p -- ${q(toRemote(target, dir))}`);
+			await exec(target, `mkdir -p -- ${q(toRemote(target, dir))}`);
 		},
 	};
 }
@@ -122,7 +128,7 @@ export function editOps(target: Target): EditOperations {
 		readFile: read.readFile,
 		access: async (path) => {
 			const remote = q(toRemote(target, path));
-			if ((await run(target.dest, `test -r ${remote} && test -w ${remote}`)).code !== 0) throw notFound(path);
+			if ((await run(target, `test -r ${remote} && test -w ${remote}`)).code !== 0) throw notFound(path);
 		},
 		writeFile: writeOps(target).writeFile,
 	};
@@ -133,7 +139,7 @@ export function userBashOps(target: Target): BashOperations {
 	return {
 		exec: (command, _cwd, { onData, signal, timeout }) =>
 			new Promise((resolve, reject) => {
-				const child = spawn("ssh", [...sshOptions(false), "-T", "--", target.dest, remoteShell(target.cwd, command)], {
+				const child = spawn("ssh", [...sshOptions(false), "-T", "--", target.dest, onHost(target, remoteShell(target.cwd, command))], {
 					stdio: ["ignore", "pipe", "pipe"],
 				});
 				let timedOut = false;
@@ -161,4 +167,4 @@ export function userBashOps(target: Target): BashOperations {
 
 /** The agent's bash: OmO's local PTY runs ssh, so background sessions, input, and kill keep working. */
 export const ptyCommand = (target: Target, command: string): string =>
-	["exec", "ssh", ...sshOptions(false), "-tt", "--", target.dest, remoteShell(target.cwd, command)].map(q).join(" ");
+	["exec", "ssh", ...sshOptions(false), "-tt", "--", target.dest, onHost(target, remoteShell(target.cwd, command))].map(q).join(" ");
