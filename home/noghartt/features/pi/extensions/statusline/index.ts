@@ -1,12 +1,25 @@
 import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { type Component, HStack, truncateToWidth, type TUI, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { createLimitsPoller, LIMITS_REREAD_MS, type LimitsCache, type LimitWindow } from "./limits.ts";
+import {
+	accountIdentities,
+	type AccountIdentity,
+	createLimitsPoller,
+	LIMITS_REREAD_MS,
+	type LimitsCache,
+	type LimitWindow,
+} from "./limits.ts";
 
 // OmO's native-badge republishes "(OmO Native by Q Kim)" under this key on every
 // session_start and agent_settled, so it is filtered here instead of cleared.
 const HIDDEN_STATUSES = new Set(["  omo-native"]);
+// OmO's /goal publishes its state and continuation countdown under these keys; while the
+// column is on screen they move into its Goal section instead of the footer line.
+const GOAL_STATUS = "goal";
+const GOAL_WAIT_STATUS = "goal-wait";
+const GOAL_OBJECTIVE_LINES = 4;
 const SIDEBAR_WIDTH = 42;
 const SIDEBAR_MIN_COLUMNS = 120;
 const FINISHED_TASKS_SHOWN = 4;
@@ -72,6 +85,29 @@ function shortModel(model: string | undefined): string | undefined {
 
 function isViewportTui(tui: TUI | undefined): tui is ViewportTui {
 	return typeof (tui as Partial<ViewportTui> | undefined)?.setLayoutRoot === "function";
+}
+
+// The column outlives its extension generation: it sits in the host's layout root, which
+// /reload keeps. Each column records the chat it wraps under this key, so a later generation
+// unwraps a column an earlier one left behind instead of nesting it.
+const SIDEBAR_ROOT = Symbol.for("pi-statusline.root");
+
+function wrappedChat(component: Component): Component | undefined {
+	return (component as { [SIDEBAR_ROOT]?: Component })[SIDEBAR_ROOT];
+}
+
+// After /reload or a session replacement, the retired generation's pi and ctx throw on access;
+// the messages mirror OmO's stale-context.ts. Anything else is still a real error.
+function isStaleContextError(error: unknown): boolean {
+	return (
+		error instanceof Error &&
+		(error.message === "stale extension generation after reload" ||
+			error.message.startsWith("This extension ctx is stale after session replacement or reload."))
+	);
+}
+
+function ignoreStale(error: unknown): void {
+	if (!isStaleContextError(error)) throw error;
 }
 
 function formatDuration(ms: number): string {
@@ -223,18 +259,25 @@ function statusIcon(theme: Theme, status: string): string {
 
 export default function statusline(pi: ExtensionAPI) {
 	let ctx: ExtensionContext | undefined;
+	// Cleared on session_shutdown: the old footer keeps rendering until the next generation
+	// replaces it, and must not re-attach a column that would render through a retired ctx.
+	let active = false;
 	let tui: TUI | undefined;
 	let agentRunning = false;
 	let sidebarEnabled = true;
 	let orchestrator: OrchestratorState | undefined;
 	let layout: { tui: ViewportTui; chat: Component; root: HStack } | undefined;
 	let footerBranch: (() => string | null) | undefined;
+	let footerStatuses: (() => ReadonlyMap<string, string>) | undefined;
+	let goalObjective: string | undefined;
+	let goalStatusSeen: string | undefined;
 	const tasks = new Map<string, TaskState>();
 	const inflight = new Map<string, TaskState[]>();
 	let usage = { leafId: undefined as string | null | undefined, cost: 0, cacheHit: undefined as number | undefined };
 	let session = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, turns: 0, startedAt: undefined as number | undefined };
 	let turnTokens: number[] = [];
 	let limits: LimitsCache | undefined;
+	let identities: AccountIdentity[] = [];
 	let limitsTimer: ReturnType<typeof setInterval> | undefined;
 	let todos: TodoPhase[] = [];
 	let todoOwed: TodoOwed | undefined;
@@ -252,9 +295,14 @@ export default function statusline(pi: ExtensionAPI) {
 	const version = harnessVersion();
 
 	const render = () => tui?.requestRender();
+	// Each limits update re-reads the credential stores, so a login switch shows up with it.
 	const limitsPoller = createLimitsPoller((cache) => {
 		limits = cache;
 		render();
+		void accountIdentities().then((next) => {
+			identities = next;
+			render();
+		});
 	});
 	// Only processes with a mounted TUI poll; headless and RPC workers never render the result.
 	const startLimits = () => {
@@ -356,7 +404,7 @@ export default function statusline(pi: ExtensionAPI) {
 
 	// git runs off the render path; overlapping triggers coalesce into one follow-up run.
 	const refreshGit = async (): Promise<void> => {
-		if (!ctx) return;
+		if (!ctx || !active) return;
 		if (gitRefresh.running) {
 			gitRefresh.again = true;
 			return;
@@ -388,6 +436,8 @@ export default function statusline(pi: ExtensionAPI) {
 					if (changedFiles.has(path)) changedFiles.set(path, stat);
 				}
 			}
+		} catch (error) {
+			ignoreStale(error);
 		} finally {
 			const again = gitRefresh.again;
 			gitRefresh = { running: false, again: false };
@@ -421,9 +471,28 @@ export default function statusline(pi: ExtensionAPI) {
 		return fitted + " ".repeat(Math.max(2, width - visibleWidth(fitted) - visibleWidth(right))) + right;
 	};
 
-	const statusText = (statuses: ReadonlyMap<string, string>): string =>
+	// OmO keeps the objective beside the session (its goalStoreRef); unsaved sessions store it
+	// elsewhere, and the section then shows the status alone.
+	const loadGoalObjective = async () => {
+		const manager = ctx?.sessionManager;
+		if (!manager?.getSessionFile()) {
+			goalObjective = undefined;
+			return;
+		}
+		const file = join(manager.getSessionDir(), "extensions", "goal", `${encodeURIComponent(manager.getSessionId())}.json`);
+		try {
+			const stored = JSON.parse(await readFile(file, "utf8")) as { goal?: { objective?: unknown } };
+			goalObjective = typeof stored.goal?.objective === "string" ? stored.goal.objective : undefined;
+		} catch {
+			// A missing or mid-write store only costs the objective line until the next status change.
+			goalObjective = undefined;
+		}
+		render();
+	};
+
+	const statusText = (statuses: ReadonlyMap<string, string>, sidebar: boolean): string =>
 		[...statuses.entries()]
-			.filter(([key]) => !HIDDEN_STATUSES.has(key))
+			.filter(([key]) => !HIDDEN_STATUSES.has(key) && !(sidebar && (key === GOAL_STATUS || key === GOAL_WAIT_STATUS)))
 			.sort(([a], [b]) => a.localeCompare(b))
 			.map(([, text]) => text.replace(/[\r\n\t]+/g, " "))
 			.join(" ");
@@ -464,7 +533,18 @@ export default function statusline(pi: ExtensionAPI) {
 			private readonly rows: () => number,
 		) {}
 
+		private last: string[] = [];
+
 		invalidate(): void {}
+
+		render(width: number): string[] {
+			try {
+				this.last = this.draw(width);
+			} catch (error) {
+				ignoreStale(error);
+			}
+			return this.last;
+		}
 
 		private agentLines(inner: number): string[] {
 			const th = this.theme;
@@ -491,6 +571,24 @@ export default function statusline(pi: ExtensionAPI) {
 					lines.push(truncateToWidth(`${th.fg("dim", last ? " " : "│")}   ${th.fg("dim", shortModel(worker.model) ?? "")}`, inner, "…"));
 				});
 			}
+			return lines;
+		}
+
+		private goalLines(inner: number): string[] {
+			const statuses = footerStatuses?.();
+			const state = statuses?.get(GOAL_STATUS);
+			if (!state) return [];
+			const th = this.theme;
+			const flat = (text: string) => text.replace(/[\r\n\t]+/g, " ");
+			const lines = [th.bold("Goal"), ...wrapTextWithAnsi(th.fg("muted", flat(state)), inner).slice(0, 2)];
+			if (goalObjective) {
+				const wrapped = wrapTextWithAnsi(flat(goalObjective), inner);
+				const shown = wrapped.slice(0, GOAL_OBJECTIVE_LINES);
+				if (wrapped.length > shown.length) shown[shown.length - 1] = truncateToWidth(`${shown[shown.length - 1]} …`, inner, "…");
+				lines.push(...shown);
+			}
+			const wait = statuses?.get(GOAL_WAIT_STATUS);
+			if (wait) lines.push(...wrapTextWithAnsi(th.fg("dim", flat(wait)), inner).slice(0, 2));
 			return lines;
 		}
 
@@ -583,6 +681,8 @@ export default function statusline(pi: ExtensionAPI) {
 					...(provider.error ? [`${provider.windows.length ? "stale" : "unavailable"} (${provider.error})`] : []),
 				];
 				lines.push(truncateToWidth(`${th.fg("accent", provider.title)}${meta.length ? th.fg("dim", ` ${meta.join(" · ")}`) : ""}`, inner, "…"));
+				const emails = new Set(identities.flatMap((identity) => (identity.provider === provider.id ? [identity.email] : [])));
+				for (const email of emails) lines.push(truncateToWidth(th.fg("muted", email), inner, "…"));
 				for (const window of provider.windows) {
 					const tail = window.resetsAt ? formatCountdown(window.resetsAt - now) : "";
 					lines.push(row(window.label, window.percent, paceOf(window, now), tail));
@@ -645,7 +745,7 @@ export default function statusline(pi: ExtensionAPI) {
 			return lines;
 		}
 
-		render(width: number): string[] {
+		private draw(width: number): string[] {
 			const th = this.theme;
 			const padLeft = 2;
 			const inner = Math.max(1, width - padLeft - 1);
@@ -654,11 +754,10 @@ export default function statusline(pi: ExtensionAPI) {
 				"",
 				...wrapTextWithAnsi(th.bold(title), inner).slice(0, 4),
 				"",
-				...this.contextLines(),
-				"",
-				...this.sessionLines(inner),
-				"",
 			];
+			const goal = this.goalLines(inner);
+			if (goal.length > 0) top.push(...goal, "");
+			top.push(...this.contextLines(), "", ...this.sessionLines(inner), "");
 			const limited = this.limitLines(inner);
 			if (limited.length > 0) top.push(...limited, "");
 			const todoList = this.todoLines(inner);
@@ -688,8 +787,9 @@ export default function statusline(pi: ExtensionAPI) {
 	}
 
 	const attachSidebar = (target: ViewportTui, theme: Theme) => {
-		const chat = target.layoutRoot;
-		if (!chat || (layout && target.layoutRoot === layout.root)) return;
+		if (!active || !target.layoutRoot || (layout && target.layoutRoot === layout.root)) return;
+		let chat = target.layoutRoot;
+		for (let inner = wrappedChat(chat); inner; inner = wrappedChat(chat)) chat = inner;
 		const root = new HStack([
 			{ component: chat, basis: 0, grow: 1, shrink: 1, minSize: 40 },
 			{
@@ -701,6 +801,7 @@ export default function statusline(pi: ExtensionAPI) {
 				visible: (viewport: { width: number }) => sidebarEnabled && viewport.width >= SIDEBAR_MIN_COLUMNS,
 			},
 		], { gap: SIDEBAR_GAP });
+		Object.defineProperty(root, SIDEBAR_ROOT, { value: chat });
 		layout = { tui: target, chat, root };
 		target.setLayoutRoot(root);
 	};
@@ -717,6 +818,7 @@ export default function statusline(pi: ExtensionAPI) {
 		next.ui.setFooter((footerTui, theme, footerData) => {
 			tui = footerTui;
 			footerBranch = () => footerData.getGitBranch();
+			footerStatuses = () => footerData.getExtensionStatuses();
 			const unsubscribe = footerData.onBranchChange(() => footerTui.requestRender());
 			syncFromSession();
 			startLimits();
@@ -725,29 +827,45 @@ export default function statusline(pi: ExtensionAPI) {
 				dispose() {
 					unsubscribe();
 					announcedSidebar = undefined;
-					pi.events.emit(SIDEBAR_EVENT, { shown: false });
 					stopLimits();
 					detachSidebar();
 					tui = undefined;
+					footerStatuses = undefined;
+					// /reload and session replacement dispose the footer after session_shutdown, when
+					// this generation's pi.events throws; the next generation announces its own state.
+					if (active) pi.events.emit(SIDEBAR_EVENT, { shown: false });
 				},
 				render(width: number): string[] {
-					syncFromSession();
-					// The host mounts its fullscreen layout after the footer exists and remounts it
-					// when the TUI mode changes, so the column is (re)attached from here, off-frame.
-					if (isViewportTui(footerTui) && footerTui.layoutRoot && footerTui.layoutRoot !== layout?.root) {
-						queueMicrotask(() => attachSidebar(footerTui, theme));
+					try {
+						syncFromSession();
+						// The host mounts its fullscreen layout after the footer exists and remounts it
+						// when the TUI mode changes, so the column is (re)attached from here, off-frame.
+						if (isViewportTui(footerTui) && footerTui.layoutRoot && footerTui.layoutRoot !== layout?.root) {
+							queueMicrotask(() => attachSidebar(footerTui, theme));
+						}
+						const shown = sidebarShown();
+						if (shown !== announcedSidebar) {
+							announcedSidebar = shown;
+							pi.events.emit(SIDEBAR_EVENT, { shown });
+							queueMicrotask(render);
+						}
+						const all = footerData.getExtensionStatuses();
+						// The elapsed label ticks, so the objective is re-read at most once per tick.
+						const goalStatus = all.get(GOAL_STATUS);
+						if (goalStatus !== goalStatusSeen) {
+							goalStatusSeen = goalStatus;
+							if (goalStatus) void loadGoalObjective().catch(ignoreStale);
+							else goalObjective = undefined;
+						}
+						const statuses = statusText(all, shown);
+						if (shown) return [leftRight(theme.fg("dim", statuses), modelLabel(theme), width, theme)];
+						const lines = [fullFooterLine(theme, width)];
+						if (statuses) lines.push(truncateToWidth(statuses, width, theme.fg("dim", "...")));
+						return lines;
+					} catch (error) {
+						ignoreStale(error);
+						return [];
 					}
-					const shown = sidebarShown();
-					if (shown !== announcedSidebar) {
-						announcedSidebar = shown;
-						pi.events.emit(SIDEBAR_EVENT, { shown });
-						queueMicrotask(render);
-					}
-					const statuses = statusText(footerData.getExtensionStatuses());
-					if (shown) return [leftRight(theme.fg("dim", statuses), modelLabel(theme), width, theme)];
-					const lines = [fullFooterLine(theme, width)];
-					if (statuses) lines.push(truncateToWidth(statuses, width, theme.fg("dim", "...")));
-					return lines;
 				},
 			};
 		});
@@ -765,11 +883,14 @@ export default function statusline(pi: ExtensionAPI) {
 	};
 
 	pi.on("session_start", async (_event, next) => {
+		active = true;
 		todoOwed = undefined;
+		goalStatusSeen = undefined;
 		install(next);
 		void refreshGit();
 	});
 	pi.on("session_shutdown", async () => {
+		active = false;
 		stopLimits();
 		detachSidebar();
 	});

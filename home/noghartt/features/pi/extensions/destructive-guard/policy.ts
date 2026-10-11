@@ -27,6 +27,8 @@ export interface Facts {
 	protectedRoots: string[];
 	sessionFiles: ReadonlySet<string>;
 	sessionStartedAt: number;
+	// Set only in orchestrator workers: the linked worktree the run created for them.
+	worktree?: string;
 }
 
 // Harness and terminal state that lives under the temp roots; deleting it can
@@ -65,7 +67,16 @@ export async function buildFacts(sessionFiles: ReadonlySet<string>, sessionStart
 	const lexicalRoots = [".pi", ".omo", ".claude", ".codex", ".config/opnix", ".ssh", ".gnupg"].map((dir) => join(home, dir));
 	lexicalRoots.push(guardDir);
 	const protectedRoots = [...new Set([...lexicalRoots, ...(await Promise.all(lexicalRoots.map(canonicalize)))])];
-	return { home: await canonicalize(home), tmpRoots, protectedRoots, sessionFiles, sessionStartedAt };
+	const worktree =
+		process.env.ORCH_ROLE === "worker" && process.env.ORCH_WORKTREE ? await canonicalize(process.env.ORCH_WORKTREE) : undefined;
+	return { home: await canonicalize(home), tmpRoots, protectedRoots, sessionFiles, sessionStartedAt, worktree };
+}
+
+// The orchestrator's worker worktree is a disposable checkout of the leader's commit, so any
+// uncommitted state in it is the run's own work; the root and its .git link stay guarded.
+export function inWorkerWorktree(path: string, facts: Facts): boolean {
+	const root = facts.worktree;
+	return root !== undefined && path !== root && isWithin(root, path) && !isWithin(join(root, ".git"), path);
 }
 
 function expandHome(text: string, home: string): string {
@@ -166,6 +177,7 @@ export async function deletionVerdict(invocation: Invocation, cwd: string, facts
 		const child = tmpChild(path, facts);
 		if (child !== undefined && !HARNESS_TMP_PREFIXES.test(child)) reasons.push(`${target.text} is inside a temp directory`);
 		else if (facts.sessionFiles.has(path)) reasons.push(`${target.text} was created by this session`);
+		else if (inWorkerWorktree(path, facts)) reasons.push(`${target.text} is inside this worker's orchestrator worktree`);
 		else unresolved.push(`${target.text} is neither temporary nor created by this session`);
 	}
 	if (unresolved.length) {

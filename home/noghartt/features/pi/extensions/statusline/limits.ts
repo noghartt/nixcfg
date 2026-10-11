@@ -17,6 +17,8 @@ const LOCK_BUSY_RETRY_MS = 5_000;
 
 // Claude.ai's own usage page reads this endpoint.
 const CLAUDE_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
+// Claude's OAuth tokens are opaque, so the signed-in email has to come from the profile.
+const CLAUDE_PROFILE_URL = "https://api.anthropic.com/api/oauth/profile";
 // Codex CLI's /status reads this endpoint; it rejects requests without the CLI's user agent.
 const CHATGPT_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 const FIVE_HOURS_MS = 5 * 3_600_000;
@@ -36,10 +38,11 @@ export type ProviderLimits = {
 	error?: string;
 };
 // The cache is shared tmp state, so it holds readings only: no tokens and no account
-// identity (email, user or account ids) ever reach it.
+// identity (email, user or account ids) ever reach it; identities stay in process memory.
 export type LimitsCache = { version: number; checkedAt: number; fetches: number; fetchedBy: number; providers: ProviderLimits[] };
 
-type Account = { provider: "claude" | "chatgpt"; access: string; refresh?: string; accountId?: string };
+type Account = { provider: "claude" | "chatgpt"; access: string; refresh?: string; accountId?: string; email?: string };
+export type AccountIdentity = { provider: "claude" | "chatgpt"; email: string };
 type AccountReading = { windows: LimitWindow[]; spend?: LimitSpend; plan?: string };
 
 type OAuthSlot = { access?: unknown; refresh?: unknown; expires?: unknown; accountId?: unknown };
@@ -65,6 +68,11 @@ function jwtClaims(token: string): Record<string, unknown> | undefined {
 function chatgptAccountId(token: string): string | undefined {
 	const auth = jwtClaims(token)?.["https://api.openai.com/auth"] as { chatgpt_account_id?: unknown } | undefined;
 	return typeof auth?.chatgpt_account_id === "string" ? auth.chatgpt_account_id : undefined;
+}
+
+function chatgptEmail(token: string): string | undefined {
+	const profile = jwtClaims(token)?.["https://api.openai.com/profile"] as { email?: unknown } | undefined;
+	return typeof profile?.email === "string" && profile.email !== "" ? profile.email : undefined;
 }
 
 const text = (value: unknown) => (typeof value === "string" && value !== "" ? value : undefined);
@@ -118,7 +126,9 @@ export function discoverAccounts(now = Date.now()): Account[] {
 		for (const provider of ["chatgpt-subscription", "openai-codex"]) {
 			for (const slot of oauthSlots(auth[provider])) {
 				const accountId = slot.accountId ?? chatgptAccountId(slot.access);
-				if (live(slot.expires) && accountId) chatgpt.set(accountId, { provider: "chatgpt", access: slot.access, accountId });
+				if (live(slot.expires) && accountId) {
+					chatgpt.set(accountId, { provider: "chatgpt", access: slot.access, accountId, email: chatgptEmail(slot.access) });
+				}
 			}
 		}
 	}
@@ -130,7 +140,7 @@ export function discoverAccounts(now = Date.now()): Account[] {
 		const exp = jwtClaims(access)?.exp;
 		const accountId = text(codex?.tokens?.account_id) ?? chatgptAccountId(access);
 		if (accountId && !chatgpt.has(accountId) && live(typeof exp === "number" ? exp * 1000 : undefined)) {
-			chatgpt.set(accountId, { provider: "chatgpt", access, accountId });
+			chatgpt.set(accountId, { provider: "chatgpt", access, accountId, email: chatgptEmail(access) });
 		}
 	}
 	return [...claude, ...chatgpt.values()];
@@ -235,6 +245,45 @@ async function fetchAccount(account: Account): Promise<AccountReading> {
 	if (!response.ok) throw new Error(`HTTP ${response.status}`);
 	const body = await response.json();
 	return account.provider === "claude" ? parseClaude(body as RawClaudeUsage) : parseChatgpt(body as RawChatgptUsage, now);
+}
+
+// Keyed by access token, so a rotated token re-resolves once and no process asks twice.
+const claudeEmails = new Map<string, Promise<string | undefined>>();
+
+function claudeEmail(access: string): Promise<string | undefined> {
+	const known = claudeEmails.get(access);
+	if (known) return known;
+	const pending = fetch(CLAUDE_PROFILE_URL, {
+		headers: { Authorization: `Bearer ${access}`, "anthropic-beta": "oauth-2025-04-20" },
+		signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+	})
+		.then(async (response) => {
+			if (!response.ok) throw new Error(`HTTP ${response.status}`);
+			const body = (await response.json()) as { account?: { email?: unknown } };
+			return text(body.account?.email);
+		})
+		.catch(() => {
+			// Forget the failure so the next limits update retries; the section just omits the email.
+			claudeEmails.delete(access);
+			return undefined;
+		});
+	claudeEmails.set(access, pending);
+	return pending;
+}
+
+// Signed-in accounts per provider, in discovery order. Resolved per process and never
+// written to the shared cache.
+export async function accountIdentities(): Promise<AccountIdentity[]> {
+	const accounts = discoverAccounts();
+	const live = new Set(accounts.map((account) => account.access));
+	for (const access of claudeEmails.keys()) if (!live.has(access)) claudeEmails.delete(access);
+	const emails = await Promise.all(
+		accounts.map((account) => (account.provider === "claude" ? claudeEmail(account.access) : Promise.resolve(account.email))),
+	);
+	return accounts.flatMap((account, index) => {
+		const email = emails[index];
+		return email ? [{ provider: account.provider, email }] : [];
+	});
 }
 
 const average = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / values.length;

@@ -9,6 +9,7 @@ import {
 	type Exec,
 	exists,
 	type Facts,
+	inWorkerWorktree,
 	isProtected,
 	isWithin,
 	resolvePath,
@@ -395,9 +396,10 @@ export default function destructiveGuard(pi: ExtensionAPI) {
 		if (event.toolName === "write" && !existed) pendingCreates.set(event.toolCallId, targetPath);
 
 		const inTmp = facts.tmpRoots.some((root) => root !== targetPath && isWithin(root, targetPath));
-		const outsideProject = !isWithin(projectRoot, targetPath) && !inTmp;
+		const inWorktree = inWorkerWorktree(targetPath, facts);
+		const outsideProject = !isWithin(projectRoot, targetPath) && !inTmp && !inWorktree;
 		const sensitive = isSensitivePath(targetPath);
-		let overwritesFile = event.toolName === "write" && existed && !sessionFiles.has(targetPath) && !inTmp;
+		let overwritesFile = event.toolName === "write" && existed && !sessionFiles.has(targetPath) && !inTmp && !inWorktree;
 		if (overwritesFile && !outsideProject && !sensitive) {
 			const git = exec(dirname(targetPath));
 			const tracked = await git("git", ["ls-files", "--error-unmatch", "--", basename(targetPath)]);

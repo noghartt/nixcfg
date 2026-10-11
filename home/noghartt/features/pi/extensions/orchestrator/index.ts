@@ -1048,7 +1048,9 @@ function registerLeader(pi: ExtensionAPI) {
 		// Taken before launch, so nothing the worker does can land in its own baseline.
 		const start = await snapshot(cwd);
 		const { provider, id } = splitRef(choice.ref);
-		const env = { ORCH_ROLE: "worker", ORCH_AGENT: name, ORCH_RUN_DIR: r.dir, ORCH_MESH: r.strategy === "mesh" ? "1" : "0" };
+		const env: Record<string, string> = { ORCH_ROLE: "worker", ORCH_AGENT: name, ORCH_RUN_DIR: r.dir, ORCH_MESH: r.strategy === "mesh" ? "1" : "0" };
+		// destructive-guard treats this run-owned checkout as the worker's scratch space.
+		if (worktree) env.ORCH_WORKTREE = worktree;
 		const args = [
 			"--approve",
 			"--provider",
