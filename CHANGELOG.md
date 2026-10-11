@@ -10,6 +10,45 @@ whenever it feels like a checkpoint.
 
 ### Added
 
+- **home/noghartt/omo**: `cloud-mode` extension. `omo --cloud <host[:path]>` or
+  `/cloud <host[:path]> | off` keeps OmO on this machine but makes the model's environment a
+  remote host: read/write/edit/grep and bash (including eval's `tool.*` helpers, background
+  sessions, and `!` commands) run there over SSH, local-only tools are switched off, and a
+  target that cannot be reached blocks tools instead of falling back to local. The target
+  survives resume and reaches subagents.
+
+- **mellon**: always-on agent host groundwork. Key-only hardened sshd reachable only over the
+  tailnet, with authorized keys from 1Password (opnix) and a `~/.ssh/rc` that keeps a forwarded
+  agent usable from long-lived tmux/Herdr shells; Nix `min-free`/`max-free` GC guards; the
+  CUDA binary cache; Docker published ports bound to loopback; Proton-GE; RTL8922AE driver
+  power saving off; and OmO itself (x86_64 release binary via nix-ld, each session capped by a
+  systemd user scope, user lingering).
+
+- **home/noghartt/omo**: memory guards after one monobloco session's omo reached 20 GB.
+  `models.json` caps stored images at 1568px / 750 KB for every catalog and chain model
+  (Retina screenshots were kept at ~4.5 MB each and re-sent every turn); JavaScript eval
+  kernels run as child processes with a 4 GB recycle ceiling and 30-minute idle parking, so
+  browser/screenshot memory is returned instead of staying in omo; and the `omo-memwatch`
+  launchd agent snapshots (footprint, vmmap, cwd, newest session) and notifies above 4 GB,
+  then stops the process above 12 GB. Snapshots land in `~/Library/Logs/omo-memwatch/`.
+- **home/noghartt/swarm**: agent swarms. `/leader <goal>` makes the OmO session the leader of
+  a swarm of OmO members running in Docker Sandboxes (or on the host with `--local`). Members
+  share a board (discoveries, questions, claims, permissions, skills), work in parallel on
+  distinct parts or evolve across Jev-scored generations, and the leader integrates the result.
+  Includes the `swarm` CLI and daemon, the `/swarms` panel, and the sbx kit. See `SWARM.md`.
+  `/leader` and `/swarms` are exempt from the palette hiding extension commands from slash
+  autocomplete.
+- **palantir**: Docker Sandboxes CLI (`sbx`, trusted `docker/tap/sbx` cask) with telemetry off,
+  used by the swarm feature. The pinned `brew-src` moves 6.0.13 -> 7.0.8, because the cask's
+  `symlink ..., overwrite:` step needs Homebrew >= 7.0.0.
+- **home/noghartt/pi**: the statusline sidebar's Limits section shows the account email
+  each provider is signed in as, under the provider's name. ChatGPT's comes from the token's
+  claims; Claude's from one `api/oauth/profile` request per token. Emails stay in process
+  memory, never in the shared limits cache.
+- **home/noghartt/pi**: the statusline sidebar gains a Goal section under the session
+  title: OmO's `/goal` state, the objective (read from its per-session goal store), and the
+  continuation countdown. While the sidebar is shown, those statuses leave the footer line;
+  narrow terminals and regular mode keep them in the footer.
 - **home/noghartt/pi**: the statusline sidebar gains a Todo section (phase progress, the
   active phase's tasks, and OmO's todo reminder state, replacing the "todos stalled" line)
   and pace words under hot limit bars ("running hot"/"at risk" with the projected time the
@@ -109,6 +148,25 @@ whenever it feels like a checkpoint.
 
 ### Changed
 
+- **mellon/disk**: Mellon now shares its NVMe with an existing Windows install. disko no
+  longer partitions a drive: `INSTALL.md` adds the `disk-main-ESP` (2G) and `disk-main-lvm`
+  partitions in Windows' free space with sgdisk, and disko only formats and mounts those, so
+  Windows is never touched and any drive works without a repository change. The LVM gains a
+  300G `agents` LV at `/agent` for agent sandboxes; the 64G hibernation swapfile is replaced by
+  zram; the hardware clock follows Windows' local time. The runbook adds Windows prep
+  (BitLocker key, Fast Startup) and booting Windows via `efibootmgr --bootnext`, and installs
+  from `main` instead of the stale `v2` branch.
+- **home/noghartt/omo**: OmO 5.1.13 -> 5.1.28 (senpi 2026.10.10-10), on the host and in swarm pods: memory-lock churn and
+  empty-journal fixes, process-isolated JS kernels available, Haiku 5.5 in the builtin
+  explore/librarian/quick lineups (still overridden here).
+- **home/noghartt/cli**: Codex 0.156.1 -> 0.162.0 and Claude Code 2.1.280 -> 2.1.295.
+- **home/noghartt/herdr**: Herdr 0.9.1 -> 0.9.3: much lower server CPU with many panes, file-based
+  image transfer to Ghostty, multiple prefix keys, self-reported agent resume; 0.9.3 fixes
+  Escape-prefixed shortcuts (Option+arrows) in panes. The removed pane graphics API is unused here.
+- **home/noghartt/pi**: orchestrator workers no longer ask before writing, editing, or
+  `rm`-ing files inside their own run-created worktree (exported to them as `ORCH_WORKTREE`),
+  even over uncommitted or untracked content or outside the worker's subdirectory. The
+  worktree root, its `.git`, and sensitive paths such as `.env` still ask.
 - **home/noghartt/omo**: OmO starts on Claude Opus 5.5 at high thinking, with Sonnet 5.5 as
   the lighter Claude option. Claude Haiku 4.5 is gone from OmO's and Pi's model lists, from
   OmO's `quick` chain (now GPT-6 Luna Fast, then Sonnet 5.5), and from the orchestrator's
@@ -154,6 +212,36 @@ whenever it feels like a checkpoint.
 
 ### Fixed
 
+- **home/noghartt/swarm**: `--local` members run as tabs of a `swarm <id>` Herdr workspace
+  instead of a host tmux server, so they are visible next to every other agent and attach
+  focuses their tab. Under tmux they inherited the leader's `HERDR_PANE_ID` and kept reporting
+  status for a pane that no longer existed (one stale swarm sent ~17k failing requests in two
+  hours). The swarm wrapper no longer pulls in tmux; sbx pods still use tmux inside the pod.
+- **home/noghartt/omo**: starting `omo` no longer makes every other running OmO session
+  hot-reload (a full-screen redraw and transcript rebuild). The launcher's jq rewrite of
+  `settings.json` added a trailing newline, and OmO treats a byte change that touches no keys
+  as a real config change. It now writes like OmO does and only when the bytes differ.
+- **home/noghartt/swarm**: members keep the board after a daemon restart. `swarm serve`
+  reclaims the previous board port and token from `daemon.json`, which members and pod network
+  policies were set up with; before, every restart picked a fresh random port and token, and
+  running members got connection failures until they were restarted. When the old port is
+  taken, the leader is told which members to `swarm_restart`. A pod that fails because sbx's
+  global network policy was never initialized now says to run `sbx policy init balanced`.
+- **home/noghartt/omo**: new OmO sessions start on Opus 5.5 at `high` again. OmO saves every
+  model pick and thinking change as the global default, so the last session's switch (Fable,
+  then Sonnet) became every new session's starting model until the next activation. The `omo`
+  launcher now restores the startup model before each start; resumed sessions keep their own
+  model and `--model` still wins.
+- **home/noghartt/pi**: `/reload` no longer kills OmO with "stale extension generation
+  after reload". The statusline footer's dispose emitted on the retired generation's event bus,
+  which threw before the sidebar was detached and aborted the reload; the old column then
+  rendered through the retired API on the next frame. Disposal now cleans up first, a shut-down
+  generation never re-attaches its column, a later generation unwraps a leftover one instead of
+  nesting it, and render and git refresh ignore stale-context errors.
+- **home/noghartt/omo**: inside Herdr, OmO names its tab after the session (session name or
+  first prompt), since Herdr ignores pane terminal titles for tab labels. Only tabs still on
+  Herdr's generated numeric label are claimed, so manual names and a tab another pane's session
+  already named stay; the original label returns when the session ends.
 - **home/noghartt/pi**: inside Herdr, an orchestrator leader running in a linked worktree
   workspace can spawn workers: their worktrees are created from the repo's main checkout
   (Herdr rejected the linked one) and branch from the leader's commit, not the main
@@ -166,6 +254,8 @@ whenever it feels like a checkpoint.
 
 ### Removed
 
+- **mellon**: hibernation (resume device, the pending `resume_offset` step) and NVIDIA
+  suspend VRAM preservation; system sleep is now refused so Mellon runs 24/7.
 - **home/noghartt/herdr**: drop the reviewr plugin in favor of the lazygit popup on
   `Alt+R`; activation unlinks its stale registration.
 - **home/noghartt/pi**: drop the `pi-claude-bridge` package and its config; Pi's

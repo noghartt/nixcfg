@@ -15,19 +15,26 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 ## mellon — NixOS desktop
 
 - [x] NVIDIA Blackwell module (`nixos-hardware` architecture baseline + host-pinned driver and desktop policy)
-- [x] disko: ESP 2G + LUKS + LVM (root 500G / home remainder), btrfs subvolumes @ @nix @var_log @snapshots @swap + @home, 64G swapfile
+- [x] disko: shares the NVMe with Windows; formats only the labelled Linux partitions (2G ESP + LUKS -> LVM: root 500G, agents 300G at /agent, home remainder), btrfs subvolumes @ @nix @var_log @snapshots + @agent + @home; zram swap
 - [x] Hardware stack: independently locked Linux 7.1.4 + firmware/microcode 20260622; NVIDIA 595.84 pinned in `nvidia.nix`
 - [x] Boot: Lanzaboote Secure Boot + systemd initrd + encrypted LVM
 - [x] Desktop: Hyprland (Wayland) + greetd + pipewire + bluetooth
 - [x] `time.timeZone` (America/Sao_Paulo)
-- [ ] Install day: follow `INSTALL.md` exactly (destructive Disko, temporary LUKS secret, hardware config, Lanzaboote keys, login password)
-- [ ] Install day: set `resume_offset` in hosts/mellon/boot.nix (`sudo btrfs inspect-internal map-swapfile -r /swap/swapfile`) and rebuild — enables hibernation
+- [ ] Install day: follow `INSTALL.md` exactly (Windows prep, Linux partitions beside Windows, Disko format, temporary LUKS secret, hardware config, Lanzaboote keys, login password)
 - [ ] Install day: after passphrase and Secure Boot validation, enroll TPM2 LUKS unlock with a PIN and test passphrase fallback
 - [ ] Pre-install decision: keep a persistent root or add Foundry-style impermanence (requires a Disko persistence subvolume and explicit state inventory)
 - [x] docker + compose (daemon on the host, `docker` group via user factory `overrideAttrs`, NVIDIA container toolkit)
 - [x] Reliability: SMART monitoring + desktop notifications, weekly fstrim, power-profiles-daemon, bounded journal/Docker growth, root Snapper timeline
 - [x] Networking: NetworkManager + RTL8922AE desktop tuning, Brazilian regulatory domain, systemd-resolved, native firewall, Tailscale, Cloudflare WARP, Wireshark capture
-- [x] NVIDIA suspend/hibernate VRAM preservation (resume offset still pending install day)
+- [x] Always-on: system sleep refused, hibernation and NVIDIA suspend VRAM preservation dropped
+- [x] Remote access: hardened key-only sshd on the tailnet only, authorized keys from 1Password, forwarded-agent `~/.ssh/rc`
+- [x] Nix `min-free`/`max-free` guards, CUDA binary cache, Docker published ports on loopback by default
+- [x] Gaming: Proton-GE; RTL8922AE power saving off at the driver
+- [x] OmO on Mellon: x86_64 release binary through nix-ld, per-session systemd memory scope, linger
+- [ ] Verify OmO on Mellon after install (binary starts under nix-ld, scope limits apply, eval kernels run)
+- [x] OmO `cloud-mode`: `--cloud`/`/cloud` runs read/write/edit/grep/bash on an SSH host (verified against an OrbStack Ubuntu machine: tools, eval `tool.*`, background server + `kill_bash`, fail-closed, resume)
+- [ ] First `omo --cloud mellon` run from Palantir once Mellon is installed; measure per-call latency over Tailscale
+- [ ] Agent sandboxes (systemd-nspawn): per-sandbox user namespace, cgroup limits, private network, btrfs subvolumes under /agent/sandboxes, remote sandbox mode from Palantir's OmO, swarm backend replacing sbx
 - [x] Gaming: Steam + GameMode (32-bit graphics already enabled by the NVIDIA module)
 - [ ] Verify the work WARP profile uses traffic-only mode and excludes Tailscale IPv4/IPv6 ranges
 
@@ -51,13 +58,22 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [x] Pi/OmO orchestrator: Opus 5.5 (xhigh) leader + worker mesh, Jev-decided strategy, worker models, and result gating (`orch`)
 - [x] Orchestrator dependency graphs: `after`/`workdir` nodes and review nodes with bounded fix loops
 - [ ] Store the TypeSafe key as `op://Nix/TYPESAFE_API_KEY/notesPlain` and run a first real-Jev orchestration
+- [x] Swarm mode design and decisions recorded in `SWARM.md`; `sbx` installed on Palantir
+- [x] Swarm: daemon + board, member/leader extension (`/leader`), parallel and evolve patterns, Jev model pick and gating, skills, approvals, `/swarms` panel, `swarm` CLI, sbx kit
+- [x] Swarm: local-backend end-to-end run (board negotiation, gating, generation 2 from a survivor, held permission, skill publish)
+- [ ] Swarm: `sbx login`, then first sbx run: kit build, pod auth copy, board reachability, tmux in detached pods (SWARM.md "Untested on sbx")
+- [ ] Swarm: measure pod/member memory and tune `podSize`/`podMemory`; 20+ member scaling run
+- [ ] Swarm: first `/leader` run in OmO (leader dialogs, panel attach in Herdr, credential refresh)
+- [ ] Swarm on Mellon (sbx lacks NixOS support; revisit)
 - [x] Pi `Cmd+P` command palette with Ghostty/tmux forwarding, grouped search, and extension commands hidden from slash autocomplete
 - [x] Pi command-palette tree view with a centered ASCII undo tree and responsive node preview pane
 - [x] `Ctrl+P` command palette listing built-in commands too, and `Alt+T` for the session tree view
 - [x] `Ctrl+?` keybindings modal; skills left out of the command palette
 - [x] OmO settings follow Pi's extensions, skills, and keybindings instead of a frozen adopted copy
 - [x] OmO `omo.jsonc` model chains with same-tier cross-provider fallbacks
-- [x] OmO 5.1.13 with chains re-derived from its builtin `omo-task.js`
+- [x] OmO 5.1.28 with chains re-derived from its builtin `omo-task.js` (its new Haiku 5.5 rungs only reach explore/librarian/quick, which stay overridden)
+- [x] OmO memory guards: 1568px image cap (`models.json`), process-isolated JS eval kernels with idle parking (`codemode.json`), `omo-memwatch` launchd snapshot/notify/stop agent
+- [ ] Tune `omo-memwatch` limits (4 GB warn / 12 GB stop) from its first real snapshots
 - [x] Pi/OmO statusline: badge-free footer and fixed right sidebar column (fullscreen TUI) with title, context, subagents, orchestrator workers, a tokens-per-turn sparkline, Claude plan limit meters with pace words and run-out time, and a Todo section mirroring OmO's todo list
 - [x] Cua Driver 0.33.1 on Palantir: pinned app + launchd daemon, skill for Pi/Claude/Codex (not OmO), Cua docs MCP
 - [x] Agent PATH `gh` shim refusing GitHub comments/reviews for every harness (Pi, pi-durable, OmO, Claude Code, Codex)
@@ -86,6 +102,7 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 
 - [x] Allow direct-checkout work in this repository and ignore `.worktrees/`
 - [x] Pin Codex 0.156.1 and Herdr 0.9.1 (2026-09-23)
+- [x] Herdr 0.9.3, Codex 0.162.0, Claude Code 2.1.295 (2026-10-09)
 - [x] Retain Mellon's committed hardware pin while recording the userspace updates
 - [x] Flake checks: nixfmt + statix + deadnix formatting check and builds for every discovered NixOS host
 - [x] CI: run all flake checks on main/v2 pushes and pull requests

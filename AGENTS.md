@@ -30,13 +30,15 @@ home/<user>/features/cli/    shared shell/dev tools; agents/ holds Claude, Codex
 home/<user>/features/desktop/ portable desktop default + platform-specific modules
 home/<user>/features/herdr/  standalone Herdr feature: native HM settings + pinned package
 home/<user>/features/pi/     standalone Pi feature: settings + packaged extensions
-home/<user>/features/omo/    standalone OmO Native (`omo`) feature: own agent dir, model chains (palantir)
+home/<user>/features/omo/    standalone OmO Native (`omo`) feature: own agent dir, model chains, memory guards (palantir, mellon)
 home/<user>/features/vscode/ standalone VS Code feature: marketplace extensions + live settings.json
 home/<user>/features/cua/    standalone Cua Driver feature: pinned app + daemon, skill and docs MCP for harnesses (palantir)
+home/<user>/features/swarm/  standalone agent-swarm feature: `swarm` CLI/daemon, /leader + /swarms extension, sbx kit (palantir)
 home/<user>/<host>.nix       optional per-host HM overrides
 TASK.md                      living checklist of planned work — keep it updated
 INSTALL.md                   destructive install + LUKS/Secure Boot runbook
 DARWIN.md                    Darwin bootstrap and activation runbook
+SWARM.md                     swarm mode: decisions, usage, architecture, sbx setup and open checks
 ```
 
 ## Conventions
@@ -56,6 +58,10 @@ DARWIN.md                    Darwin bootstrap and activation runbook
   everything else in that dir is HM config. It imports `./home.nix` and `./<host>.nix` when
   present, and forwards `inherit (config) device;` into HM.
   Home Manager's string state version is independent of nix-darwin's integer state version.
+- Mellon is an always-on agent host: system sleep is refused (`power.nix`), sshd is key-only
+  and reachable only on `tailscale0` (`ssh.nix`, authorized keys from 1Password via opnix,
+  `~/.ssh/rc` keeps a forwarded agent for long-lived shells), Docker publishes ports on
+  loopback, and the native NixOS firewall owns the rules (nixpkgs has no ufw).
 - Hardware-specific modules live in the host dir (e.g. mellon's `nvidia.nix`); promote to
   `hosts/common/optional/` only when a second host needs them.
 - Package overrides shared by Linux and Darwin live in `overlays/` and are applied by both
@@ -109,13 +115,27 @@ DARWIN.md                    Darwin bootstrap and activation runbook
   REST writes, GraphQL mutations); bodies and reads pass through to the real `gh`.
   OmO keeps its own agent dir (`~/.omo/agent`) but follows Pi's packaged
   extensions (minus `pi-workflows`, whose tool collides with `omo.js`), skills, and keybindings,
-  plus OmO-only packages auto-discovered from `features/omo/extensions/<name>/` (any subdirectory
+  plus OmO-only packages (findings-cache, cloud-mode, ui-chrome, ui-prompt) auto-discovered from
+  `features/omo/extensions/<name>/` (any subdirectory
   with a `package.json`; used for extensions that hook OmO internals or OmO-only features);
   its writable `settings.json` gets the same baseline merge, including Pi's quiet startup,
   condensed changelog, and resume-hint exit output, plus `tips = false` and Nix-owned model
   defaults: Opus 5.5 at `high`, a catalog of Opus 5.5, Sonnet 5.5, Fable 5.1, and the ChatGPT
-  models. Claude Haiku 4.5 is not used anywhere (catalogs, chains, orchestrator pool). `~/.omo/omo.jsonc` is a read-only
+  models. OmO saves every model or thinking switch as the global default, so the `omo` launcher
+  restores Opus 5.5 at `high` before each start; resumed sessions keep their own model.
+  Claude Haiku 4.5 is not used anywhere (catalogs, chains, orchestrator pool). `~/.omo/omo.jsonc` is a read-only
   store link holding cross-provider model chains, with OmO's config migrations pre-recorded.
+  Memory guards (one monobloco session reached 20 GB): `models.json` caps stored images at
+  1568px / 750 KB for every catalog and chain model (keep its list in sync), because sessions
+  keep images as encoded and rebuild each request around all of them; `~/.senpi/agent/codemode.json`
+  (codemode reads `~/.senpi`, not `~/.omo`) runs JavaScript eval kernels as child processes
+  (`isolation.js = "process"`, on the `bun` shim OmO puts on PATH) with a 4 GB recycle ceiling
+  and 30-minute idle parking; and the `omo-memwatch` launchd agent checks omo footprints every
+  30 s, writing a footprint/vmmap snapshot to `~/Library/Logs/omo-memwatch/` and notifying
+  above 4 GB (again at each 1.5x growth), then stopping the process above 12 GB. On Linux
+  (Mellon) memwatch is off: the `omo` launcher runs each session in a transient systemd user
+  scope (`MemoryHigh` 12G, `MemoryMax` 16G), and the generic glibc release binary runs
+  through nix-ld.
 - The Pi `orchestrator` extension (also loaded by OmO) runs a leader + worker mesh: `orch "<goal>"`
   or `/orchestrate <goal>` sets the leader model (default Opus 5.5 at `xhigh`, `ORCH_LEADER_MODEL`
   overrides), and Jev (TypeSafe, `TYPESAFE_API_KEY`) decides control flow — strategy
@@ -155,7 +175,9 @@ DARWIN.md                    Darwin bootstrap and activation runbook
   (`ORCH_ROLE=worker`) always stay `omo`.
 - The Pi `statusline` extension (also loaded by OmO) replaces the footer, filtering OmO's
   `"  omo-native"` badge status, and adds an OpenCode-style right sidebar column (title,
-  context, session tokens with a tokens-per-turn sparkline, Claude/ChatGPT limits, agent tree,
+  OmO's `/goal` (its `goal`/`goal-wait` statuses plus the objective from
+  `<sessionDir>/extensions/goal/<sessionId>.json`, dropped from the footer while the column is
+  shown), context, session tokens with a tokens-per-turn sparkline, Claude/ChatGPT limits, agent tree,
   files edited this session with `git diff HEAD` stats, git branch/upstream/status, harness
   version). Git runs via `pi.exec` off the render path. Limits (`statusline/limits.ts`): Claude
   (5h, 7d, per-model weekly, extra-usage spend from `api/oauth/usage`, accounts with identical
@@ -163,7 +185,9 @@ DARWIN.md                    Darwin bootstrap and activation runbook
   read-only from Pi's and OmO's `auth.json` and Codex CLI's `~/.codex/auth.json`, never
   refreshed. Every process shares one secret-free cache in `$TMPDIR` behind an exclusive lock
   file, so only one TUI process fetches per 5 minutes (after-turn refreshes pass the same gate),
-  and failures wait out the TTL. Bars carry a pace tick (even-burn position) and turn amber when
+  and failures wait out the TTL. Each provider lists its signed-in account emails (ChatGPT's
+  from the token's JWT claims, Claude's from `api/oauth/profile` once per token); they stay in
+  process memory, never in the shared cache. Bars carry a pace tick (even-burn position) and turn amber when
   ahead of it; a window burning at 1.1x the even rate or more adds "running hot"/"at risk" and
   the projected time it hits 100% (bands from fersilva16's config). A Todo section mirrors
   OmO's todo list (latest `senpi.todo-state` entry or `todo` result on the branch): phase
@@ -177,7 +201,9 @@ DARWIN.md                    Darwin bootstrap and activation runbook
   session branch; OmO exposes no task events.
 - The Pi `destructive-guard` (also loaded by OmO) approves in layers: self-harm is blocked
   outright, temp-dir deletions, session-created files, and session-started processes pass
-  deterministically, system-level categories always ask, and the rest goes to Jev with the
+  deterministically, as do an orchestrator worker's writes, edits, and `rm` inside its own
+  run-created worktree (`ORCH_WORKTREE`; the root, `.git`, and sensitive paths still ask),
+  system-level categories always ask, and the rest goes to Jev with the
   session's user messages and recent tool calls; unresolved calls ask, or are refused when no UI.
   Subagents have no UI, so their writes to agent configuration (anything under `~/.omo`,
   including OmO's isolated task clones in `~/.omo/wt`, and extension sources) are refused: have
@@ -186,7 +212,9 @@ DARWIN.md                    Darwin bootstrap and activation runbook
   sidebar alone. `ui-prompt` replaces the editor (public `CustomEditor`) with a card: accent bar,
   filled background, an `agent · model provider · thinking` info line that also carries the
   working indicator, and ask-user questions drawn inside the card (via the `ask-user:*` bus). It
-  also sets the terminal title (session name or first prompt, cwd, busy `●`), appends a
+  also sets the terminal title (session name or first prompt, cwd, busy `●`) and, inside
+  Herdr, which ignores pane titles, renames its tab to the session name (only a tab still on
+  Herdr's numeric default label; restored on exit), appends a
   TUI-only `▣ agent · model · duration` turn footer entry, and switches to a blinking bar
   hardware cursor for the session. Engine internals it needs (InteractiveMode's editor
   container for questions, paste state, `Editor.prototype.render`) are confined to its
@@ -201,6 +229,19 @@ DARWIN.md                    Darwin bootstrap and activation runbook
   cards. Components that must stay inline set `Symbol.for("omo-ui-chrome.inline")` (ui-prompt's
   question card does). ui-chrome re-wraps the editor container's `addChild` from OmO's original
   on `/reload`, so ui-prompt re-installs its own hook before each question.
+- The `swarm` feature (Palantir; Pi package list, so OmO loads it too) runs agent swarms
+  (SWARM.md). `/leader <goal>` makes the session the leader (Opus 5.5 `xhigh`, restored by
+  `/leader off`) and starts a detached `swarm serve` daemon per swarm. The daemon owns
+  `~/.omo/swarms/<id>/` (state, board, skills) and serves an HTTP board on 127.0.0.1. Members
+  are OmO sessions, each in its own `swarm/<id>/<member>` worktree: packed into clone-mode
+  `sbx` pods built from the Nix kit (`features/swarm/kit`, pinned `omo-linux-arm64`, same
+  version as the host's OmO; tmux inside the pod, since `sbx exec` cannot detach), or on the
+  host with `--local` as tabs of a `swarm <id>` Herdr workspace (no host tmux). Two
+  patterns: `parallel` (distinct parts, shared knowledge) and `evolve` (generations scored by Jev
+  and an optional fitness command, survivors seed the next generation). The daemon imports the
+  orchestrator's `jev.ts`, so the CLI's source keeps the `features/` layout. Out-of-scope
+  destructive member actions are held for the user; pods receive refresh-less OAuth copies that
+  the leader session keeps fresh. `/swarms` is the panel; `swarm` is the CLI.
 - The Pi `herdr-fork` extension (also loaded by OmO): inside Herdr, `/fork` writes the fork as a
   new session file (parent = the original, which stays untouched) and opens it in a new focused
   Herdr pane split from the current one, running the same harness with the forked message
@@ -210,6 +251,20 @@ DARWIN.md                    Darwin bootstrap and activation runbook
   worktree of a repo, and injects a once-per-session "Cached research" index (newest 30, framed
   as leads to re-verify) into the system prompt. Reading a finding refreshes its mtime;
   findings untouched for 14 days are pruned.
+- The OmO-only `cloud-mode` extension makes a session act on a remote host over SSH while OmO
+  itself (TUI, models, auth, memory) stays local: `omo --cloud <host[:path]>` or
+  `/cloud <host[:path]> | off`. The default directory is the same home-relative path on the
+  host. `read`/`write`/`edit` are rebuilt with remote operations, `grep` runs ripgrep on the
+  host, and `bash` (direct, from eval's `tool.*`, and `!`) is rewritten in `tool_call` to
+  `ssh -tt` inside OmO's local PTY, so background sessions, `bash_input`, `kill_bash`, and
+  `monitor` keep working. Bash gets its own connection because killing a multiplexed client
+  leaves the remote process running; file operations share a ControlMaster under
+  `~/.ssh/omo-cloud/`. Eval kernels stay local (the prompt confines them to `tool.*`), and LSP,
+  `worktree_agents`, `apply_patch`, and computer use are switched off. A target that fails to
+  resolve blocks every tool instead of falling back to local. The target persists as a
+  `cloud-mode` session entry and reaches subagents through `OMO_CLOUD`, under which
+  destructive-guard skips its local-disk `write`/`edit` checks. Targets need bash, ripgrep, and
+  coreutils `timeout`; agent sandboxes will be further SSH destinations.
 - The writable checkout is conventionally `~/www/nixcfg`, exposed as `$NIXCFG`; the `nixcfg`
   shell alias changes to it. Store paths remain the source of evaluated configuration.
 - Hosts declare their own platform via `nixpkgs.hostPlatform` (mellon: in
