@@ -381,6 +381,9 @@ export default function destructiveGuard(pi: ExtensionAPI) {
 		}
 
 		if (event.toolName !== "write" && event.toolName !== "edit") return undefined;
+		// OmO's cloud mode writes on a remote host; checks against this disk and
+		// its git state would judge the wrong files.
+		if (process.env.OMO_CLOUD) return undefined;
 
 		const rawPath = (event.input as { path?: unknown }).path;
 		if (typeof rawPath !== "string") return undefined;
