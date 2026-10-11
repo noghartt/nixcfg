@@ -10,6 +10,20 @@ whenever it feels like a checkpoint.
 
 ### Added
 
+- **mellon**: isolated agent sandboxes. Each is a systemd-nspawn container booted from a btrfs
+  snapshot of a Nix-built base image under `/agent`, with a private user namespace, its own
+  veth limited to public IPv4 (no host, LAN, tailnet, or other sandboxes), its own Nix store,
+  no host mounts, and per-sandbox cgroup limits. The `agentbox` CLI creates, seeds (git bundle
+  of a host repo), enters, collects branches from, and removes them through one sudo-allowed
+  root helper. Sandboxes sit on fixed subnets in `10.231.0.0/16`, advertised to the tailnet, and
+  resolve as `<name>.sandbox.internal` through a tailnet-only dnsmasq, so their servers are
+  reachable from other devices by name; the isolation rules moved to the mangle table so
+  tailscaled's and Docker's forwarding rules cannot bypass them.
+
+- **home/noghartt/omo**: `cloud-mode` `--sandbox[=name]` (and `/cloud <host> --sandbox`) runs
+  the session's tools inside an `agentbox` sandbox on the target host, created from the host
+  directory's repo on first use and reattached on resume and by subagents.
+
 - **mellon**: `reboot-windows` reboots once into Windows Boot Manager through the firmware
   (`efibootmgr --bootnext`), keeping BitLocker's measured boot path unchanged; INSTALL.md
   documents the matching `bcdedit` one-shot for rebooting from Windows back to Linux.

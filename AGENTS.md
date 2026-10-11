@@ -62,6 +62,27 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   and reachable only on `tailscale0` (`ssh.nix`, `~/.ssh/authorized_keys` kept by hand, not by Nix,
   `~/.ssh/rc` keeps a forwarded agent for long-lived shells), Docker publishes ports on
   loopback, and the native NixOS firewall owns the rules (nixpkgs has no ufw).
+- Mellon's agent sandboxes (`hosts/mellon/sandboxes/`) are systemd-nspawn containers, one per
+  sandbox, each booted from a writable btrfs snapshot of a Nix-built base image on the `/agent`
+  volume (`/agent/base/<hash>` read-only, `/agent/sandboxes/<name>`). Isolation: private user
+  namespace (`--private-users=pick`, idmapped), own veth (`ve-ab-*`) on a fixed /28 of
+  `10.231.0.0/16` (host `.1`, sandbox `.2`; per-sandbox runtime networkd files with DHCP server
+  and masquerade, NetworkManager ignores those links), no host bind mounts, its own Nix store
+  and daemon, and per-sandbox slice limits under `agentbox.slice`. The policy is in the iptables
+  mangle table, which runs before every filter chain, so tailscaled's and Docker's FORWARD
+  accepts cannot bypass it: new connections from a sandbox go only to public IPv4 (plus DHCP to
+  the host), new connections into a sandbox come only from `tailscale0`, and there is no IPv6.
+  Tailnet devices reach sandboxes directly: Mellon advertises `10.231.0.0/16` as a subnet route
+  and dnsmasq (tailnet address only, hostsdir `/run/agentbox/dns`) answers
+  `<name>.sandbox.internal`; the route approval and the split-DNS nameserver live in the
+  Tailscale admin console. Servers inside must listen on 0.0.0.0.
+  `agentbox` (group `agentbox`) is the CLI: `ls`, `ensure NAME --seed PATH` (create, cloning
+  PATH's repo from a git bundle, or start), `exec`, `shell`, `collect` (branches back into the
+  host repo as `sandbox/NAME/*`), `start`/`stop`, `rm`. It reaches `agentbox-root`, the only
+  privileged entry point, through one sudo rule; `exec` enters the container as its uid-1000
+  `agent` user inside a scope in the sandbox's slice. Only committed history crosses in either
+  direction, always as bundles. `agentbox-base.service` lays down a new base when the image
+  changes; existing sandboxes keep the image they were created from (recreate to upgrade).
 - Hardware-specific modules live in the host dir (e.g. mellon's `nvidia.nix`); promote to
   `hosts/common/optional/` only when a second host needs them.
 - Package overrides shared by Linux and Darwin live in `overlays/` and are applied by both
@@ -264,7 +285,14 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   resolve blocks every tool instead of falling back to local. The target persists as a
   `cloud-mode` session entry and reaches subagents through `OMO_CLOUD`, under which
   destructive-guard skips its local-disk `write`/`edit` checks. Targets need bash, ripgrep, and
-  coreutils `timeout`; agent sandboxes will be further SSH destinations.
+  coreutils `timeout`. `--cloud <host> --sandbox[=name]` (or `/cloud <host> --sandbox`) runs
+  the tools inside one of the host's `agentbox` sandboxes instead: every remote command is
+  wrapped in `agentbox exec`, the sandbox is created from the host directory's repo on first
+  use (default name `<repo>-<session id tail>`), and it persists until `agentbox rm`. The
+  entry and `OMO_CLOUD_SANDBOX` carry the name, so resume and subagents reattach. Pass a
+  name as `--sandbox=name`: a bare `--sandbox` followed by a word consumes it as the value.
+  `agentbox exec` sets `AGENTBOX_HOST` (the sandbox's tailnet name), which the prompt passes on
+  so the model can hand out reachable addresses.
 - The writable checkout is conventionally `~/www/nixcfg`, exposed as `$NIXCFG`; the `nixcfg`
   shell alias changes to it. Store paths remain the source of evaluated configuration.
 - Hosts declare their own platform via `nixpkgs.hostPlatform` (mellon: in

@@ -34,7 +34,11 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [ ] Verify OmO on Mellon after install (binary starts under nix-ld, scope limits apply, eval kernels run)
 - [x] OmO `cloud-mode`: `--cloud`/`/cloud` runs read/write/edit/grep/bash on an SSH host (verified against an OrbStack Ubuntu machine: tools, eval `tool.*`, background server + `kill_bash`, fail-closed, resume)
 - [ ] First `omo --cloud mellon` run from Palantir once Mellon is installed; measure per-call latency over Tailscale
-- [ ] Agent sandboxes (systemd-nspawn): per-sandbox user namespace, cgroup limits, private network, btrfs subvolumes under /agent/sandboxes, remote sandbox mode from Palantir's OmO, swarm backend replacing sbx
+- [x] Agent sandboxes (systemd-nspawn): per-sandbox user namespace, cgroup limits, private network, btrfs subvolumes under /agent/sandboxes, `agentbox` CLI, `omo --cloud mellon --sandbox` from Palantir's OmO
+- [x] Verify sandboxes after the next Mellon rebuild: base image lands, `agentbox ensure` boots and seeds, no host/LAN/tailnet reach, internet egress, uid mapping, slice limits, `kill_bash` stops sandbox processes
+- [x] Sandbox tailnet access: approve the `10.231.0.0/16` route and add split DNS `sandbox.internal` -> Mellon's tailnet IP in the admin console, then verify `<name>.sandbox.internal:<port>` from Palantir
+- [ ] Swarm `nspawn` backend on agentbox sandboxes (replacing sbx on Mellon)
+- [ ] Orchestrator workers in agentbox sandboxes (`OMO_CLOUD` + `OMO_CLOUD_SANDBOX` per worker; evidence collection through `agentbox exec`)
 - [x] Gaming: Steam + GameMode (32-bit graphics already enabled by the NVIDIA module)
 - [ ] Verify the work WARP profile uses traffic-only mode and excludes Tailscale IPv4/IPv6 ranges
 
