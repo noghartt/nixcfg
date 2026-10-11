@@ -1,7 +1,8 @@
 # macOS has no per-process memory cap, so a runaway omo (one reached 20 GB)
 # swaps the whole machine into the ground. This agent records what such a
-# process holds and stops it past a hard limit; see memwatch.sh.
-{ pkgs, ... }:
+# process holds and stops it past a hard limit; see memwatch.sh. Linux caps
+# each session with a systemd scope instead (default.nix).
+{ lib, pkgs, ... }:
 let
   memwatch = pkgs.writeShellApplication {
     name = "omo-memwatch";
@@ -9,7 +10,7 @@ let
   };
 in
 {
-  launchd.agents.omo-memwatch = {
+  launchd.agents.omo-memwatch = lib.mkIf pkgs.stdenv.hostPlatform.isDarwin {
     enable = true;
     config = {
       ProgramArguments = [ "${memwatch}/bin/omo-memwatch" ];

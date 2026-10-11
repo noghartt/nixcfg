@@ -16,6 +16,39 @@ let
     thinking = "high";
   };
 
+  # Release asset and hash per platform; bump every hash with `version`.
+  releases = {
+    aarch64-darwin = {
+      asset = "omo-darwin-arm64";
+      hash = "sha256-2s5s1cgQZ0Tw9cOrajVslCcqaGFcMV7fjL2Io+5EECw=";
+    };
+    # A generic glibc build: it runs on NixOS through nix-ld (mellon's
+    # agents.nix). Patching its interpreter would risk the appended payload.
+    x86_64-linux = {
+      asset = "omo-linux-x64";
+      hash = "sha256-oNO209vMY80DtHXpTlqH3XPPk4Cx4052CgDRpZaLG/c=";
+    };
+  };
+  release = releases.${pkgs.stdenv.hostPlatform.system};
+
+  # Linux has what macOS lacks (memwatch.nix): a kernel memory cap. Each
+  # session runs in its own transient user scope, throttled past MemoryHigh and
+  # OOM-killed past MemoryMax, eval kernels included. Without a user manager
+  # (a bare container) it runs uncapped.
+  launch =
+    if pkgs.stdenv.hostPlatform.isLinux then
+      ''
+        if [ -S "''${XDG_RUNTIME_DIR:-/nonexistent}/bus" ] && command -v systemd-run >/dev/null; then
+          exec systemd-run --user --scope --quiet --collect \
+            -p MemoryHigh=12G -p MemoryMax=16G -- ${omo-unwrapped}/bin/omo "$@"
+        fi
+        exec ${omo-unwrapped}/bin/omo "$@"
+      ''
+    else
+      ''
+        exec -a omo ${omo-unwrapped}/bin/omo "$@"
+      '';
+
   # The release binary is bun-compiled and self-contained; it unpacks its
   # runtime into ~/.omo/binary-runtime/<version>/ on first run. `omo update`
   # only prints a curl line for binary installs, so bumping `version` here is
@@ -24,8 +57,8 @@ let
     pname = "omo";
     inherit version;
     src = pkgs.fetchurl {
-      url = "https://github.com/code-yeongyu/oh-my-openagent/releases/download/v${version}/omo-darwin-arm64";
-      hash = "sha256-2s5s1cgQZ0Tw9cOrajVslCcqaGFcMV7fjL2Io+5EECw=";
+      url = "https://github.com/code-yeongyu/oh-my-openagent/releases/download/v${version}/${release.asset}";
+      inherit (release) hash;
     };
     dontUnpack = true;
     # The bun payload is appended to the executable; stripping would drop it.
@@ -36,7 +69,7 @@ let
       runHook postInstall
     '';
     meta = {
-      platforms = [ "aarch64-darwin" ];
+      platforms = builtins.attrNames releases;
       mainProgram = "omo";
     };
   };
@@ -74,7 +107,7 @@ let
         echo "omo: could not reset the startup model in $settings" >&2
       fi
     fi
-    exec -a omo ${omo-unwrapped}/bin/omo "$@"
+    ${launch}
   '';
 in
 {
