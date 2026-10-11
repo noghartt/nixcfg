@@ -1,7 +1,7 @@
 # Remote access for mellon as an always-on agent host. sshd answers only on
 # the tailnet: the firewall opens port 22 on tailscale0 alone, so the LAN and
-# any port forward never see it. Key-only logins; authorized keys come from
-# 1Password through opnix (home/noghartt/features/cli/ssh-server.nix).
+# any port forward never see it. Key-only logins; ~/.ssh/authorized_keys is
+# kept by hand, so no key means no login (INSTALL.md).
 # Hardening adapted from github:fersilva16/nix-config (modules/system/sshd.nix).
 {
   services.openssh = {

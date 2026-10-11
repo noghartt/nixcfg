@@ -152,6 +152,10 @@ whenever it feels like a checkpoint.
 
 ### Changed
 
+- **home/noghartt/cli**: `~/.ssh/authorized_keys` is no longer written by opnix from a
+  `ssh-authorized-keys` vault item; it is kept by hand. A missing item made opnix fail all of
+  Home Manager activation, so the git identity and shell secrets were never written.
+
 - **mellon/disk**: Mellon now shares its NVMe with an existing Windows install. disko no
   longer partitions a drive: `INSTALL.md` adds the `disk-main-ESP` (2G) and `disk-main-lvm`
   partitions in Windows' free space with sgdisk, and disko only formats and mounts those, so

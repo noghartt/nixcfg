@@ -1,16 +1,9 @@
-# The login side of SSH for a host that runs sshd (mellon): who may log in,
-# and which agent long-lived shells use. The daemon itself is host config.
+# The login side of SSH for a host that runs sshd (mellon): which agent
+# long-lived shells use. The daemon itself is host config. ~/.ssh/authorized_keys
+# is deliberately unmanaged: opnix fails all of activation on one missing
+# reference, and logins are opt-in by hand.
 { pkgs, ... }:
 {
-  # Public keys are not secret, but keeping them in 1Password keeps the repo
-  # free of identifying data. Create a "ssh-authorized-keys" item in the Nix
-  # vault with one public key per line in its notes; opnix writes it 0600 and
-  # user-owned, which sshd's StrictModes accepts.
-  programs.onepassword-secrets.secrets.sshAuthorizedKeys = {
-    reference = "op://Nix/ssh-authorized-keys/notesPlain";
-    path = ".ssh/authorized_keys";
-  };
-
   # tmux and Herdr shells outlive the connection that started them, so the
   # per-connection agent socket they inherited goes stale. sshd runs ~/.ssh/rc
   # on each login: interactive ones repoint a fixed symlink at the live

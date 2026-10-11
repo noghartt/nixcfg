@@ -27,7 +27,7 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [x] Reliability: SMART monitoring + desktop notifications, weekly fstrim, power-profiles-daemon, bounded journal/Docker growth, root Snapper timeline
 - [x] Networking: NetworkManager + RTL8922AE desktop tuning, Brazilian regulatory domain, systemd-resolved, native firewall, Tailscale, Cloudflare WARP, Wireshark capture
 - [x] Always-on: system sleep refused, hibernation and NVIDIA suspend VRAM preservation dropped
-- [x] Remote access: hardened key-only sshd on the tailnet only, authorized keys from 1Password, forwarded-agent `~/.ssh/rc`
+- [x] Remote access: hardened key-only sshd on the tailnet only, authorized keys kept by hand (unmanaged), forwarded-agent `~/.ssh/rc`
 - [x] Nix `min-free`/`max-free` guards, CUDA binary cache, Docker published ports on loopback by default
 - [x] Gaming: Proton-GE; RTL8922AE power saving off at the driver
 - [x] OmO on Mellon: x86_64 release binary through nix-ld, per-session systemd memory scope, linger

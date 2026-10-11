@@ -59,7 +59,7 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   present, and forwards `inherit (config) device;` into HM.
   Home Manager's string state version is independent of nix-darwin's integer state version.
 - Mellon is an always-on agent host: system sleep is refused (`power.nix`), sshd is key-only
-  and reachable only on `tailscale0` (`ssh.nix`, authorized keys from 1Password via opnix,
+  and reachable only on `tailscale0` (`ssh.nix`, `~/.ssh/authorized_keys` kept by hand, not by Nix,
   `~/.ssh/rc` keeps a forwarded agent for long-lived shells), Docker publishes ports on
   loopback, and the native NixOS firewall owns the rules (nixpkgs has no ufw).
 - Hardware-specific modules live in the host dir (e.g. mellon's `nvidia.nix`); promote to

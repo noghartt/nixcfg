@@ -499,14 +499,14 @@ manual default routes. Do not use a Tailscale exit node while WARP is connected.
 
 Mellon runs 24/7 and never suspends. sshd accepts keys only and listens only
 on the tailnet interface, so `tailscale up` above must have succeeded first.
-Authorized keys come from 1Password: in the `Nix` vault, create an item named
-`ssh-authorized-keys` whose Notes field holds the public keys allowed to log in,
-one per line (copy them from the SSH Key items in 1Password). Then rebuild and
-check that opnix wrote them:
+Authorized keys are not managed by Nix; with no `~/.ssh/authorized_keys`,
+nobody can log in. To allow a key, add its public half (copy it from the SSH
+Key item in 1Password, or `ssh-add -L` on the client) by hand:
 
 ```bash
 sudo nixos-rebuild switch --flake ~/www/nixcfg#mellon
-ls -l ~/.ssh/authorized_keys
+install -m 600 /dev/null ~/.ssh/authorized_keys   # once
+echo 'ssh-ed25519 AAAA... comment' >> ~/.ssh/authorized_keys
 systemctl status sshd
 ```
 
