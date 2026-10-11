@@ -363,9 +363,12 @@ Patterns here are adapted from:
 - No personal data in the repo: no real names, emails, or other PII in any file
   (git identity, SSH config with personal hosts, etc. stay local).
 - Don't add flake inputs without a documented reason (note it in this file).
-- Before starting any change, `git fetch` and check the local branch is up to date with
-  its remote (integrate remote changes first if not) — edits from other machines land on
-  the remote and conflicts are cheapest before local work begins.
+- Always pull the latest changes: run `git pull --rebase --autostash` before starting any
+  change, and again right before committing or pushing. The config is shared across
+  machines and people, edits from elsewhere land on the remote, and conflicts are cheapest
+  before local work piles up. If the pull conflicts, stop and resolve it (or ask) before
+  continuing; never force-push over remote work. Push finished commits promptly so others
+  pull them too.
 - Don't run `nixos-rebuild switch` or `darwin-rebuild switch` autonomously; evaluate only,
   let the user apply.
 - Update this file and TASK.md whenever structure or conventions change.
