@@ -34,10 +34,11 @@
 
     # Pinned brew itself, overriding nix-homebrew's own pin: cask definitions
     # come live from the formulae.brew.sh API, so a lagging brew breaks on new
-    # cask DSL ("unknown install step: run" — needs >= 6.0.13). Drop the
-    # override once nix-homebrew's pin catches up.
+    # cask DSL ("unknown install step: run" needed >= 6.0.13; docker/tap/sbx's
+    # `symlink ..., overwrite:` step needs >= 7.0.0). Drop the override once
+    # nix-homebrew's pin catches up.
     brew-src = {
-      url = "github:Homebrew/brew/6.0.13";
+      url = "github:Homebrew/brew/7.0.8";
       flake = false;
     };
 
@@ -76,7 +77,7 @@
 
     # Terminal workspace manager for AI coding agents, built from its official flake.
     herdr = {
-      url = "github:herdrdev/herdr/v0.9.1";
+      url = "github:herdrdev/herdr/v0.9.3";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
