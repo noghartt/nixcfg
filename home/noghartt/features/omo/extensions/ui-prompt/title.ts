@@ -19,10 +19,13 @@ function firstPrompt(ctx: ExtensionContext): string | undefined {
 	return undefined;
 }
 
+export function sessionTitle(pi: ExtensionAPI, ctx: ExtensionContext): string {
+	return pi.getSessionName() || firstPrompt(ctx) || DEFAULT_AGENT;
+}
+
 export function applyTitle(pi: ExtensionAPI, ctx: ExtensionContext, state: PromptState): void {
 	if (!ctx.hasUI) return;
-	const name = pi.getSessionName() || firstPrompt(ctx) || DEFAULT_AGENT;
-	ctx.ui.setTitle(`${state.busy ? BUSY_DOT : ""}${name} \u00b7 ${basename(ctx.cwd)}`);
+	ctx.ui.setTitle(`${state.busy ? BUSY_DOT : ""}${sessionTitle(pi, ctx)} \u00b7 ${basename(ctx.cwd)}`);
 }
 
 export function restoreTitle(ctx: ExtensionContext): void {

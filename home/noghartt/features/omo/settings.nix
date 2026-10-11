@@ -1,3 +1,4 @@
+{ startupModel }:
 {
   config,
   lib,
@@ -31,9 +32,9 @@ let
     tips = false;
     # Opus 5.5 at high thinking by default; Sonnet 5.5 is the lighter Claude option.
     # Claude Haiku 4.5 is left out of the catalog: it is a generation behind.
-    defaultProvider = "anthropic";
-    defaultModel = "claude-opus-5-5";
-    defaultThinkingLevel = "high";
+    defaultProvider = startupModel.provider;
+    defaultModel = startupModel.model;
+    defaultThinkingLevel = startupModel.thinking;
     enabledModels = [
       "anthropic/claude-opus-5-5"
       "anthropic/claude-sonnet-5-5"

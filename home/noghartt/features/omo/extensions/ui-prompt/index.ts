@@ -4,7 +4,8 @@ import { PromptEditor, type PromptHost } from "./editor";
 import { enableBarCursor, findParentContainer, hookAddChild, restoreCursor } from "./host";
 import { isQuestionComponent, QuestionCard, questionHeader, questionRequestId } from "./question";
 import { createState, DEFAULT_AGENT } from "./state";
-import { applyTitle, restoreTitle } from "./title";
+import { createHerdrTab } from "./herdr-tab";
+import { applyTitle, restoreTitle, sessionTitle } from "./title";
 import { registerTurnFooter } from "./turn-footer";
 import { installWorkingIndicator } from "./working";
 
@@ -80,8 +81,11 @@ export default function uiPrompt(pi: ExtensionAPI) {
 	};
 	// Shutdown hooks of other extensions can still start agent runs; the restored title
 	// must outlive those, so title updates stop once shutdown has begun.
+	const herdrTab = createHerdrTab(pi);
 	const updateTitle = (ctx: ExtensionContext) => {
-		if (!shuttingDown) applyTitle(pi, ctx, state);
+		if (shuttingDown || !ctx.hasUI) return;
+		applyTitle(pi, ctx, state);
+		herdrTab.set(ctx, sessionTitle(pi, ctx));
 	};
 
 	registerTurnFooter(pi, state);
@@ -158,7 +162,7 @@ export default function uiPrompt(pi: ExtensionAPI) {
 		render();
 	});
 
-	pi.on("session_shutdown", (_event, ctx) => {
+	pi.on("session_shutdown", async (_event, ctx) => {
 		shuttingDown = true;
 		clearTimeout(expandTimer);
 		unhookContainer?.();
@@ -167,5 +171,6 @@ export default function uiPrompt(pi: ExtensionAPI) {
 		restoreTitle(ctx);
 		if (editorInstalled && ctx.hasUI) ctx.ui.setEditorComponent(previousEditorFactory);
 		editorInstalled = false;
+		await herdrTab.restore(ctx);
 	});
 }

@@ -3,7 +3,7 @@
 // one place to check. Each hook degrades to stock rendering (with one debug-log
 // line) when the internal it needs is missing, and never throws into omo.
 //
-// Internals touched (omo 5.1.13):
+// Internals touched (omo 5.1.28):
 //   @code-yeongyu/senpi
 //     InteractiveMode.prototype: setExtensionWidget (instance capture + widgets),
 //       showExtensionNotify, handleHotkeysCommand, handleSessionCommand,
