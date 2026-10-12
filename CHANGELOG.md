@@ -10,6 +10,8 @@ whenever it feels like a checkpoint.
 
 ### Added
 
+- **repo**: `.envrc` loads the flake's dev shell through direnv (`.direnv/` is ignored).
+
 - **mellon**: isolated agent sandboxes. Each is a systemd-nspawn container booted from a btrfs
   snapshot of a Nix-built base image under `/agent`, with a private user namespace, its own
   veth limited to public IPv4 (no host, LAN, tailnet, or other sandboxes), its own Nix store,
