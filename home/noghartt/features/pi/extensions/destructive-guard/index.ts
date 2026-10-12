@@ -193,6 +193,10 @@ export default function destructiveGuard(pi: ExtensionAPI) {
 	const sessionFiles = new Set<string>();
 	const pendingCreates = new Map<string, string>();
 	let sessionStartedAt = Date.now();
+	// A `/unsupervised` run has nobody to answer a dialog, so what Jev does not
+	// clear is refused and the run goes on without it. Typing anything else ends
+	// it. The variable carries it into orchestrator workers and subagents.
+	let unsupervised = process.env.OMO_UNSUPERVISED === "1";
 
 	const exec = (cwd?: string): Exec => async (command, args) => {
 		const result = await pi.exec(command, args, cwd ? { cwd } : undefined);
@@ -283,6 +287,7 @@ export default function destructiveGuard(pi: ExtensionAPI) {
 		title: string,
 		details: string,
 	): Promise<{ block: true; reason: string } | undefined> => {
+		if (unsupervised) return { block: true, reason: `${title} Unsupervised run: nobody is here to confirm it. ${NOT_RUN}` };
 		if (!ctx.hasUI) return { block: true, reason: `${title} Confirmation is unavailable. ${NOT_RUN}` };
 		if (await ctx.ui.confirm(title, details)) return undefined;
 		return { block: true, reason: `${title} Declined by the user. ${NOT_RUN}` };
@@ -338,6 +343,15 @@ export default function destructiveGuard(pi: ExtensionAPI) {
 		sessionFiles.clear();
 	});
 
+	pi.on("input", async (event, ctx) => {
+		if (event.source === "extension" || event.streamingBehavior === "steer") return;
+		unsupervised = /^\/unsupervised(?:\s|$)/.test(event.text.trimStart());
+		if (unsupervised) {
+			process.env.OMO_UNSUPERVISED = "1";
+			if (ctx.hasUI) ctx.ui.notify("Unsupervised run: destructive actions Jev does not clear are refused, not asked.", "info");
+		} else delete process.env.OMO_UNSUPERVISED;
+	});
+
 	pi.on("tool_result", (event) => {
 		const path = pendingCreates.get(event.toolCallId);
 		if (path === undefined) return;
@@ -345,7 +359,13 @@ export default function destructiveGuard(pi: ExtensionAPI) {
 		if (!event.isError) sessionFiles.add(path);
 	});
 
+	// In an agentbox sandbox (OmO cloud mode), bash, write and edit run inside a
+	// disposable container, so every command there is allowed. Other tools (MCP,
+	// web) still act outside it and keep their checks.
+	const sandboxed = (tool: string) => Boolean(process.env.OMO_CLOUD_SANDBOX) && /^(?:bash|write|edit)$/.test(tool);
+
 	pi.on("tool_call", async (event, ctx) => {
+		if (sandboxed(event.toolName)) return undefined;
 		const facts = await buildFacts(sessionFiles, sessionStartedAt, guardDir);
 
 		if (/(^|[_-])(delete|remove|destroy|drop|truncate|wipe|prune)([_-]|$)/i.test(event.toolName)) {

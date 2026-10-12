@@ -27,6 +27,14 @@ whenever it feels like a checkpoint.
   exempts one, and `agentbox ls` shows idle time and expiry. Cloud mode warns when it
   recreates an expired sandbox and points the session at the archive.
 
+- **home/noghartt/pi**: orchestrator workers run in agentbox sandboxes when the leader is in
+  OmO cloud mode. Each isolated node gets its own sandbox on the leader's host, seeded from the
+  leader's checkout (or the leader's own sandbox) and branched from its last commit; the worker
+  stays a visible local OmO pane whose tools run in the sandbox unattended, Jev reads its
+  evidence over SSH, and its branches are collected into the leader's repo as
+  `sandbox/<box>/*` when it finishes. `agentbox ensure --from` and `agentbox collect --into`
+  seed from and deliver to another sandbox.
+
 - **mellon**: sandbox environment variables. `sandboxes/env-catalog.nix` declares what may be
   given (1Password references resolved at boot by opnix's NixOS module, or non-secret
   literals); each sandbox opts in with `agentbox env NAME KEY...`, and `agentbox exec` exports
@@ -178,6 +186,10 @@ whenever it feels like a checkpoint.
   searchable text, persistent draft markers, and compact labels for narrow popups.
 
 ### Changed
+
+- **home/noghartt/pi**: destructive-guard no longer checks bash, write, or edit in an agentbox
+  sandbox session, so sandboxed agents run any command there unattended; destructive-named
+  tools that act outside the sandbox are still checked.
 
 - **home/noghartt/cli**: `~/.ssh/authorized_keys` is no longer written by opnix from a
   `ssh-authorized-keys` vault item; it is kept by hand. A missing item made opnix fail all of

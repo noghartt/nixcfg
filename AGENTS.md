@@ -198,7 +198,17 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   worktree, since Herdr only creates worktrees from the main checkout); `workdir` nodes split the
   upstream worker's pane and shared-checkout nodes split the leader's, and dialogs appear in the
   worker's own pane. Outside Herdr, workers are hidden RPC children in `git worktree add`
-  checkouts at the same path, and their dialogs are relayed to the leader's UI. Either way the
+  checkouts at the same path, and their dialogs are relayed to the leader's UI.
+  A leader in OmO cloud mode takes its workers to the cloud host (`orchestrator/sandbox.ts`):
+  an isolated node gets its own agentbox sandbox `o<run>-<node>`, seeded from the leader's
+  checkout (the host directory, or the leader's own sandbox via `agentbox ensure --from`) and
+  switched to `orch/<run>-<node>` at the leader's last commit. The worker process stays local
+  (its own Herdr tab, or an RPC child) with `OMO_CLOUD`/`OMO_CLOUD_SANDBOX` aiming its tools
+  into the sandbox, so it runs unguarded there; Jev's evidence is read with git over SSH and
+  `agentbox exec`, and each final settle commits leftovers and fetches the sandbox's branches
+  into the leader's repo as `sandbox/<box>/*` (`agentbox collect`, `--into` a sandboxed
+  leader). Shared-checkout nodes run on the leader's own checkout; worker sandboxes stay until
+  idle expiry. Either way the
   leader drives workers through per-worker JSONL files in the run directory (`ctl/` for prompts,
   model switches, and stop; `events/` for ready, mesh sends, settled reports, and exit), and
   workers deliver their own mesh mail, into `mesh_wait` or as a steer. Workers never spawn or
@@ -245,6 +255,12 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   run-created worktree (`ORCH_WORKTREE`; the root, `.git`, and sensitive paths still ask),
   system-level categories always ask, and the rest goes to Jev with the
   session's user messages and recent tool calls; unresolved calls ask, or are refused when no UI.
+  In an agentbox sandbox (`OMO_CLOUD_SANDBOX`) bash, write, and edit skip it entirely, since
+  they run inside the disposable container; destructive-named tools (MCP and the like) act
+  outside it and keep their checks. A turn typed as `/unsupervised` refuses instead of asking
+  until the next typed (non-steer) input; `OMO_UNSUPERVISED` carries that into subagents and
+  orchestrator workers, which also get a no-questions note, and the leader skips Jev's
+  low-confidence strategy dialog.
   Subagents have no UI, so their writes to agent configuration (anything under `~/.omo`,
   including OmO's isolated task clones in `~/.omo/wt`, and extension sources) are refused: have
   them stage edits under `/tmp` and copy the result in from the parent session.

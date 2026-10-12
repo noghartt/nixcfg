@@ -22,6 +22,17 @@ import {
 	type StrategyDecision,
 } from "./jev.ts";
 import { harnessInvocation, RpcChild, type RpcEvent } from "./rpc.ts";
+import {
+	boxName,
+	type Cloud,
+	collect,
+	fingerprints as sandboxFingerprints,
+	git as sandboxGit,
+	leaderCloud,
+	leaderPlace,
+	provision,
+	workerEnv,
+} from "./sandbox.ts";
 
 interface Config {
 	leader: { model: string; thinking: string };
@@ -443,6 +454,13 @@ interface Worker {
 	cwd: string;
 	branch?: string;
 	worktree?: string;
+	// Set when the checkout is on the cloud host (leader in cloud mode): inside `box`, or the
+	// leader's host directory without one. `isolated` is false only for the shared checkout.
+	cloud?: Cloud;
+	box?: string;
+	isolated: boolean;
+	// Refs last fetched from the worker's sandbox into the leader's repo.
+	collected?: string;
 	current: Resolved;
 	modelNote: string;
 	history: string[];
@@ -479,14 +497,21 @@ interface Run {
 	waiting: number;
 }
 
-function workerPrompt(name: string, run: Run, spec: NodeSpec, isolated: boolean): string {
+function workerPrompt(name: string, run: Run, spec: NodeSpec, isolated: boolean, sandboxBranch?: string): string {
 	const mesh = run.strategy === "mesh";
 	const { acceptance } = spec;
-	const checkout = spec.workdir
+	const sandbox = sandboxBranch
+		? spec.kind === "review"
+			? `You work in the agentbox sandbox of "${spec.workdir}", on its branch \`${sandboxBranch}\`, which holds the work under review.`
+			: spec.workdir
+				? `You work in the agentbox sandbox of "${spec.workdir}", on its branch \`${sandboxBranch}\`, which already holds its work. Build on it and commit on that branch (never push): only commits leave the sandbox.`
+				: `You work in your own agentbox sandbox, on branch \`${sandboxBranch}\` cut from the leader's commit. Commit your work on that branch as you go (never push): only commits leave the sandbox, and the orchestrator collects them for the leader when you finish.`
+		: undefined;
+	const checkout = sandbox ?? (spec.workdir
 		? `You work in the Git worktree of "${spec.workdir}", which already holds its uncommitted changes. Build on them; do not create another worktree and do not commit.`
 		: isolated
 			? "You work in a dedicated Git worktree. Do not create another worktree and do not commit."
-			: "You work in the shared checkout. Do not commit.";
+			: "You work in the shared checkout. Do not commit.");
 	const review =
 		spec.kind === "review"
 			? [
@@ -674,7 +699,7 @@ function registerLeader(pi: ExtensionAPI) {
 		}
 		let strategy = decision.strategy;
 		let note = `Jev chose ${strategy} (confidence ${pct(decision.confidence)}; p=${JSON.stringify(decision.probabilities)}).`;
-		if (decision.confidence < config.jev.strategyConfidence && ctx.hasUI) {
+		if (decision.confidence < config.jev.strategyConfidence && ctx.hasUI && process.env.OMO_UNSUPERVISED !== "1") {
 			const options = ["solo", "fan_out", "mesh"];
 			const picked = await ctx.ui.select(
 				`Jev is unsure (confidence ${pct(decision.confidence)}, leaning ${strategy}). How should the team run?`,
@@ -759,42 +784,55 @@ function registerLeader(pi: ExtensionAPI) {
 		return lines.length > limit ? [...lines.slice(0, limit), `(+${lines.length - limit} more)`].join("\n") : text;
 	};
 
+	// A checkout on the cloud host is reached over SSH (inside its sandbox, if any).
+	type Where = { cwd: string; box?: string; cloud?: Cloud };
+	const gitAt = (where: Where, args: string[]) => (where.cloud ? sandboxGit(where.cloud, where, args) : git(where.cwd, args));
+
 	// Porcelain paths are relative to the repository root, quoted when unusual, and renames
 	// read `old -> new`.
-	const fingerprint = (root: string, line: string): string => {
-		const path = line.slice(3).split(" -> ").pop()!.replace(/^"|"$/g, "");
-		try {
-			const stat = statSync(join(root, path));
-			return `${stat.size}:${stat.mtimeMs}`;
-		} catch {
-			return "missing";
-		}
+	const porcelainPath = (line: string): string => line.slice(3).split(" -> ").pop()!.replace(/^"|"$/g, "");
+
+	const fingerprints = async (where: Where, root: string, lines: string[]): Promise<string[]> => {
+		if (where.cloud) return sandboxFingerprints(where.cloud, where, root, lines.map(porcelainPath));
+		return lines.map((line) => {
+			try {
+				const stat = statSync(join(root, porcelainPath(line)));
+				return `${stat.size}:${stat.mtimeMs}`;
+			} catch {
+				return "missing";
+			}
+		});
 	};
 
-	const snapshot = async (cwd: string): Promise<Worker["start"]> => {
-		const root = await git(cwd, ["rev-parse", "--show-toplevel"]);
-		const status = (await git(cwd, ["status", "--porcelain=v1", "--untracked-files=all"])) ?? "";
+	const snapshot = async (where: Where): Promise<Worker["start"]> => {
+		const root = await gitAt(where, ["rev-parse", "--show-toplevel"]);
+		const status = (await gitAt(where, ["status", "--porcelain=v1", "--untracked-files=all"])) ?? "";
 		const lines = status.split("\n").filter(Boolean);
+		const prints = root ? await fingerprints(where, root, lines) : [];
 		return {
-			head: await git(cwd, ["rev-parse", "HEAD"]),
+			head: await gitAt(where, ["rev-parse", "HEAD"]),
 			root,
-			dirty: new Map(lines.map((line) => [line, root ? fingerprint(root, line) : ""])),
+			dirty: new Map(lines.map((line, index) => [line, prints[index] ?? ""])),
 		};
 	};
 
 	const collectEvidence = async (worker: Worker, tools: string[]): Promise<GateEvidence> => {
-		const { dirty, root } = worker.start;
-		const status = (await git(worker.cwd, ["status", "--porcelain=v1", "--untracked-files=all"])) ?? "(git status failed)";
-		const changed = status.split("\n").flatMap((line) => {
-			if (!line) return [];
-			if (!dirty.has(line)) return [line];
-			return root && dirty.get(line) !== fingerprint(root, line) ? [`${line} (already dirty at start, changed since)`] : [];
-		});
-		const commits = worker.start.head ? await git(worker.cwd, ["log", "--oneline", `${worker.start.head}..HEAD`]) : undefined;
+		const { dirty, root, head } = worker.start;
+		const status = (await gitAt(worker, ["status", "--porcelain=v1", "--untracked-files=all"])) ?? "(git status failed)";
+		const lines = status.split("\n").filter(Boolean);
+		const again = lines.filter((line) => dirty.has(line));
+		const prints = root ? await fingerprints(worker, root, again) : [];
+		const edited = new Set(again.filter((line, index) => root && dirty.get(line) !== prints[index]));
+		const changed = lines.flatMap((line) =>
+			!dirty.has(line) ? [line] : edited.has(line) ? [`${line} (already dirty at start, changed since)`] : [],
+		);
+		const commits = head ? await gitAt(worker, ["log", "--oneline", `${head}..HEAD`]) : undefined;
+		// Sandbox workers commit as they go, so their diff starts at the commit they began from.
+		const base = worker.box && worker.isolated && head ? head : "HEAD";
 		return {
-			changed_files: changed.length ? clipLines(changed.join("\n")) : "(no changes since the worker started)",
-			diff_stat: clipLines((await git(worker.cwd, ["diff", "--stat", "HEAD"])) || "(none)"),
-			commits_since_start: worker.start.head ? commits || "(none)" : "(unknown)",
+			changed_files: changed.length ? clipLines(changed.join("\n")) : "(no uncommitted changes since the worker started)",
+			diff_stat: clipLines((await gitAt(worker, ["diff", "--stat", base])) || "(none)"),
+			commits_since_start: head ? commits || "(none)" : "(unknown)",
 			tool_calls: tools.join("\n") || "(none)",
 		};
 	};
@@ -810,6 +848,13 @@ function registerLeader(pi: ExtensionAPI) {
 		await writeFile(join(run.dir, `${worker.name}.report-${worker.reports}.md`), worker.report);
 		const r = run;
 		const finish = async () => {
+			if (worker.kind === "work" && worker.box && worker.isolated && worker.cloud) {
+				try {
+					worker.collected = await collect(worker.cloud, worker, worker.name);
+				} catch (error) {
+					toInbox(`Collecting ${worker.name}'s branch from sandbox ${worker.box} failed: ${(error as Error).message}`);
+				}
+			}
 			for (const pending of worker.mailbox.splice(0)) toInbox(`Undelivered to ${worker.name} (${worker.state}): ${pending}`);
 			changed();
 			await schedule();
@@ -961,7 +1006,7 @@ function registerLeader(pi: ExtensionAPI) {
 				if (running.length >= config.maxWorkers) break;
 				const home = node.spec.workdir ? r.workers.get(node.spec.workdir)?.cwd : undefined;
 				if (home && running.some((worker) => worker.cwd === home)) continue;
-				if (node.spec.isolation === "current" && running.some((worker) => !worker.worktree)) continue;
+				if (node.spec.isolation === "current" && running.some((worker) => !worker.isolated)) continue;
 				node.state = "starting";
 				try {
 					await spawnWorker(node.spec, ctx, r.pool);
@@ -989,16 +1034,35 @@ function registerLeader(pi: ExtensionAPI) {
 		const r = run!;
 		const name = slugify(spec.name);
 		const upstream = spec.workdir ? r.workers.get(spec.workdir) : undefined;
-		const isolated = upstream ? upstream.worktree !== undefined : (spec.isolation ?? "worktree") === "worktree";
+		const isolated = upstream ? upstream.isolated : (spec.isolation ?? "worktree") === "worktree";
 		const inHerdr = process.env.HERDR_ENV === "1";
 		const { choice, note } = await pickModel(spec.task, spec.acceptance, pool, signal);
 
+		// A leader in cloud mode works on the cloud host, so its workers do too: isolated nodes
+		// get their own sandbox there, shared ones the leader's checkout. The worker process
+		// itself stays local (and visible) with cloud-mode pointing its tools there.
+		const cloud = upstream ? upstream.cloud : leaderCloud();
 		let cwd = ctx.cwd;
 		let branch: string | undefined;
 		let worktree: string | undefined;
+		let box: string | undefined;
 		let pane: string | undefined;
 		if (upstream) {
-			({ cwd, branch, worktree } = upstream);
+			({ cwd, branch, worktree, box } = upstream);
+		} else if (isolated && cloud) {
+			branch = `orch/${r.id}-${name}`;
+			box = boxName(r.id, name);
+			({ cwd } = await provision(cloud, box, branch, signal));
+			if (inHerdr) {
+				const created = await herdrJson<{ root_pane: { pane_id: string } }>(
+					["tab", "create", "--cwd", ctx.cwd, "--label", `orch ${name}`, "--no-focus"],
+					ctx.cwd,
+					signal,
+				);
+				pane = created.root_pane.pane_id;
+			}
+		} else if (cloud) {
+			({ cwd, box } = await leaderPlace(cloud, signal));
 		} else if (isolated) {
 			const root = await pi.exec("git", ["rev-parse", "--show-toplevel"], { cwd: ctx.cwd, signal });
 			if (root.code !== 0) throw new Error('worktree isolation needs a Git repository; use isolation "current"');
@@ -1034,23 +1098,28 @@ function registerLeader(pi: ExtensionAPI) {
 			cwd = join(worktree, relative(repo, ctx.cwd));
 		}
 		// Nodes sharing an upstream checkout split its pane; shared-checkout nodes split the leader's.
+		const localCwd = cloud ? ctx.cwd : cwd;
 		if (inHerdr && !pane) {
 			const anchor = upstream?.pane ?? process.env.HERDR_PANE_ID;
 			const direction = upstream?.pane ? "right" : "down";
 			const split = await herdrJson<{ pane: { pane_id: string } }>(
-				["pane", "split", ...(anchor ? ["--pane", anchor] : []), "--direction", direction, "--cwd", cwd, "--no-focus"],
-				cwd,
+				["pane", "split", ...(anchor ? ["--pane", anchor] : []), "--direction", direction, "--cwd", localCwd, "--no-focus"],
+				localCwd,
 				signal,
 			);
 			pane = split.pane.pane_id;
 		}
 
 		// Taken before launch, so nothing the worker does can land in its own baseline.
-		const start = await snapshot(cwd);
+		const start = await snapshot({ cwd, box, cloud });
 		const { provider, id } = splitRef(choice.ref);
 		const env: Record<string, string> = { ORCH_ROLE: "worker", ORCH_AGENT: name, ORCH_RUN_DIR: r.dir, ORCH_MESH: r.strategy === "mesh" ? "1" : "0" };
 		// destructive-guard treats this run-owned checkout as the worker's scratch space.
 		if (worktree) env.ORCH_WORKTREE = worktree;
+		// Started from a `/unsupervised` run (destructive-guard sets it): nobody answers this worker either.
+		const unsupervised = process.env.OMO_UNSUPERVISED === "1";
+		if (unsupervised) env.OMO_UNSUPERVISED = "1";
+		if (cloud) Object.assign(env, workerEnv(cloud, box));
 		const args = [
 			"--approve",
 			"--provider",
@@ -1066,7 +1135,14 @@ function registerLeader(pi: ExtensionAPI) {
 			"--exclude-tools",
 			"worktree_agents",
 		];
-		const prompt = workerPrompt(name, r, spec, isolated);
+		const prompt = [
+			workerPrompt(name, r, spec, isolated, cloud && isolated ? branch : undefined),
+			unsupervised
+				? 'The user is away for this run and nobody answers dialogs or questions. Take the option you would recommend and note it in your report; only the leader (mesh_send "leader") can decide for you. A command the destructive guard refuses was not run: skip that step and report it.'
+				: undefined,
+		]
+			.filter((part): part is string => part !== undefined)
+			.join("\n");
 		// The worker extension reads its first task from the control file once its session is up.
 		await writeFile(channelPath(r.dir, "ctl", name), `${JSON.stringify({ type: "prompt", message: spec.task } satisfies Control)}\n`);
 
@@ -1080,7 +1156,7 @@ function registerLeader(pi: ExtensionAPI) {
 				script,
 				[
 					"#!/bin/sh",
-					`cd ${shellQuote(cwd)} || exit 1`,
+					`cd ${shellQuote(localCwd)} || exit 1`,
 					...Object.entries(env).map(([key, value]) => `export ${key}=${shellQuote(value)}`),
 					`exec ${[command.command, ...command.args].map(shellQuote).join(" ")} --append-system-prompt "$(cat ${shellQuote(promptFile)})"`,
 					"",
@@ -1090,7 +1166,7 @@ function registerLeader(pi: ExtensionAPI) {
 			// The pane's own shell runs the script, so the pane returns to a prompt when the worker exits.
 			await herdr(["pane", "run", pane, `sh ${shellQuote(script)}`], cwd, signal);
 		} else {
-			child = new RpcChild(["--no-session", ...args, "--append-system-prompt", prompt], cwd, env);
+			child = new RpcChild(["--no-session", ...args, "--append-system-prompt", prompt], localCwd, env);
 		}
 
 		const worker: Worker = {
@@ -1103,6 +1179,9 @@ function registerLeader(pi: ExtensionAPI) {
 			cwd,
 			branch,
 			worktree,
+			cloud,
+			box,
+			isolated,
 			current: choice,
 			modelNote: note,
 			history: [],
@@ -1148,7 +1227,11 @@ function registerLeader(pi: ExtensionAPI) {
 						.map((criterion, index) => `${criterion.p >= config.jev.acceptThreshold ? "pass" : "fail"} #${index + 1} (${pct(criterion.p)})`)
 						.join(", ")}`
 				: undefined,
-			worker.worktree ? `Worktree: ${worker.worktree}\nBranch: ${worker.branch}` : `Checkout: ${worker.cwd}`,
+			worker.box && worker.isolated
+				? `Sandbox: ${worker.box} on ${worker.cloud?.dest}\nBranch: ${worker.branch}${worker.collected ? `\nCollected into your repo: ${worker.collected.split("\n").join(", ")}` : ""}`
+				: worker.worktree
+					? `Worktree: ${worker.worktree}\nBranch: ${worker.branch}`
+					: `Checkout: ${worker.cwd}${worker.cloud ? ` on ${worker.cloud.dest}${worker.box ? ` (sandbox ${worker.box})` : ""}` : ""}`,
 			worker.pane ? `Herdr pane: ${worker.pane}` : undefined,
 		];
 		if (worker.after.length) lines.splice(1, 0, `After: ${worker.after.join(", ")}`);
@@ -1230,6 +1313,7 @@ function registerLeader(pi: ExtensionAPI) {
 		'- Add `kind: "review"` nodes for verification and code review, with `workdir` and `after` set to the node under review. With `fixes` naming that node, a `VERDICT: FAIL` sends the findings back to it and the reviewer re-checks once it settles, up to ' +
 			`${config.maxFixRounds} rounds. Make later nodes depend on the reviewer, not the reviewed node, so they start only on a passing review.`,
 		"- Workers use separate Git worktrees by default. Review and integrate their branches yourself, then validate the integrated result.",
+		"- In cloud mode each isolated worker gets its own agentbox sandbox on your host instead, branched from your last commit (commit first: uncommitted changes do not reach it). It commits there, and when it finishes its branches are fetched into your repo as `sandbox/<sandbox>/<branch>` (orch_status shows them); merge from those.",
 	];
 	// The /orchestrate brief without a goal: in leader mode the user's next requests are the goal.
 	const LEADER_MODE_PROMPT = [
@@ -1431,7 +1515,8 @@ function registerLeader(pi: ExtensionAPI) {
 					}),
 					isolation: Type.Optional(
 						StringEnum(["worktree", "current"] as const, {
-							description: 'Default "worktree". "current" shares the caller checkout; such nodes run one at a time.',
+							description:
+								'Default "worktree": its own Git worktree, or its own agentbox sandbox when the leader runs in cloud mode. "current" shares the caller checkout; such nodes run one at a time.',
 						}),
 					),
 					after: Type.Optional(
