@@ -12,6 +12,10 @@ whenever it feels like a checkpoint.
 
 - **home/noghartt/cli**: btop on every host, as a modern htop replacement.
 
+- **mellon/sandboxes**: `TYPESAFE_API_KEY` joins the sandbox env catalog, so a sandbox can
+  opt in (`agentbox env NAME ... TYPESAFE_API_KEY`) for Jev-gated orchestrator or swarm runs
+  inside it.
+
 - **home/noghartt/omo**: `omo --cloud local --sandbox` runs the session's tools in this
   machine's own agentbox sandboxes without SSH, and an orchestrator leader started that way
   provisions, inspects, and collects its workers' sandboxes the same way. OmO on Mellon (in

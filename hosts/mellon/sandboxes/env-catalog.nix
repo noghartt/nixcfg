@@ -9,4 +9,6 @@
   # API reads. Git never uses HTTPS, so it does not carry clones or fetches;
   # pushes and PRs go through cloud mode's publish tool.
   GH_TOKEN.reference = "op://Nix/AGENTBOX_GH_TOKEN/notesPlain";
+  # Jev (TypeSafe) gating for an orchestrator or swarm leader run inside a sandbox.
+  TYPESAFE_API_KEY.reference = "op://Nix/TYPESAFE_API_KEY/notesPlain";
 }
