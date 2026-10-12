@@ -26,6 +26,9 @@
     tailscale = {
       enable = true;
       openFirewall = true;
+      # tailscaled only accepts state changes (login, up, set) from root or its
+      # operator; without this every `tailscale login` needs sudo.
+      extraSetFlags = [ "--operator=noghartt" ];
     };
 
     # The daemon stays available, but the work tunnel is connected on demand.

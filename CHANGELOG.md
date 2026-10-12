@@ -274,6 +274,18 @@ whenever it feels like a checkpoint.
 
 ### Fixed
 
+- **mellon**: a Secret Service keyring now exists (gnome-keyring, unlocked at greetd login,
+  Seahorse to inspect it), so 1Password and other libsecret apps can persist secrets instead
+  of failing with "name is not activatable". gcr's SSH agent stays off; 1Password remains the
+  SSH agent.
+
+- **mellon**: `tailscale login`/`up`/`set` no longer need sudo; the desktop user is declared
+  as tailscaled's operator (`services.tailscale.extraSetFlags`).
+
+- **mellon**: us-intl dead keys work in Ghostty: GTK uses its simple input method
+  (`GTK_IM_MODULE=simple`) instead of Hyprland's text-input-v3, which swallowed them with no
+  input method running. greetd starts the session through Hyprland's `start-hyprland`.
+
 - **home/noghartt/swarm**: `--local` members run as tabs of a `swarm <id>` Herdr workspace
   instead of a host tmux server, so they are visible next to every other agent and attach
   focuses their tab. Under tmux they inherited the leader's `HERDR_PANE_ID` and kept reporting
