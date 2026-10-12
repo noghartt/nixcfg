@@ -213,8 +213,8 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   checkout (the host directory, or the leader's own sandbox via `agentbox ensure --from`) and
   switched to `orch/<run>-<node>` at the leader's last commit. The worker process stays local
   (its own Herdr tab, or an RPC child) with `OMO_CLOUD`/`OMO_CLOUD_SANDBOX` aiming its tools
-  into the sandbox, so it runs unguarded there; Jev's evidence is read with git over SSH and
-  `agentbox exec`, and each final settle commits leftovers and fetches the sandbox's branches
+  into the sandbox, so it runs unguarded there; Jev's evidence is read with git through
+  `agentbox exec` (over SSH, or directly for a `local` leader), and each final settle commits leftovers and fetches the sandbox's branches
   into the leader's repo as `sandbox/<box>/*` (`agentbox collect`, `--into` a sandboxed
   leader). Shared-checkout nodes run on the leader's own checkout; worker sandboxes stay until
   idle expiry. Either way the
@@ -346,7 +346,11 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   `sandbox/<box or host>/<branch>`, pushes it over SSH with the local keys (an HTTPS
   GitHub origin is rewritten to SSH: Git never uses HTTPS here; a 1Password SSH approval may be
   needed), never forced and never to origin's default branch, under the name the agent picks by the
-  repo's conventions, and optionally opens a draft PR.
+  repo's conventions, and optionally opens a draft PR. `--cloud local --sandbox` targets this
+  machine's own sandboxes with no SSH: every command (PTY bash included) runs `agentbox exec`
+  in a local bash, so OmO on Mellon (in Herdr, over an SSH login) drives sandboxes and an
+  orchestrator's sandboxed workers unattended, and pushes with Mellon's GitHub key. `local`
+  without `--sandbox` is refused: it would only bypass destructive-guard's write/edit checks.
 - The writable checkout is conventionally `~/www/nixcfg`, exposed as `$NIXCFG`; the `nixcfg`
   shell alias changes to it. Store paths remain the source of evaluated configuration.
 - Hosts declare their own platform via `nixpkgs.hostPlatform` (mellon: in

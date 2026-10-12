@@ -9,7 +9,7 @@ import { homedir } from "node:os";
 import { basename } from "node:path";
 import { remoteGrep } from "./grep.ts";
 import { registerPublish } from "./publish.ts";
-import { editOps, exec, ptyCommand, q, readOps, run, type Target, userBashOps, writeOps } from "./ssh.ts";
+import { editOps, exec, isLocal, LOCAL, ptyCommand, q, readOps, run, type Target, userBashOps, writeOps } from "./ssh.ts";
 
 const ENTRY = "cloud-mode";
 // Child sessions (task subagents, in-process or spawned) inherit the resolved
@@ -59,6 +59,9 @@ async function resolveTarget(
 	env: string[] | undefined,
 ): Promise<Resolved> {
 	const { dest, path } = parseSpec(spec);
+	// Without a sandbox `local` would only reroute tools onto this same disk, past
+	// destructive-guard's write/edit checks (they are skipped in cloud mode).
+	if (dest === LOCAL && !sandbox) throw new Error(`--cloud ${LOCAL} needs --sandbox: it runs tools in one of this machine's agentbox sandboxes.`);
 	const home = (await exec({ dest }, `printf '%s' "$HOME"`)).toString();
 	const local = homedir();
 	// By default the same home-relative directory as here: ~/www/x -> remote ~/www/x.
@@ -91,7 +94,7 @@ async function resolveTarget(
 
 function promptSection(target: Target, expired: string | undefined, env: string[]): string {
 	const where = target.box
-		? `the isolated sandbox \`${target.box}\` on host \`${target.dest}\` (a systemd-nspawn container with its own filesystem and Nix store; the host's files and services are out of reach, and outbound network is internet-only)`
+		? `the isolated sandbox \`${target.box}\` on ${isLocal(target) ? "this machine" : `host \`${target.dest}\``} (a systemd-nspawn container with its own filesystem and Nix store; the host's files and services are out of reach, and outbound network is internet-only)`
 		: `the remote host \`${target.dest}\``;
 	return [
 		"## Cloud mode",
@@ -129,7 +132,7 @@ export default function cloudMode(pi: ExtensionAPI) {
 	let toolsRegistered = false;
 	let savedActive: string[] | undefined;
 
-	pi.registerFlag("cloud", { description: "Run this session's tools on a remote host: host or host:/path", type: "string" });
+	pi.registerFlag("cloud", { description: "Run this session's tools on a remote host: host or host:/path (`local` with --sandbox: this machine's sandboxes, no SSH)", type: "string" });
 	// Boolean for --help; the engine also hands over a value (--sandbox=name).
 	pi.registerFlag("sandbox", { description: "With --cloud: run tools in an isolated agentbox sandbox on that host (--sandbox=name to pick one)", type: "boolean" });
 	pi.registerFlag("env", { description: "With --cloud --sandbox: catalog variables the sandbox gets (KEY,KEY; agentbox env)", type: "string" });

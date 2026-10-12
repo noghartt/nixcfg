@@ -116,11 +116,13 @@ start() {
 # Sets ENTER to the command that runs its arguments inside a running sandbox
 # as the agent user. The scope puts that command under the sandbox's slice, so
 # it counts against the same memory, CPU and task limits as the container.
+# systemd-run would otherwise expand ${...} in the command (with its own,
+# sudo-reset environment) before the sandbox's shell ever saw it.
 enter() {
   local leader
   leader=$(machinectl show "ab-$1" --property=Leader --value 2>/dev/null) || return 1
   ENTER=(
-    systemd-run --quiet --scope --collect --slice="$(slice "$1")" --
+    systemd-run --quiet --scope --collect --expand-environment=no --slice="$(slice "$1")" --
     nsenter --target="$leader" --all --root --wdns=/home/agent --setuid=1000 --setgid=100 --
     /run/current-system/sw/bin/env -i
     HOME=/home/agent USER=agent LOGNAME=agent LANG=C.UTF-8 TERM="${TERM:-dumb}"

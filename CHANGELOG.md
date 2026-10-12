@@ -10,6 +10,12 @@ whenever it feels like a checkpoint.
 
 ### Added
 
+- **home/noghartt/omo**: `omo --cloud local --sandbox` runs the session's tools in this
+  machine's own agentbox sandboxes without SSH, and an orchestrator leader started that way
+  provisions, inspects, and collects its workers' sandboxes the same way. OmO on Mellon (in
+  Herdr, reached over SSH) can now run sandboxed agents and orchestrator runs overnight with
+  the Mac closed; SSHing into itself would have waited on the 1Password agent's approval.
+
 - **mellon**: unattended git pushes to GitHub. A dedicated GitHub SSH key, kept as the
   `Nix/mellon-github` 1Password item and written to `~/.ssh/github_mellon` by opnix, serves
   `github.com` only, and GitHub's host key is pinned; the desktop 1Password agent, which needs
@@ -286,6 +292,10 @@ whenever it feels like a checkpoint.
   (`session.resume_agents_on_restore = false`).
 
 ### Fixed
+
+- **mellon**: commands run through `agentbox exec` keep their `${...}` expressions for the
+  sandbox's shell. systemd-run expanded them first, against its own environment, so cloud mode
+  could not read `AGENTBOX_HOST` and `${#VAR}` or `${VAR-default}` broke.
 
 - **mellon**: a Secret Service keyring now exists (gnome-keyring, unlocked at greetd login,
   Seahorse to inspect it), so 1Password and other libsecret apps can persist secrets instead

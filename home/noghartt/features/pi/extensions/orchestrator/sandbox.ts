@@ -39,24 +39,28 @@ const inBox = (box: string | undefined, command: string): string =>
 
 type Result = { code: number | null; stdout: string; stderr: string };
 
-// Shares cloud-mode's multiplexed master connection to the host.
-// Seeding clones a whole repo, so only git queries get a short timeout.
+// Shares cloud-mode's multiplexed master connection to the host; cloud-mode's
+// `local` target (OmO on the sandbox host itself) runs the command in a local
+// bash instead. Seeding clones a whole repo, so only git queries get a short
+// timeout.
 function ssh(dest: string, command: string, signal?: AbortSignal, timeout?: number): Promise<Result> {
-	const sockets = join(homedir(), ".ssh", "omo-cloud");
-	mkdirSync(sockets, { recursive: true, mode: 0o700 });
+	let program = "bash";
+	let args = ["-c", command];
+	if (dest !== "local") {
+		const sockets = join(homedir(), ".ssh", "omo-cloud");
+		mkdirSync(sockets, { recursive: true, mode: 0o700 });
+		program = "ssh";
+		args = [
+			"-o", "BatchMode=yes",
+			"-o", "ControlMaster=auto",
+			"-o", `ControlPath=${sockets}/%C`,
+			"-o", "ControlPersist=600",
+			"-o", "LogLevel=ERROR",
+			"-T", "--", dest, command,
+		];
+	}
 	return new Promise((resolve, reject) => {
-		const child = spawn(
-			"ssh",
-			[
-				"-o", "BatchMode=yes",
-				"-o", "ControlMaster=auto",
-				"-o", `ControlPath=${sockets}/%C`,
-				"-o", "ControlPersist=600",
-				"-o", "LogLevel=ERROR",
-				"-T", "--", dest, command,
-			],
-			{ stdio: ["ignore", "pipe", "pipe"], signal, timeout },
-		);
+		const child = spawn(program, args, { stdio: ["ignore", "pipe", "pipe"], signal, timeout });
 		let stdout = "";
 		let stderr = "";
 		child.stdout.on("data", (chunk: Buffer) => (stdout += chunk));

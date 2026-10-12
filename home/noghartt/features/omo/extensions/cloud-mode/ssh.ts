@@ -13,6 +13,13 @@ import type {
 
 /** `box` names an agentbox sandbox on `dest`; every command then runs inside it. */
 export type Host = { dest: string; box?: string };
+
+// The machine OmO itself runs on, normally the sandbox host: commands run in a
+// local bash instead of over SSH, so an agent on Mellon never has to SSH into
+// Mellon through the 1Password agent. sudo inside `agentbox exec` resets the
+// environment, so nothing of this process's environment reaches the sandbox.
+export const LOCAL = "local";
+export const isLocal = (host: Host): boolean => host.dest === LOCAL;
 /** `served` is the sandbox's tailnet DNS name, for servers bound to 0.0.0.0. */
 export type Target = Host & { home: string; cwd: string; served?: string };
 
@@ -43,6 +50,11 @@ export const remoteShell = (cwd: string, command: string): string => `cd ${q(cwd
 const onHost = (host: Host, command: string): string =>
 	host.box ? `agentbox exec ${q(host.box)} -- bash -c ${q(command)}` : command;
 
+const spawnArgs = (host: Host, command: string, shared = true): [string, string[]] =>
+	isLocal(host)
+		? ["bash", ["-c", onHost(host, command)]]
+		: ["ssh", [...sshOptions(shared), "-T", "--", host.dest, onHost(host, command)]];
+
 export function run(
 	host: Host,
 	command: string,
@@ -50,7 +62,7 @@ export function run(
 ): Promise<RunResult> {
 	return new Promise((resolve, reject) => {
 		if (options.signal?.aborted) return reject(new Error("Operation aborted"));
-		const child = spawn("ssh", [...sshOptions(), "-T", "--", host.dest, onHost(host, command)], {
+		const child = spawn(...spawnArgs(host, command), {
 			stdio: [options.input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
 		});
 		const out: Buffer[] = [];
@@ -139,7 +151,7 @@ export function userBashOps(target: Target): BashOperations {
 	return {
 		exec: (command, _cwd, { onData, signal, timeout }) =>
 			new Promise((resolve, reject) => {
-				const child = spawn("ssh", [...sshOptions(false), "-T", "--", target.dest, onHost(target, remoteShell(target.cwd, command))], {
+				const child = spawn(...spawnArgs(target, remoteShell(target.cwd, command), false), {
 					stdio: ["ignore", "pipe", "pipe"],
 				});
 				let timedOut = false;
@@ -167,4 +179,9 @@ export function userBashOps(target: Target): BashOperations {
 
 /** The agent's bash: OmO's local PTY runs ssh, so background sessions, input, and kill keep working. */
 export const ptyCommand = (target: Target, command: string): string =>
-	["exec", "ssh", ...sshOptions(false), "-tt", "--", target.dest, onHost(target, remoteShell(target.cwd, command))].map(q).join(" ");
+	(isLocal(target)
+		? ["exec", "bash", "-c", onHost(target, remoteShell(target.cwd, command))]
+		: ["exec", "ssh", ...sshOptions(false), "-tt", "--", target.dest, onHost(target, remoteShell(target.cwd, command))]
+	)
+		.map(q)
+		.join(" ");
