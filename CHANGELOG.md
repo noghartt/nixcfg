@@ -27,6 +27,11 @@ whenever it feels like a checkpoint.
   exempts one, and `agentbox ls` shows idle time and expiry. Cloud mode warns when it
   recreates an expired sandbox and points the session at the archive.
 
+- **home/noghartt/omo**: `/unsupervised <task>` prompt template (adapted from fersilva16's
+  config): ultrawork, no questions, tested end to end, left uncommitted for review (committed
+  on a branch inside a sandbox). During such a run destructive-guard refuses what Jev does not
+  clear instead of opening a dialog, and orchestrator workers it spawns inherit the mode.
+
 - **home/noghartt/pi**: orchestrator workers run in agentbox sandboxes when the leader is in
   OmO cloud mode. Each isolated node gets its own sandbox on the leader's host, seeded from the
   leader's checkout (or the leader's own sandbox) and branched from its last commit; the worker
@@ -40,6 +45,11 @@ whenever it feels like a checkpoint.
   literals); each sandbox opts in with `agentbox env NAME KEY...`, and `agentbox exec` exports
   them inside without putting values on a command line. The catalog starts with a read-only
   `GH_TOKEN` for the image's `gh` (API reads; Git itself stays on SSH).
+
+- **home/noghartt/omo**: cloud mode's `--env KEY,KEY` opts a sandbox into catalog variables
+  (orchestrator workers inherit the list), and a `publish` tool pushes a branch from the remote
+  host or sandbox through the local clone over SSH (HTTPS GitHub origins rewritten to SSH), never forced and never to
+  the default branch, optionally opening a draft PR.
 
 - **home/noghartt/omo**: `cloud-mode` `--sandbox[=name]` (and `/cloud <host> --sandbox`) runs
   the session's tools inside an `agentbox` sandbox on the target host, created from the host

@@ -155,6 +155,9 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   REST writes, GraphQL mutations); bodies and reads pass through to the real `gh`.
   OmO keeps its own agent dir (`~/.omo/agent`) but follows Pi's packaged
   extensions (minus `pi-workflows`, whose tool collides with `omo.js`), skills, and keybindings,
+  plus the `/unsupervised <task>` prompt template (`features/omo/prompts/`, adapted from
+  fersilva16: ultrawork, no questions, tested end to end, nothing pushed or committed except
+  a branch inside a sandbox, where only commits leave),
   plus OmO-only packages (findings-cache, cloud-mode, ui-chrome, ui-prompt) auto-discovered from
   `features/omo/extensions/<name>/` (any subdirectory
   with a `package.json`; used for extensions that hook OmO internals or OmO-only features);
@@ -323,11 +326,21 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   coreutils `timeout`. `--cloud <host> --sandbox[=name]` (or `/cloud <host> --sandbox`) runs
   the tools inside one of the host's `agentbox` sandboxes instead: every remote command is
   wrapped in `agentbox exec`, the sandbox is created from the host directory's repo on first
-  use (default name `<repo>-<session id tail>`), and it persists until `agentbox rm`. The
+  use (default name `<repo>-<session id tail>`), and it persists until `agentbox rm` or idle
+  expiry; when `ensure` recreates an expired one, cloud mode warns and points the prompt at
+  the archived bundles. The
   entry and `OMO_CLOUD_SANDBOX` carry the name, so resume and subagents reattach. Pass a
   name as `--sandbox=name`: a bare `--sandbox` followed by a word consumes it as the value.
   `agentbox exec` sets `AGENTBOX_HOST` (the sandbox's tailnet name), which the prompt passes on
-  so the model can hand out reachable addresses.
+  so the model can hand out reachable addresses. `--env KEY,KEY` (or `/cloud ... --env=K,K`)
+  sets the sandbox's catalog opt-ins (an empty list clears, no flag keeps them); the effective
+  list goes to the prompt and `OMO_CLOUD_ENV`, which orchestrator workers pass on. The
+  `publish` tool (`cloud-mode/publish.ts`) is the write path to GitHub: it bundles a branch out
+  of the target, fetches it into the local clone at the session's cwd as
+  `sandbox/<box or host>/<branch>`, pushes it over SSH with the local keys (an HTTPS
+  GitHub origin is rewritten to SSH: Git never uses HTTPS here; a 1Password SSH approval may be
+  needed), never forced and never to origin's default branch, under the name the agent picks by the
+  repo's conventions, and optionally opens a draft PR.
 - The writable checkout is conventionally `~/www/nixcfg`, exposed as `$NIXCFG`; the `nixcfg`
   shell alias changes to it. Store paths remain the source of evaluated configuration.
 - Hosts declare their own platform via `nixpkgs.hostPlatform` (mellon: in

@@ -120,4 +120,10 @@ in
   ];
 
   home.packages = [ omo ];
+
+  # `/unsupervised <task>` (adapted from fersilva16's config). OmO arms
+  # ultrawork only from typed `ulw` text, never from an expanded template, so
+  # the template loads the skill itself. destructive-guard keys off the typed
+  # command to refuse instead of ask for the rest of the run.
+  home.file.".omo/agent/prompts/unsupervised.md".source = ./prompts/unsupervised.md;
 }

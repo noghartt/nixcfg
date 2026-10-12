@@ -40,6 +40,8 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [x] Sandbox idle expiry: `agentbox-reap.timer` stops after 12h idle, removes after 7d (branches archived to `/agent/archive` for 30d), `agentbox keep`, cloud-mode notice on recreation
 - [ ] Verify sandbox expiry after the next Mellon rebuild: timer active, `agentbox ls` idle/expiry columns, `keep`, a forced reap (`touch -d '8 days ago' /agent/meta/<name>.used`) archives and removes, bundles fetchable by the user
 - [ ] Swarm `nspawn` backend on agentbox sandboxes (replacing sbx on Mellon)
+- [x] Sandbox sessions run unsupervised (destructive-guard skips bash/write/edit there) and `/unsupervised <task>` OmO template, inherited by orchestrator workers
+- [ ] Try `/unsupervised` once after activation: template listed, ultrawork loads, a guarded command is refused without a dialog
 - [x] Orchestrator workers in agentbox sandboxes (`OMO_CLOUD` + `OMO_CLOUD_SANDBOX` per worker; evidence collection through `agentbox exec`)
 - [x] Sandbox env catalog (opnix-resolved, opt-in per sandbox via `agentbox env` / `--env`), read-only `GH_TOKEN`, and cloud-mode `publish` (push over SSH + draft PR via the local gh)
 - [ ] Before the next Mellon rebuild: create the 1Password item `Nix/AGENTBOX_GH_TOKEN` (fine-grained, read-only contents/metadata/issues/pull requests; token in notes) and run `sudo opnix token set` on Mellon; then check `opnix-secrets.service`, `agentbox env <box> GH_TOKEN`, `gh auth status` inside, and one `publish` with a draft PR
