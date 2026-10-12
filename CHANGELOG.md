@@ -199,6 +199,9 @@ whenever it feels like a checkpoint.
 
 ### Changed
 
+- **mellon**: `hardware-configuration.nix` is the real `nixos-generate-config` output (initrd
+  and kernel modules, AMD microcode) instead of the placeholder; filesystems stay with disko.
+
 - **home/noghartt/pi**: destructive-guard no longer checks bash, write, or edit in an agentbox
   sandbox session, so sandboxed agents run any command there unattended; destructive-named
   tools that act outside the sandbox are still checked.
