@@ -22,6 +22,7 @@ in
     };
 
     bat.enable = true;
+    btop.enable = true;
     fd.enable = true;
 
     fzf = {
