@@ -199,6 +199,14 @@ whenever it feels like a checkpoint.
 
 ### Changed
 
+- **home/noghartt**: Mellon's Ghostty launches Herdr directly, like Palantir's; tmux, Pi's
+  tmux helpers, and rofi are no longer imported there, and `Super+D` opens Noctalia's launcher.
+  Hyprland gains i3-style tree control: `Super+E` toggles the split, `Super+H`/`Super+V`
+  preselect, `Super+W` toggles a tab group (`Super+Tab` cycles it, `Super+Alt+<dir>` merges
+  into a neighbour, `Super+Shift+W` leaves it), and `Super+M` toggles monocle; the resize mode
+  moves to `Super+Shift+R`. A declared Adwaita cursor covers Hyprland, XWayland, and GTK, and
+  wl-clipboard (Herdr's copy actions) and pavucontrol join Mellon's packages.
+
 - **mellon**: `hardware-configuration.nix` is the real `nixos-generate-config` output (initrd
   and kernel modules, AMD microcode) instead of the placeholder; filesystems stay with disko.
 

@@ -123,8 +123,9 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   baseline, while `<host>.nix` combines portable desktop features with the platform-specific
   modules it needs. `desktop/default.nix` must remain evaluable on both Linux and Darwin;
   platform-only integrations are imported directly by the corresponding host entrypoint.
-- Tmux and Pi's tmux helpers are opt-in imports on Mellon. Palantir launches Herdr
-  directly from Ghostty. Herdr's agent tree is a Nix-packaged native popup command
+- Mellon and Palantir both launch Herdr directly from Ghostty; tmux and Pi's tmux helpers
+  (`features/cli/tmux.nix`, `features/pi/tmux.nix`) are no longer imported anywhere.
+  Herdr's agent tree is a Nix-packaged native popup command
   under `features/herdr/`, bound to `Alt+A`; it uses live session metadata and pane IDs.
   The `pr-tree/` plugin provides `Alt+P` for authored open GitHub PRs grouped by repo,
   using the active `gh` account, with browser and clipboard actions. The `lazygit/` plugin

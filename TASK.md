@@ -51,7 +51,7 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 
 ## Home Manager
 
-- [x] Terminal: Ghostty launches Herdr on Palantir and persistent tmux on Mellon, with zsh (autosuggestion, syntax-highlighting)
+- [x] Terminal: Ghostty launches Herdr on Palantir and Mellon, with zsh (autosuggestion, syntax-highlighting)
 - [x] tmux cross-session/window scrollback search with an fzf popup and copy-mode jump
 - [x] cli tooling: eza, bat, fd, fff, fzf, lazygit, ngrok + browsers (firefox, chrome)
 - [x] Herdr through its native Home Manager module, with release-pinned packaging, settings, and the Nix-managed lazygit popup plugin (`Alt+R`)
@@ -99,7 +99,7 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [ ] Cua Driver first run: grant Accessibility and Screen Recording (`cua-driver permissions grant`), then check `cua-driver doctor`
 - [x] Disable Claude's Bash/subagent sandbox after it proved unreliable with automatic permission mode
 - [x] Writable Claude runtime settings with Nix-owned baseline keys and preserved injected hooks
-- [x] Desktop shell: Noctalia + rofi launcher + Polkit agent + lock/idle behavior + Hyprsunset night light
+- [x] Desktop shell: Noctalia (launcher, session, control center) + Polkit agent + lock/idle behavior + Hyprsunset night light
 - [x] Migrate i3 workflow: workspaces, focus/move/resize, audio, launcher, session controls
 - [x] Desktop apps: Todoist, Calibre, Zotero, Slack, Discord, Spotify
 - [x] Jujutsu

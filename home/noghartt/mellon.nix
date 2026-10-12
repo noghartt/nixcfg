@@ -1,32 +1,35 @@
-# Mellon's portable desktop plus Linux/Wayland integrations.
-{ lib, pkgs, ... }:
+# Mellon's portable desktop plus Linux/Wayland integrations; Ghostty launches Herdr directly.
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 {
   imports = [
     ./features/cli/ssh-server.nix
-    ./features/cli/tmux.nix
-    ./features/pi/tmux.nix
     ./features/desktop
     ./features/desktop/hyprland.nix
     ./features/desktop/hyprsunset.nix
     ./features/desktop/noctalia.nix
-    ./features/desktop/rofi.nix
     ./features/omo
   ];
 
   home.packages = with pkgs; [
+    # Clipboard backend for Herdr's copy actions on Wayland.
+    wl-clipboard
+    # Per-app volume and device routing for the PipeWire stack.
+    pavucontrol
     calibre
     todoist-electron
   ];
 
-  programs.ghostty.package = pkgs.ghostty;
+  programs.ghostty = {
+    package = pkgs.ghostty;
+    settings.command = lib.getExe config.programs.herdr.package;
+  };
 
   services.flameshot.settings.General.disabledTrayIcon = true;
-
-  programs.tmux.extraConfig = lib.mkAfter ''
-    # Copy selections directly to the Wayland clipboard.
-    bind-key -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel "${lib.getExe' pkgs.wl-clipboard "wl-copy"}"
-    bind-key -T copy-mode-vi y send-keys -X copy-pipe-and-cancel "${lib.getExe' pkgs.wl-clipboard "wl-copy"}"
-  '';
 
   xdg.mimeApps = {
     enable = true;
