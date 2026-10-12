@@ -83,8 +83,11 @@ let
   # ignores edits that change routine keys, so a byte-only rewrite (jq's trailing
   # newline) reloaded them all. The file is rewritten only when the bytes differ,
   # serialized like OmO's own writes (no trailing newline).
+  # codemode's process-isolated eval kernel (codemode.nix) spawns `bun` from
+  # PATH; without it eval only worked when started inside a direnv dev shell.
   omo = pkgs.writeShellScriptBin "omo" ''
     ${agentPath.prependPath}
+    export PATH="${pkgs.bun}/bin:$PATH"
     export OMO_CODING_AGENT_DIR="''${OMO_CODING_AGENT_DIR:-$HOME/.omo/agent}"
     settings="$OMO_CODING_AGENT_DIR/settings.json"
     if [ -f "$settings" ] && [ ! -L "$settings" ]; then

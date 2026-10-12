@@ -173,7 +173,8 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   1568px / 750 KB for every catalog and chain model (keep its list in sync), because sessions
   keep images as encoded and rebuild each request around all of them; `~/.senpi/agent/codemode.json`
   (codemode reads `~/.senpi`, not `~/.omo`) runs JavaScript eval kernels as child processes
-  (`isolation.js = "process"`, on the `bun` shim OmO puts on PATH) with a 4 GB recycle ceiling
+  (`isolation.js = "process"`, on the nixpkgs `bun` the `omo` launcher puts on PATH) with a
+  4 GB recycle ceiling
   and 30-minute idle parking; and the `omo-memwatch` launchd agent checks omo footprints every
   30 s, writing a footprint/vmmap snapshot to `~/Library/Logs/omo-memwatch/` and notifying
   above 4 GB (again at each 1.5x growth), then stopping the process above 12 GB. On Linux

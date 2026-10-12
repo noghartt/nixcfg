@@ -166,6 +166,8 @@
       devShells = forAllSystems (pkgs: {
         default = pkgs.mkShell {
           packages = with pkgs; [
+            # OmO's eval kernel needs a JavaScript runtime on PATH.
+            bun
             deadnix
             nixd
             nixfmt

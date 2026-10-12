@@ -294,6 +294,10 @@ whenever it feels like a checkpoint.
   (`GTK_IM_MODULE=simple`) instead of Hyprland's text-input-v3, which swallowed them with no
   input method running. greetd starts the session through Hyprland's `start-hyprland`.
 
+- **home/noghartt/omo**: OmO's JavaScript eval kernel starts outside a direnv dev shell. Its
+  process-isolated kernel spawns `bun` from PATH, which only the dev shell provided; the `omo`
+  launcher now puts nixpkgs' `bun` first on PATH (and the dev shell keeps one too).
+
 - **home/noghartt/swarm**: `--local` members run as tabs of a `swarm <id>` Herdr workspace
   instead of a host tmux server, so they are visible next to every other agent and attach
   focuses their tab. Under tmux they inherited the leader's `HERDR_PANE_ID` and kept reporting
