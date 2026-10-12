@@ -29,6 +29,14 @@
     settings.command = lib.getExe config.programs.herdr.package;
   };
 
+  # Mellon's own GitHub key for unattended pushes (hosts/mellon/github-ssh.nix):
+  # an SSH Key item in the Nix vault, in the OpenSSH format the ssh client reads.
+  # The item must exist before activation; a missing one fails every opnix secret.
+  programs.onepassword-secrets.secrets.githubSshKey = {
+    reference = "op://Nix/mellon-github/private key?ssh-format=openssh";
+    path = ".ssh/github_mellon";
+  };
+
   services.flameshot.settings.General.disabledTrayIcon = true;
 
   xdg.mimeApps = {

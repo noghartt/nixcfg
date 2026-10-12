@@ -9,7 +9,8 @@
       polkitPolicyOwners = [ "noghartt" ];
     };
 
-    # Use 1Password as the SSH agent; keys never touch disk. While someone is
+    # Use 1Password as the SSH agent; keys never touch disk, except the GitHub
+    # key unattended runs push with (github-ssh.nix). While someone is
     # logged in over SSH with a forwarded agent, ~/.ssh/rc points agent.sock at
     # it and it wins: nobody is at mellon's screen to answer the local app's
     # prompt. Once that connection ends the socket dies and 1Password is back.

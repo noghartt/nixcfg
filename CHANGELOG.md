@@ -10,6 +10,11 @@ whenever it feels like a checkpoint.
 
 ### Added
 
+- **mellon**: unattended git pushes to GitHub. A dedicated GitHub SSH key, kept as the
+  `Nix/mellon-github` 1Password item and written to `~/.ssh/github_mellon` by opnix, serves
+  `github.com` only, and GitHub's host key is pinned; the desktop 1Password agent, which needs
+  an on-screen approval and locks when idle, still signs for every other host.
+
 - **repo**: `.envrc` loads the flake's dev shell through direnv (`.direnv/` is ignored).
 
 - **mellon**: isolated agent sandboxes. Each is a systemd-nspawn container booted from a btrfs

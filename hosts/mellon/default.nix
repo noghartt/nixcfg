@@ -23,6 +23,7 @@
     ./sandboxes
     ./maintenance.nix
     ./1password.nix
+    ./github-ssh.nix
     ./docker.nix
     ../common/global
   ];

@@ -61,7 +61,11 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
 - Mellon is an always-on agent host: system sleep is refused (`power.nix`), sshd is key-only
   and reachable only on `tailscale0` (`ssh.nix`, `~/.ssh/authorized_keys` kept by hand, not by Nix,
   `~/.ssh/rc` keeps a forwarded agent for long-lived shells), Docker publishes ports on
-  loopback, and the native NixOS firewall owns the rules (nixpkgs has no ufw).
+  loopback, and the native NixOS firewall owns the rules (nixpkgs has no ufw). Git reaches
+  GitHub with a dedicated key (`github-ssh.nix`; opnix writes `~/.ssh/github_mellon` from the
+  `Nix/mellon-github` SSH Key item, GitHub's host key is pinned), so unattended runs can push;
+  every other SSH connection still signs through the desktop 1Password agent, which asks on
+  screen for each new client and locks after an idle hour.
 - Mellon's agent sandboxes (`hosts/mellon/sandboxes/`) are systemd-nspawn containers, one per
   sandbox, each booted from a writable btrfs snapshot of a Nix-built base image on the `/agent`
   volume (`/agent/base/<hash>` read-only, `/agent/sandboxes/<name>`). Isolation: private user
