@@ -84,7 +84,7 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [x] `Ctrl+P` command palette listing built-in commands too, and `Alt+T` for the session tree view
 - [x] `Ctrl+?` keybindings modal; skills left out of the command palette
 - [x] OmO settings follow Pi's extensions, skills, and keybindings instead of a frozen adopted copy
-- [x] OmO `omo.jsonc` model chains with same-tier cross-provider fallbacks
+- [x] OmO picker and task chains use Opus 5.5, Sonnet 5.5, Fable 5.1, GPT-6 Astra, and GPT-6 Sol, with authenticated subscription provider IDs and cross-provider fallbacks
 - [x] OmO 5.1.28 with chains re-derived from its builtin `omo-task.js` (its new Haiku 5.5 rungs only reach explore/librarian/quick, which stay overridden)
 - [x] OmO memory guards: 1568px image cap (`models.json`), process-isolated JS eval kernels with idle parking (`codemode.json`), `omo-memwatch` launchd snapshot/notify/stop agent
 - [ ] Tune `omo-memwatch` limits (4 GB warn / 12 GB stop) from its first real snapshots

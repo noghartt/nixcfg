@@ -4,7 +4,7 @@
 let
   jsonFormat = pkgs.formats.json { };
   rung = model: reasoning: { inherit model reasoning; };
-  claude = model: "anthropic/${model}";
+  claude = model: "anthropic-subscription/${model}";
   gpt = model: "chatgpt-subscription/${model}";
 in
 {
@@ -28,27 +28,20 @@ in
     # OmO defaults it to {}, but the published schema lists it as required.
     profiles = { };
 
-    # Each chain keeps the builtin rungs (plugin/extensions/omo-task.js) that
-    # our two logins reach, in order, then appends the same-tier model from the
-    # other provider: outages are provider-wide, so OmO's runtime fallback
-    # (429/5xx/529) needs a rung on the other login, and staying in-tier keeps
-    # a fallback from jumping price. Tiers: claude-fable-5-1 / gpt-6-astra and
-    # claude-opus-5-5 / gpt-5.6-sol. Chains that already cross providers
-    # (plan-reviewer, unspecified-low) stay builtin. Claude Haiku 4.5 is never
-    # used: chains that fell back to it fall back to Sonnet 5.5 instead.
-    # Re-derive these from omo-task.js when bumping the OmO version.
+    # Route tasks among the five models in the interactive picker. Keep
+    # cross-provider rungs so a provider-wide outage (429/5xx/529) can fall
+    # back to the other login. Claude Haiku 4.5 is never used.
+    # Recheck the builtin chains in omo-task.js when bumping OmO.
     "[native]" = {
       agents = {
-        # The builtin explore/librarian chains try Kimi, DeepSeek, Qwen, and
-        # MiniMax rungs we have no login for, then land on claude-haiku-4-5;
-        # Sonnet 5.5 is the newest fast Claude, and GPT-6 Luna is its cross-provider pair.
+        # The builtin chains try providers we have no login for, then Haiku.
         explore.models = [
           (rung (claude "claude-sonnet-5-5") "low")
-          (rung (gpt "gpt-6-luna-fast") "low")
+          (rung (gpt "gpt-6-sol") "low")
         ];
         librarian.models = [
           (rung (claude "claude-sonnet-5-5") "low")
-          (rung (gpt "gpt-6-luna-fast") "low")
+          (rung (gpt "gpt-6-sol") "low")
         ];
         plan-consultant.models = [
           (rung (claude "claude-fable-5-1") "max")
@@ -69,15 +62,13 @@ in
         ];
         ultrabrain.models = [
           (rung (gpt "gpt-6-astra") "max")
-          (rung (gpt "gpt-5.6-sol") "max")
+          (rung (gpt "gpt-6-sol") "max")
           (rung (claude "claude-fable-5-1") "max")
         ];
         deep-low.models = [
-          (rung (gpt "gpt-6.1-sol") "medium")
-          (rung (gpt "gpt-6.1-sol-fast") "medium")
-          (rung (gpt "gpt-5.6-sol") "medium")
-          (rung (gpt "gpt-5.6-sol-fast") "medium")
+          (rung (gpt "gpt-6-sol") "medium")
           (rung (claude "claude-opus-5-5") "medium")
+          (rung (claude "claude-sonnet-5-5") "medium")
         ];
         deep-high.models = [
           (rung (gpt "gpt-6-astra") "high")
@@ -88,19 +79,19 @@ in
           (rung (claude "claude-opus-5-5") "max")
           (rung (gpt "gpt-6-astra") "max")
         ];
-        # The builtin quick chain ends on claude-haiku-4-5 for our logins.
+        # The builtin quick chain ends on Haiku for our logins.
         quick.models = [
-          (rung (gpt "gpt-6-luna-fast") "low")
           (rung (claude "claude-sonnet-5-5") "low")
+          (rung (gpt "gpt-6-sol") "low")
         ];
         unspecified-high.models = [
           (rung (claude "claude-opus-5-5") "medium")
-          (rung (gpt "gpt-5.6-sol") "medium")
+          (rung (gpt "gpt-6-sol") "medium")
         ];
         writing.models = [
           (rung (claude "claude-opus-5-5") "low")
-          (rung (claude "claude-opus-4-6") "max")
-          (rung (gpt "gpt-5.6-sol") "low")
+          (rung (claude "claude-sonnet-5-5") "low")
+          (rung (gpt "gpt-6-sol") "low")
         ];
       };
     };

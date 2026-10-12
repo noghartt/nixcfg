@@ -168,9 +168,13 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   with a `package.json`; used for extensions that hook OmO internals or OmO-only features);
   its writable `settings.json` gets the same baseline merge, including Pi's quiet startup,
   condensed changelog, and resume-hint exit output, plus `tips = false` and Nix-owned model
-  defaults: Opus 5.5 at `high`, a catalog of Opus 5.5, Sonnet 5.5, Fable 5.1, and the ChatGPT
-  models. OmO saves every model or thinking switch as the global default, so the `omo` launcher
-  restores Opus 5.5 at `high` before each start; resumed sessions keep their own model.
+  defaults: Opus 5.5 at `high`, a picker and task chains using Opus 5.5, Sonnet 5.5,
+  Fable 5.1, GPT-6 Astra, and GPT-6 Sol. Claude IDs use the authenticated
+  `anthropic-subscription` provider throughout startup, picker, task chains, and
+  image overrides; `anthropic` has no login and made new sessions pick ChatGPT
+  instead. OmO saves every model or thinking switch as the global default, so the
+  `omo` launcher restores Opus 5.5 at `high` before each new session; resumed
+  sessions keep their own model.
   Claude Haiku 4.5 is not used anywhere (catalogs, chains, orchestrator pool). `~/.omo/omo.jsonc` is a read-only
   store link holding cross-provider model chains, with OmO's config migrations pre-recorded.
   Memory guards (one monobloco session reached 20 GB): `models.json` caps stored images at

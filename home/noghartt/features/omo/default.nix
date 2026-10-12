@@ -11,7 +11,7 @@ let
 
   # Every new session starts here: settings.nix seeds it, the launcher restores it.
   startupModel = {
-    provider = "anthropic";
+    provider = "anthropic-subscription";
     model = "claude-opus-5-5";
     thinking = "high";
   };

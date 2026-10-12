@@ -30,19 +30,17 @@ let
       ;
     # OmO-only: the rotating startup and working-status tips.
     tips = false;
-    # Opus 5.5 at high thinking by default; Sonnet 5.5 is the lighter Claude option.
+    # Keep the interactive picker on the five current Claude and ChatGPT models.
     # Claude Haiku 4.5 is left out of the catalog: it is a generation behind.
     defaultProvider = startupModel.provider;
     defaultModel = startupModel.model;
     defaultThinkingLevel = startupModel.thinking;
     enabledModels = [
-      "anthropic/claude-opus-5-5"
-      "anthropic/claude-sonnet-5-5"
-      "anthropic/claude-fable-5-1"
+      "anthropic-subscription/claude-opus-5-5"
+      "anthropic-subscription/claude-sonnet-5-5"
+      "anthropic-subscription/claude-fable-5-1"
+      "chatgpt-subscription/gpt-6-astra"
       "chatgpt-subscription/gpt-6-sol"
-      "chatgpt-subscription/gpt-5.6-sol"
-      "chatgpt-subscription/gpt-5.6-terra"
-      "chatgpt-subscription/gpt-5.6-luna"
     ];
   };
 

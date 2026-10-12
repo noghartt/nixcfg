@@ -8,6 +8,15 @@ whenever it feels like a checkpoint.
 
 ## [Unreleased]
 
+### Changed
+
+- **home/noghartt/omo**: the interactive model picker and native task chains use
+  Opus 5.5, Sonnet 5.5, Fable 5.1, GPT-6 Astra, and GPT-6 Sol. Delegated
+  `deep-low` work starts on GPT-6 Sol rather than GPT-6.1 Sol; the other chains
+  no longer route to GPT-5.6 Sol or GPT-6 Luna. New sessions still start on
+  Opus 5.5 at high thinking; the other models are available for manual picks
+  and delegated work.
+
 ### Added
 
 - **home/noghartt/cli**: btop on every host, as a modern htop replacement.
@@ -298,6 +307,11 @@ whenever it feels like a checkpoint.
   (`session.resume_agents_on_restore = false`).
 
 ### Fixed
+
+- **home/noghartt/omo**: Opus 5.5 now uses the authenticated `anthropic-subscription`
+  provider in the startup reset, picker, task chains, and image overrides.
+  The unauthenticated `anthropic` ID was ignored at session creation, leaving
+  new chats on GPT-6 Sol despite the saved Opus default.
 
 - **mellon**: commands run through `agentbox exec` keep their `${...}` expressions for the
   sandbox's shell. systemd-run expanded them first, against its own environment, so cloud mode
