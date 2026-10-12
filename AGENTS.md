@@ -77,12 +77,31 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   `<name>.sandbox.internal`; the route approval and the split-DNS nameserver live in the
   Tailscale admin console. Servers inside must listen on 0.0.0.0.
   `agentbox` (group `agentbox`) is the CLI: `ls`, `ensure NAME --seed PATH` (create, cloning
-  PATH's repo from a git bundle, or start), `exec`, `shell`, `collect` (branches back into the
-  host repo as `sandbox/NAME/*`), `start`/`stop`, `rm`. It reaches `agentbox-root`, the only
+  PATH's repo from a git bundle, or with `--from BOX` from BOX's clone of it, or start), `exec`,
+  `shell`, `collect` (branches back into the host repo, or `--into BOX`'s clone, as
+  `sandbox/NAME/*`), `keep`, `start`/`stop`, `rm`. It reaches `agentbox-root`, the only
   privileged entry point, through one sudo rule; `exec` enters the container as its uid-1000
   `agent` user inside a scope in the sandbox's slice. Only committed history crosses in either
   direction, always as bundles. `agentbox-base.service` lays down a new base when the image
   changes; existing sandboxes keep the image they were created from (recreate to upgrade).
+  Environment variables reach a sandbox only by opt-in: `sandboxes/env-catalog.nix` declares
+  what may be given (`reference` = 1Password, resolved by opnix's NixOS module at boot into
+  root-only files under `/var/lib/opnix/secrets/agentbox-env/`, token in `/etc/opnix-token`;
+  `value` = non-secret literal), `agentbox env NAME KEY...|--none` picks per sandbox, and
+  `agentbox-root exec` exports them inside from an unlinked file on fd 3, never on a command
+  line. `GH_TOKEN` is a read-only GitHub token for the image's `gh` (API reads only: Git always
+  goes over SSH, never HTTPS, and sandboxes hold no SSH keys); writes go through cloud mode's
+  `publish`. Anything given
+  to a sandbox can leave it, so catalog secrets stay narrowly scoped.
+  Sandboxes expire from disuse (thresholds in `sandboxes/default.nix`): the hourly
+  `agentbox-reap.timer` stops one idle for 12h and removes one idle for 7d, after bundling
+  every repo's branches and tags (git run inside the sandbox) into
+  `/agent/archive/<name>/<stamp>/`, group-readable and pruned after 30d. Idle time counts from
+  the last `create`/`start`/`exec`, and a live `exec` scope in the sandbox's slice (an open
+  shell or cloud-mode bash session) counts as use; if any repo with refs fails to bundle, the
+  sandbox is kept. `agentbox keep NAME 30d|forever|off` exempts one; when a keep lapses its
+  idle clock restarts. Removal is what frees a superseded base's extents, since sandboxes
+  snapshotted from it still share them.
 - Hardware-specific modules live in the host dir (e.g. mellon's `nvidia.nix`); promote to
   `hosts/common/optional/` only when a second host needs them.
 - Package overrides shared by Linux and Darwin live in `overlays/` and are applied by both
@@ -382,8 +401,9 @@ Patterns here are adapted from:
   unrelated edits, and keep any existing `.worktrees/` directories git-ignored.
 - Never commit secrets. Strategy: 1Password via opnix — user secrets as
   `programs.onepassword-secrets` (HM), system secrets as `services.onepassword-secrets`
-  (NixOS, add when first needed). The service-account token lives outside the repo
-  (`~/.config/opnix/token`, provisioned with `opnix token set`); never commit it.
+  (NixOS; Mellon's sandbox env catalog is the first). The service-account token lives
+  outside the repo (`~/.config/opnix/token` for HM, `/etc/opnix-token` for NixOS,
+  provisioned with `opnix token set`); never commit it.
   Shell environment secrets are declared by reference in
   `home/noghartt/features/cli/secrets-env.nix` and resolved at interactive zsh startup.
   New mappings require configuration activation and a new shell; adding a vault

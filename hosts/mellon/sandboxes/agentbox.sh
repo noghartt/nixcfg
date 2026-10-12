@@ -1,6 +1,6 @@
 # agentbox: agent sandboxes on this host. Unprivileged steps (git, state) run
 # as the caller; everything touching a sandbox goes through agentbox-root.
-# Set by Nix above this text: AGENTBOX_ROOT.
+# Set by Nix above this text: AGENTBOX_ROOT, STOP_AFTER, EXPIRE_AFTER, ARCHIVE_TTL.
 
 state_dir=${XDG_STATE_HOME:-$HOME/.local/state}/agentbox
 
@@ -12,16 +12,27 @@ die() {
 root() { /run/wrappers/bin/sudo -n "$AGENTBOX_ROOT" "$@"; }
 
 usage() {
-  cat <<'EOF'
+  cat <<EOF
 usage: agentbox COMMAND [ARGS]
   ls                          list sandboxes and their state
-  ensure NAME [--seed PATH]   create (seeding PATH's git repo) or start NAME;
-                              prints the sandbox directory that maps to PATH
+  ensure NAME [--seed PATH [--from BOX]]
+                              create (seeding PATH's git repo, or BOX's clone
+                              of it) or start NAME; prints the sandbox
+                              directory that maps to PATH
   exec NAME [--] COMMAND...   run COMMAND inside NAME as its agent user
   shell NAME                  interactive login shell inside NAME
-  collect NAME [REPO]         fetch NAME's branches into REPO as sandbox/NAME/*
+  collect NAME [REPO] [--into BOX]
+                              fetch NAME's branches into REPO (or BOX's clone
+                              of it) as sandbox/NAME/*
+  env NAME [KEY...|--none]    show, set or clear the catalog variables NAME's
+                              commands get (declared in env-catalog.nix)
+  keep NAME DURATION|forever|off
+                              exempt NAME from expiry for e.g. 12h, 30d, 2w
   start|stop NAME
   rm NAME [--yes]             delete NAME and everything in it
+
+Idle sandboxes stop after $STOP_AFTER and are removed after $EXPIRE_AFTER unused; their
+committed branches are archived first under /agent/archive/NAME/, kept $ARCHIVE_TTL.
 EOF
 }
 
@@ -38,20 +49,27 @@ mapped() {
   fi
 }
 
-# Only committed history travels: the bundle is plain data, built here and
-# cloned inside, so the sandbox never sees the host checkout itself.
+# Only committed history travels: the bundle is plain data, built here (or in
+# sandbox FROM, for a sandbox seeded from another's clone, as orchestrator
+# workers of a sandboxed leader are) and cloned inside, so the sandbox never
+# sees the source checkout itself.
 seed() {
-  local name=$1 path=$2 top dest url user email
+  local name=$1 path=$2 from=${3-} top dest url user email
   if ! top=$(git -C "$path" rev-parse --show-toplevel 2>/dev/null); then
     root exec "$name" -- mkdir -p "$(mapped "$path" "$path")"
     return
   fi
   dest=$(mapped "$top" "$top")
-  url=$(git -C "$top" remote get-url origin 2>/dev/null || true)
-  user=$(git -C "$top" config user.name || true)
-  email=$(git -C "$top" config user.email || true)
+  if [[ -n $from ]]; then
+    src() { root exec "$from" -- git -C "$dest" "$@"; }
+  else
+    src() { git -C "$top" "$@"; }
+  fi
+  url=$(src remote get-url origin 2>/dev/null || true)
+  user=$(src config user.name || true)
+  email=$(src config user.email || true)
   # shellcheck disable=SC2016 # expanded by the shell inside the sandbox
-  git -C "$top" bundle create - HEAD --branches --tags 2>/dev/null |
+  src bundle create - HEAD --branches --tags 2>/dev/null |
     root exec "$name" -- bash -c '
       set -euo pipefail
       bundle=$(mktemp)
@@ -77,11 +95,29 @@ ensure)
   name=${1-}
   shift || true
   path=
-  if [[ ${1-} == --seed ]]; then path=$(realpath -- "${2-}") || die "no such path: ${2-}"; fi
+  from=
+  while (($#)); do
+    case $1 in
+    --seed)
+      path=$(realpath -- "${2-}") || die "no such path: ${2-}"
+      shift 2
+      ;;
+    --from)
+      from=${2-}
+      shift 2 || die "--from needs a sandbox name"
+      ;;
+    *) die "unknown option for ensure: $1" ;;
+    esac
+  done
+  [[ -z $from || -n $path ]] || die "--from needs --seed PATH"
   case $(root state "$name") in
   absent)
     root create "$name"
-    if [[ -n $path ]]; then seed "$name" "$path"; fi
+    if [[ -n $path ]]; then seed "$name" "$path" "$from"; fi
+    archived=$(root archived "$name")
+    if [[ -n $archived ]]; then
+      printf 'agentbox: an earlier sandbox named %s expired; its branches are archived in %s\n' "$name" "$archived" >&2
+    fi
     ;;
   stopped) root start "$name" ;;
   esac
@@ -103,17 +139,50 @@ shell)
   ;;
 collect)
   name=${1-}
-  repo=${2:-$(cat "$state_dir/$name.repo" 2>/dev/null)} || die "no repo recorded for $name; pass one"
+  shift || true
+  repo=
+  into=
+  while (($#)); do
+    case $1 in
+    --into)
+      into=${2-}
+      shift 2 || die "--into needs a sandbox name"
+      ;;
+    *)
+      repo=$1
+      shift
+      ;;
+    esac
+  done
+  if [[ -z $repo ]]; then repo=$(cat "$state_dir/$name.repo" 2>/dev/null) || die "no repo recorded for $name; pass one"; fi
   repo=$(git -C "$repo" rev-parse --show-toplevel) || die "$repo is not a git repository"
   bundle=$(mktemp)
   trap 'rm -f "$bundle"' EXIT
   root exec "$name" -- git -C "$(mapped "$repo" "$repo")" bundle create - --branches >"$bundle" 2>/dev/null ||
     die "could not bundle branches from $name"
-  git -C "$repo" -c fetch.fsckObjects=true fetch -q "$bundle" "+refs/heads/*:refs/remotes/sandbox/$name/*"
-  git -C "$repo" for-each-ref --format='%(refname:short)' "refs/remotes/sandbox/$name"
+  if [[ -n $into ]]; then
+    # shellcheck disable=SC2016 # expanded by the shell inside the sandbox
+    root exec "$into" -- bash -c '
+      set -euo pipefail
+      bundle=$(mktemp)
+      cat >"$bundle"
+      git -C "$1" -c fetch.fsckObjects=true fetch -q "$bundle" "+refs/heads/*:refs/remotes/sandbox/$2/*" || { rm -f "$bundle"; exit 1; }
+      rm -f "$bundle"
+      git -C "$1" for-each-ref --format="%(refname:short)" "refs/remotes/sandbox/$2"
+    ' _ "$(mapped "$repo" "$repo")" "$name" <"$bundle"
+  else
+    git -C "$repo" -c fetch.fsckObjects=true fetch -q "$bundle" "+refs/heads/*:refs/remotes/sandbox/$name/*"
+    git -C "$repo" for-each-ref --format='%(refname:short)' "refs/remotes/sandbox/$name"
+  fi
   ;;
 start | stop)
   root "$cmd" "${1-}"
+  ;;
+keep)
+  root keep "${1-}" "${2-}"
+  ;;
+env)
+  root env "$@"
   ;;
 rm)
   name=${1-}

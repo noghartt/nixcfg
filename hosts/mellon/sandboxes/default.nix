@@ -35,6 +35,19 @@ let
     ln -s ${init} $out/init
   '';
 
+  catalog = import ./env-catalog.nix;
+  envCatalog = ''
+    ENV_DIR=/var/lib/opnix/secrets/agentbox-env
+    ENV_NAMES=(${lib.escapeShellArgs (builtins.attrNames catalog)})
+    declare -A ENV_VALUES=(${
+      lib.concatStrings (
+        lib.mapAttrsToList (name: entry: "[${name}]=${lib.escapeShellArg entry.value} ") (
+          lib.filterAttrs (_: entry: entry ? value) catalog
+        )
+      )
+    })
+  '';
+
   # Per sandbox; agentbox.slice below caps all of them together.
   limits = [
     "MemoryMax=16G"
@@ -43,6 +56,15 @@ let
     "TasksMax=4096"
     "IOWeight=50"
   ];
+
+  # Idle means no exec, start or attached process since; `agentbox keep`
+  # exempts a sandbox. Removal reclaims its subvolume (and the extents it still
+  # shares with superseded bases) after archiving its branches.
+  expiry = ''
+    STOP_AFTER=12h
+    EXPIRE_AFTER=7d
+    ARCHIVE_TTL=30d
+  '';
 
   agentbox-root = pkgs.writeShellApplication {
     name = "agentbox-root";
@@ -57,6 +79,8 @@ let
       IMAGE=${image}
       LIMITS=(${lib.escapeShellArgs limits})
     ''
+    + expiry
+    + envCatalog
     + builtins.readFile ./agentbox-root.sh;
   };
 
@@ -69,6 +93,7 @@ let
     text = ''
       AGENTBOX_ROOT=${lib.getExe agentbox-root}
     ''
+    + expiry
     + builtins.readFile ./agentbox.sh;
   };
 
@@ -108,6 +133,8 @@ let
   ];
 in
 {
+  imports = [ ./env.nix ];
+
   assertions = [
     {
       assertion = !config.networking.nftables.enable;
@@ -153,6 +180,22 @@ in
       Type = "oneshot";
       RemainAfterExit = true;
       ExecStart = "${lib.getExe agentbox-root} base";
+    };
+  };
+
+  systemd.services.agentbox-reap = {
+    description = "Stop idle agent sandboxes and expire unused ones";
+    unitConfig.RequiresMountsFor = "/agent";
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "${lib.getExe agentbox-root} reap";
+    };
+  };
+  systemd.timers.agentbox-reap = {
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnCalendar = "hourly";
+      Persistent = true;
     };
   };
 

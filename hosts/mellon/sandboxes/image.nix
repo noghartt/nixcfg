@@ -46,6 +46,7 @@
     curl
     fd
     file
+    gh
     git
     gnumake
     jq

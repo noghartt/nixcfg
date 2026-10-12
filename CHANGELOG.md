@@ -20,6 +20,19 @@ whenever it feels like a checkpoint.
   reachable from other devices by name; the isolation rules moved to the mangle table so
   tailscaled's and Docker's forwarding rules cannot bypass them.
 
+- **mellon**: agent sandboxes expire from disuse. An hourly reaper stops a sandbox after 12h
+  idle and removes it after 7 days, first archiving every repo's committed branches as git
+  bundles under `/agent/archive/<name>/` (kept 30 days), which reclaims its btrfs subvolume.
+  Open shells and cloud-mode sessions count as use; `agentbox keep NAME 30d|forever|off`
+  exempts one, and `agentbox ls` shows idle time and expiry. Cloud mode warns when it
+  recreates an expired sandbox and points the session at the archive.
+
+- **mellon**: sandbox environment variables. `sandboxes/env-catalog.nix` declares what may be
+  given (1Password references resolved at boot by opnix's NixOS module, or non-secret
+  literals); each sandbox opts in with `agentbox env NAME KEY...`, and `agentbox exec` exports
+  them inside without putting values on a command line. The catalog starts with a read-only
+  `GH_TOKEN` for the image's `gh` (API reads; Git itself stays on SSH).
+
 - **home/noghartt/omo**: `cloud-mode` `--sandbox[=name]` (and `/cloud <host> --sandbox`) runs
   the session's tools inside an `agentbox` sandbox on the target host, created from the host
   directory's repo on first use and reattached on resume and by subagents.

@@ -37,8 +37,12 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [x] Agent sandboxes (systemd-nspawn): per-sandbox user namespace, cgroup limits, private network, btrfs subvolumes under /agent/sandboxes, `agentbox` CLI, `omo --cloud mellon --sandbox` from Palantir's OmO
 - [x] Verify sandboxes after the next Mellon rebuild: base image lands, `agentbox ensure` boots and seeds, no host/LAN/tailnet reach, internet egress, uid mapping, slice limits, `kill_bash` stops sandbox processes
 - [x] Sandbox tailnet access: approve the `10.231.0.0/16` route and add split DNS `sandbox.internal` -> Mellon's tailnet IP in the admin console, then verify `<name>.sandbox.internal:<port>` from Palantir
+- [x] Sandbox idle expiry: `agentbox-reap.timer` stops after 12h idle, removes after 7d (branches archived to `/agent/archive` for 30d), `agentbox keep`, cloud-mode notice on recreation
+- [ ] Verify sandbox expiry after the next Mellon rebuild: timer active, `agentbox ls` idle/expiry columns, `keep`, a forced reap (`touch -d '8 days ago' /agent/meta/<name>.used`) archives and removes, bundles fetchable by the user
 - [ ] Swarm `nspawn` backend on agentbox sandboxes (replacing sbx on Mellon)
 - [ ] Orchestrator workers in agentbox sandboxes (`OMO_CLOUD` + `OMO_CLOUD_SANDBOX` per worker; evidence collection through `agentbox exec`)
+- [x] Sandbox env catalog (opnix-resolved, opt-in per sandbox via `agentbox env` / `--env`), read-only `GH_TOKEN`, and cloud-mode `publish` (push over SSH + draft PR via the local gh)
+- [ ] Before the next Mellon rebuild: create the 1Password item `Nix/AGENTBOX_GH_TOKEN` (fine-grained, read-only contents/metadata/issues/pull requests; token in notes) and run `sudo opnix token set` on Mellon; then check `opnix-secrets.service`, `agentbox env <box> GH_TOKEN`, `gh auth status` inside, and one `publish` with a draft PR
 - [x] Gaming: Steam + GameMode (32-bit graphics already enabled by the NVIDIA module)
 - [ ] Verify the work WARP profile uses traffic-only mode and excludes Tailscale IPv4/IPv6 ranges
 
