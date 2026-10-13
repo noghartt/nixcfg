@@ -58,6 +58,13 @@ whenever it feels like a checkpoint.
 
 ### Added
 
+- **home/noghartt/omo**: `session-model` extension. Category subagents (`task` with
+  `category`) now run on the parent session's current model and thinking level, following
+  `/model` switches, instead of the category chain in `omo.jsonc`. Each category spawn is
+  rewritten into a model-pinned spawn with a one-line lane note, so it gives up OmO's
+  per-category prompt, per-category tools, and chain fallback; `subagent_type` spawns
+  (explore, librarian, reviewers) keep their own chains.
+
 - **mellon/sandboxes**: network profiles (`agentbox net`, `ensure --net`): `none`, `dev` (default
   for new sandboxes: only allowlisted domains, through the sandbox resolver and ipsets), and
   `open`, switched live. Sandboxes made before profiles count as `open`.

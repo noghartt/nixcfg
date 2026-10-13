@@ -197,7 +197,7 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   plus the `/unsupervised <task>` prompt template (`features/omo/prompts/`, adapted from
   fersilva16: ultrawork, no questions, tested end to end, nothing pushed or committed except
   a branch inside a sandbox, where only commits leave),
-  plus OmO-only packages (findings-cache, cloud-mode, ui-chrome, ui-prompt) auto-discovered from
+  plus OmO-only packages (findings-cache, cloud-mode, session-model, ui-chrome, ui-prompt) auto-discovered from
   `features/omo/extensions/<name>/` (any subdirectory
   with a `package.json`; used for extensions that hook OmO internals or OmO-only features);
   its writable `settings.json` gets the same baseline merge, including Pi's quiet startup,
@@ -209,7 +209,12 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   instead. OmO saves every model or thinking switch as the global default, so the
   `omo` launcher restores Opus 5.5 at `high` before each new session; resumed
   sessions keep their own model.
-  Claude Haiku 4.5 is not used anywhere (catalogs, chains, orchestrator pool). `~/.omo/omo.jsonc` is a read-only
+  Claude Haiku 4.5 is not used anywhere (catalogs, chains, orchestrator pool). `session-model`
+  rewrites every category `task` spawn (in `tool_call`) into one pinned to the session's current
+  model and thinking level, because OmO resolves categories only from `omo.jsonc` (loaded once
+  per process) and rejects `category` + `model`; the child gets a one-line lane note instead of
+  OmO's category prompt, tools, and chain fallback, so the category chains below only apply
+  when the session has no model. `subagent_type` spawns keep their agent chains. `~/.omo/omo.jsonc` is a read-only
   store link holding cross-provider model chains, with OmO's config migrations pre-recorded.
   Memory guards (one monobloco session reached 20 GB): `models.json` caps stored images at
   1568px / 750 KB for every catalog and chain model (keep its list in sync), because sessions
