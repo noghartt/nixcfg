@@ -2,6 +2,7 @@
 {
   imports = [
     ./settings.nix
+    ./extensions/agent-forum.nix
     ./extensions/command-palette.nix
     ./extensions/destructive-guard.nix
     ./extensions/herdr-fork.nix
