@@ -533,6 +533,19 @@ login, so tmux or Herdr sessions that outlive a connection keep signing through
 the next one. With no live forwarded agent, Mellon falls back to its local
 1Password app.
 
+Reach Mellon's Herdr from the Mac as a saved machine rather than running
+Herdr inside an SSH login, where the Mac's own Herdr catches its keys first:
+
+```bash
+herdr machine add mellon
+```
+
+Mellon's workspaces then appear in the Mac's Herdr sidebar beside Local
+(`prefix+w` switches), with the Mac's keybindings and Mellon's own plugins.
+Panes run in Mellon's Herdr server, so they outlive the Mac sleeping. The
+profile is Herdr client state, not Nix: run this once per client. From a phone
+or another computer, `ssh -t mellon herdr` attaches directly.
+
 ## Validation Checklist
 
 ### System health

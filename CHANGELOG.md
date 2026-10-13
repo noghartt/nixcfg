@@ -10,6 +10,11 @@ whenever it feels like a checkpoint.
 
 ### Changed
 
+- **docs**: Mellon's Herdr is reached from the Mac as a saved Herdr machine
+  (`herdr machine add mellon`) instead of an SSH login running Herdr, whose keys the Mac's
+  Herdr caught first. What runs there lives in Mellon's Herdr server, so an orchestrator
+  leader and its workers survive the Mac sleeping; a plain `ssh mellon` stays a shell.
+
 - **home/noghartt/omo**: the interactive model picker and native task chains use
   Opus 5.5, Sonnet 5.5, Fable 5.1, GPT-6 Astra, and GPT-6 Sol. Delegated
   `deep-low` work starts on GPT-6 Sol rather than GPT-6.1 Sol; the other chains

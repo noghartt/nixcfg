@@ -47,7 +47,7 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [ ] Before the next Mellon rebuild: create the 1Password item `Nix/AGENTBOX_GH_TOKEN` (fine-grained, read-only contents/metadata/issues/pull requests; token in notes) and run `sudo opnix token set` on Mellon; then check `opnix-secrets.service`, `agentbox env <box> GH_TOKEN`, `gh auth status` inside, and one `publish` with a draft PR
 - [x] Mellon GitHub key: create the `Nix/mellon-github` SSH Key item (ed25519) and add its public key to GitHub before rebuilding; then `ssh -T git@github.com` on Mellon answers without a 1Password prompt
 - [x] `omo --cloud local --sandbox`: OmO on the sandbox host drives its sandboxes (and orchestrator workers) without SSHing into itself
-- [ ] First overnight run on Mellon: `ssh mellon`, Herdr, `omo --cloud local --sandbox --env GH_TOKEN`, `/agent orchestrator`, `/unsupervised <goal incl. push + draft PR>`; check the PR in the morning
+- [ ] First overnight run on Mellon: select Mellon in the Mac's Herdr sidebar, `omo --cloud local --sandbox --env GH_TOKEN`, `/agent orchestrator`, `/unsupervised <goal incl. push + draft PR>`; check the PR in the morning
 - [ ] Verify sandboxed orchestrator workers after the next rebuild: `omo --cloud mellon --sandbox`, `/agent orchestrator`, `/unsupervised <goal>`; workers get `o<run>-<node>` sandboxes and Herdr tabs, Jev gates them, branches land as `sandbox/<box>/*` in the leader's sandbox
 - [x] Gaming: Steam + GameMode (32-bit graphics already enabled by the NVIDIA module)
 - [ ] Verify the work WARP profile uses traffic-only mode and excludes Tailscale IPv4/IPv6 ranges

@@ -129,6 +129,11 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   platform-only integrations are imported directly by the corresponding host entrypoint.
 - Mellon and Palantir both launch Herdr directly from Ghostty; tmux and Pi's tmux helpers
   (`features/cli/tmux.nix`, `features/pi/tmux.nix`) are no longer imported anywhere.
+  The Mac reaches Mellon's Herdr as a saved Herdr machine (`herdr machine add mellon`, Herdr
+  client state, not Nix): Mellon's workspaces sit in the Mac's sidebar with the Mac's keys and
+  Mellon's own plugins, and what runs there survives the Mac sleeping. A Herdr nested in an
+  SSH login would lose every key to the outer one, so a plain `ssh mellon` stays an ordinary
+  shell; `ssh -t mellon herdr` attaches from a phone.
   Herdr's agent tree is a Nix-packaged native popup command
   under `features/herdr/`, bound to `Alt+A`; it uses live session metadata and pane IDs.
   The `pr-tree/` plugin provides `Alt+P` for authored open GitHub PRs grouped by repo,
@@ -352,7 +357,7 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   needed), never forced and never to origin's default branch, under the name the agent picks by the
   repo's conventions, and optionally opens a draft PR. `--cloud local --sandbox` targets this
   machine's own sandboxes with no SSH: every command (PTY bash included) runs `agentbox exec`
-  in a local bash, so OmO on Mellon (in Herdr, over an SSH login) drives sandboxes and an
+  in a local bash, so OmO on Mellon (in its Herdr, reached as a saved machine) drives sandboxes and an
   orchestrator's sandboxed workers unattended, and pushes with Mellon's GitHub key. `local`
   without `--sandbox` is refused: it would only bypass destructive-guard's write/edit checks.
 - The writable checkout is conventionally `~/www/nixcfg`, exposed as `$NIXCFG`; the `nixcfg`
