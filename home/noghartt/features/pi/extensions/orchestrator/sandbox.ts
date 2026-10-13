@@ -1,8 +1,9 @@
-// Workers in agentbox sandboxes. When the leader runs in OmO cloud mode (OMO_CLOUD, set by
-// cloud-mode), an isolated node gets its own sandbox on the leader's host instead of a local
-// worktree: seeded from the leader's checkout (the host directory, or the leader's own sandbox),
-// branched from the leader's commit, and driven by a local worker process whose cloud-mode
-// points every tool into it. Only committed history crosses, as git bundles, through `agentbox`.
+// Workers in agentbox sandboxes, on the leader's cloud host when it runs in OmO cloud mode
+// (OMO_CLOUD, set by cloud-mode), or on this machine (`local`) for a host-side leader. An
+// isolated node gets its own sandbox: seeded from the leader's checkout (the host directory,
+// or the leader's own sandbox), branched from the leader's commit, and driven by a local
+// worker process whose cloud-mode points every tool into it. Only committed history crosses,
+// as git bundles, through `agentbox`.
 import { spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
@@ -19,14 +20,20 @@ export function leaderCloud(): Cloud | undefined {
 	return { dest: spec.slice(0, colon), hostDir: spec.slice(colon + 1), box: process.env.OMO_CLOUD_SANDBOX || undefined };
 }
 
-export function workerEnv(cloud: Cloud, box: string | undefined): Record<string, string> {
-	// OMO_CLOUD_ENV (the leader's opted-in catalog variables) makes the worker's cloud-mode opt
-	// its own sandbox into the same ones.
-	const vars = process.env.OMO_CLOUD_ENV;
+// A host-side leader running in a sandbox-capable placement: its workers' sandboxes live on
+// this machine and are seeded from (and collected into) the repository itself.
+export const localCloud = (repoRoot: string): Cloud => ({ dest: "local", hostDir: repoRoot });
+
+export function workerEnv(cloud: Cloud, box: string | undefined, env?: string[]): Record<string, string> {
+	// OMO_CLOUD_ENV makes the worker's cloud-mode opt its sandbox into those catalog variables.
+	// Without an explicit list it passes the leader's own opt-ins on. An empty value still has to
+	// be set: the worker inherits the leader's environment, and an empty one keeps the opt-ins
+	// provision() gave the sandbox.
+	const vars = env ? env.join(",") : process.env.OMO_CLOUD_ENV;
 	return {
 		OMO_CLOUD: `${cloud.dest}:${cloud.hostDir}`,
 		...(box ? { OMO_CLOUD_SANDBOX: box } : {}),
-		...(vars ? { OMO_CLOUD_ENV: vars } : {}),
+		OMO_CLOUD_ENV: vars ?? "",
 	};
 }
 
@@ -43,31 +50,39 @@ type Result = { code: number | null; stdout: string; stderr: string };
 // `local` target (OmO on the sandbox host itself) runs the command in a local
 // bash instead. Seeding clones a whole repo, so only git queries get a short
 // timeout.
-function ssh(dest: string, command: string, signal?: AbortSignal, timeout?: number): Promise<Result> {
-	let program = "bash";
-	let args = ["-c", command];
-	if (dest !== "local") {
-		const sockets = join(homedir(), ".ssh", "omo-cloud");
-		mkdirSync(sockets, { recursive: true, mode: 0o700 });
-		program = "ssh";
-		args = [
+function invocation(dest: string, command: string): [string, string[]] {
+	if (dest === "local") return ["bash", ["-c", command]];
+	const sockets = join(homedir(), ".ssh", "omo-cloud");
+	mkdirSync(sockets, { recursive: true, mode: 0o700 });
+	return [
+		"ssh",
+		[
 			"-o", "BatchMode=yes",
 			"-o", "ControlMaster=auto",
 			"-o", `ControlPath=${sockets}/%C`,
 			"-o", "ControlPersist=600",
 			"-o", "LogLevel=ERROR",
 			"-T", "--", dest, command,
-		];
-	}
+		],
+	];
+}
+
+function runRaw(dest: string, command: string, signal?: AbortSignal, timeout?: number): Promise<{ code: number | null; stdout: Buffer; stderr: string }> {
+	const [program, args] = invocation(dest, command);
 	return new Promise((resolve, reject) => {
 		const child = spawn(program, args, { stdio: ["ignore", "pipe", "pipe"], signal, timeout });
-		let stdout = "";
+		const stdout: Buffer[] = [];
 		let stderr = "";
-		child.stdout.on("data", (chunk: Buffer) => (stdout += chunk));
+		child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
 		child.stderr.on("data", (chunk: Buffer) => (stderr += chunk));
 		child.on("error", reject);
-		child.on("close", (code) => resolve({ code, stdout, stderr }));
+		child.on("close", (code) => resolve({ code, stdout: Buffer.concat(stdout), stderr }));
 	});
+}
+
+async function ssh(dest: string, command: string, signal?: AbortSignal, timeout?: number): Promise<Result> {
+	const result = await runRaw(dest, command, signal, timeout);
+	return { ...result, stdout: result.stdout.toString("utf8") };
 }
 
 async function must(dest: string, command: string, what: string, signal?: AbortSignal): Promise<string> {
@@ -95,15 +110,51 @@ export async function leaderPlace(cloud: Cloud, signal?: AbortSignal): Promise<P
 	return { cwd: out.trim().split("\n").pop() ?? "", box: cloud.box };
 }
 
-export async function provision(cloud: Cloud, box: string, branch: string, signal?: AbortSignal): Promise<Place> {
-	const leader = await leaderPlace(cloud, signal);
-	const head = await git(cloud, leader, ["rev-parse", "HEAD"]);
-	if (!head) throw new Error(`cannot read the leader's HEAD in ${leader.box ? `sandbox ${leader.box}` : cloud.hostDir}`);
-	const from = cloud.box ? ` --from ${q(cloud.box)}` : "";
-	const out = await must(cloud.dest, `agentbox ensure ${q(box)} --seed ${q(cloud.hostDir)}${from}`, `sandbox ${box}`, signal);
+export interface Limits {
+	net?: string;
+	size?: string;
+	// Replaces the sandbox's catalog opt-ins; an empty list clears them.
+	env?: string[];
+}
+
+// `from` seeds from an upstream node's sandbox and starts at its HEAD instead of the leader's.
+export async function provision(
+	cloud: Cloud,
+	box: string,
+	branch: string,
+	limits: Limits = {},
+	signal?: AbortSignal,
+	from?: Place & { box: string },
+): Promise<Place> {
+	const source = from ?? (await leaderPlace(cloud, signal));
+	const head = await git(cloud, source, ["rev-parse", "HEAD"]);
+	if (!head) throw new Error(`cannot read HEAD in ${source.box ? `sandbox ${source.box}` : cloud.hostDir}`);
+	const seedBox = from?.box ?? cloud.box;
+	const flags = [
+		...(seedBox ? ["--from", seedBox] : []),
+		...(limits.net ? ["--net", limits.net] : []),
+		...(limits.size ? ["--size", limits.size] : []),
+	];
+	const out = await must(
+		cloud.dest,
+		`agentbox ensure ${q(box)} --seed ${q(cloud.hostDir)}${flags.map((flag) => ` ${q(flag)}`).join("")}`,
+		`sandbox ${box}`,
+		signal,
+	);
 	const place = { cwd: out.trim().split("\n").pop() ?? "", box };
+	if (limits.env) {
+		const keys = limits.env.length ? limits.env.map(q).join(" ") : "--none";
+		await must(cloud.dest, `agentbox env ${q(box)} ${keys}`, `env of sandbox ${box}`, signal);
+	}
 	await must(cloud.dest, inBox(box, `git -C ${q(place.cwd)} switch -q -c ${q(branch)} ${q(head)}`), `branch ${branch} in ${box}`, signal);
 	return place;
+}
+
+// The branch as a git bundle, read straight out of the checkout (inside its sandbox, if any).
+export async function bundle(cloud: Cloud, place: Place, branch: string, signal?: AbortSignal): Promise<Buffer> {
+	const result = await runRaw(cloud.dest, inBox(place.box, `git -C ${q(place.cwd)} bundle create - ${q(`refs/heads/${branch}`)}`), signal);
+	if (result.code !== 0) throw new Error(`bundling ${branch} on ${cloud.dest}: ${result.stderr.trim() || `exit ${result.code}`}`);
+	return result.stdout;
 }
 
 // Only commits leave a sandbox, so leftovers are committed before the branches are fetched

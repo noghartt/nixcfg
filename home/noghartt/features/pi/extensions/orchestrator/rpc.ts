@@ -25,6 +25,11 @@ export function harnessInvocation(args: string[]): { command: string; args: stri
 		: { command: process.execPath, args };
 }
 
+// OmO exports OMO_NATIVE to its process; Pi runs as a node or bun script.
+export function harnessName(): "omo" | "pi" {
+	return process.env.OMO_NATIVE || basename(process.execPath) === "omo" ? "omo" : "pi";
+}
+
 export class RpcChild {
 	private readonly child: ChildProcessWithoutNullStreams;
 	private readonly pending = new Map<string, { resolve: (r: RpcResponse) => void; reject: (e: Error) => void }>();

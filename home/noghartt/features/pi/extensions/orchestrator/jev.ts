@@ -11,6 +11,10 @@ export interface JevConfig {
 	baseUrl: string;
 	strategyConfidence: number;
 	modelConfidence: number;
+	// Below it a placement, net, or size answer falls back to the default.
+	placementConfidence: number;
+	// At or above it an env key counts as needed.
+	envThreshold: number;
 	acceptThreshold: number;
 	blockedThreshold: number;
 	// Below this a failing criterion is a clear miss; between it and acceptThreshold, borderline.
@@ -146,10 +150,17 @@ export async function decideModel(
 	pool: PoolEntry[],
 	task: { task: string; acceptance: string; strategy: Strategy },
 	signal?: AbortSignal,
+	// Per pool key, how that model fared on past orchestrated tasks (priors.json).
+	trackRecord?: Record<string, string>,
 ): Promise<ModelDecision> {
 	const answers = await ask(
 		config,
-		{ task: clip(task.task), acceptance: task.acceptance, team_strategy: task.strategy },
+		{
+			task: clip(task.task),
+			acceptance: task.acceptance,
+			team_strategy: task.strategy,
+			...(trackRecord ? { model_track_record: trackRecord } : {}),
+		},
 		{
 			model: {
 				type: "choice",
@@ -167,6 +178,95 @@ export async function decideModel(
 	const [first, second] = Object.entries(answer.probabilities).sort((a, b) => b[1] - a[1]);
 	const key = second && tierOf(second[0]) > tierOf(first[0]) ? second[0] : first[0];
 	return { key, confidence: answer.confidence, probabilities: answer.probabilities, escalated: key !== answer.choice };
+}
+
+export interface PlacementMenu {
+	modes: string[];
+	nets: string[];
+	sizes: string[];
+	// Allowed catalog variables, each with what it is for.
+	env: Record<string, string>;
+}
+
+// Each answer is undefined when Jev was not asked or was unsure; the caller's guardrails
+// then keep the default.
+export interface PlacementDecision {
+	mode?: string;
+	net?: string;
+	size?: string;
+	env: string[];
+	confidence: { mode?: number; net: number; size: number };
+}
+
+const MODE_CRITERIA: Record<string, string> = {
+	sandbox:
+		"Its own disposable agentbox sandbox (a container with its own Nix store) cut from the leader's commit: for work that edits, builds, installs, or runs tests and is best kept off the host",
+	shared: "The checkout of the upstream node it builds on (`workdir`), as is: when it must work directly on that node's changes",
+	worktree:
+		"A Git worktree on the host: for work that needs host-only resources (local services, hardware, the desktop, host credentials), or is too small to justify a sandbox",
+};
+const NET_CRITERIA: Record<string, string> = {
+	none: "No network at all: pure code edits and offline tests",
+	dev: "Package registries, GitHub, Nix caches, and model APIs: ordinary development with installs, builds, and dependency fetches",
+	open: "Any public internet host: browsing or calling arbitrary external services",
+};
+const SIZE_CRITERIA: Record<string, string> = {
+	small: "4 cores and 8 GB: edits, docs, light tests",
+	medium: "8 cores and 16 GB: typical builds and test suites",
+	large: "16 cores and 32 GB: heavy compiles, large Nix builds, big test matrices",
+};
+
+/** Proposes where a node runs and what its sandbox may reach, from the menu the caller allows. */
+export async function decidePlacement(
+	config: JevConfig,
+	menu: PlacementMenu,
+	node: { task: string; acceptance: string; kind: string },
+	signal?: AbortSignal,
+): Promise<PlacementDecision> {
+	const pick = (options: string[], descriptions: Record<string, string>) =>
+		Object.fromEntries(options.map((option) => [option, descriptions[option] ?? option]));
+	const keys = Object.keys(menu.env);
+	const questions: Record<string, Question> = {
+		net: {
+			type: "choice",
+			instructions: "Which network access does the agent doing `task` need inside its sandbox?",
+			criteria: pick(menu.nets, NET_CRITERIA),
+		},
+		size: {
+			type: "choice",
+			instructions: "How much CPU and memory does the agent doing `task` need for its builds and tests?",
+			criteria: pick(menu.sizes, SIZE_CRITERIA),
+		},
+	};
+	if (menu.modes.length > 1) {
+		questions.placement = {
+			type: "choice",
+			instructions: "Where should the coding agent doing `task` work?",
+			criteria: pick(menu.modes, MODE_CRITERIA),
+		};
+	}
+	keys.forEach((key, index) => {
+		questions[`env_${index}`] = {
+			type: "noul",
+			instructions: `Doing \`task\` needs the environment variable ${key} (${menu.env[key]}).`,
+		};
+	});
+	const answers = await ask(config, { task: clip(node.task), acceptance: node.acceptance, node_kind: node.kind }, questions, signal);
+	const sure = (id: string) => {
+		const answer = choice(answers, id);
+		return answer.confidence >= config.placementConfidence ? answer.choice : undefined;
+	};
+	return {
+		mode: questions.placement ? sure("placement") : undefined,
+		net: sure("net"),
+		size: sure("size"),
+		env: keys.filter((_, index) => noul(answers, `env_${index}`) >= config.envThreshold),
+		confidence: {
+			mode: questions.placement ? choice(answers, "placement").confidence : undefined,
+			net: choice(answers, "net").confidence,
+			size: choice(answers, "size").confidence,
+		},
+	};
 }
 
 /**

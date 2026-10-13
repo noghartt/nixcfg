@@ -1,10 +1,15 @@
 {
-  "leader": { "model": "anthropic/claude-opus-5-5", "thinking": "xhigh" },
+  "leader": {
+    "models": ["anthropic-subscription/claude-opus-5-5", "anthropic/claude-opus-5-5"],
+    "thinking": "xhigh"
+  },
   "jev": {
     "model": "jev-latest",
     "baseUrl": "https://api.typesafe.ai",
     "strategyConfidence": 0.5,
     "modelConfidence": 0.5,
+    "placementConfidence": 0.5,
+    "envThreshold": 0.6,
     "acceptThreshold": 0.7,
     "blockedThreshold": 0.5,
     "borderlineFloor": 0.4
@@ -13,54 +18,52 @@
   "maxAttempts": 3,
   "maxWorkers": 6,
   "maxFixRounds": 2,
+  "spillAt": 85,
+  "workers": {
+    "placement": "auto",
+    "envAllowed": {
+      "GH_TOKEN": "read-only GitHub API token for gh: issues, pull requests, and repository metadata; Git itself never needs it"
+    },
+    "allowOpenNet": false,
+    "net": "dev",
+    "size": "medium"
+  },
+  "consultant": {
+    "models": ["anthropic-subscription/claude-fable-5-1", "anthropic/claude-fable-5-1", "chatgpt-subscription/gpt-6-astra", "openai-codex/gpt-6-astra"],
+    "thinking": "high",
+    "timeoutSeconds": 900,
+    "tools": ["read", "grep", "find", "ls"]
+  },
+  "audit": { "minNodes": 4 },
   "pool": [
     {
-      "key": "gpt-luna",
-      "models": ["openai-codex/gpt-5.6-luna", "chatgpt-subscription/gpt-5.6-luna"],
+      "key": "sonnet",
+      "models": ["anthropic-subscription/claude-sonnet-5-5", "anthropic/claude-sonnet-5-5", "chatgpt-subscription/gpt-5.6-terra", "openai-codex/gpt-5.6-terra"],
+      "spill": ["chatgpt-subscription/gpt-5.6-terra", "openai-codex/gpt-5.6-terra"],
       "thinking": "medium",
       "tier": 1,
-      "use": "Mechanical, fully specified edits and fast implementation of an already decided plan across a few files"
-    },
-    {
-      "key": "sonnet",
-      "models": ["anthropic/claude-sonnet-5-5"],
-      "thinking": "medium",
-      "tier": 2,
-      "use": "Ordinary feature work, bug fixes, tests, and refactors inside one subsystem"
-    },
-    {
-      "key": "gpt-terra",
-      "models": ["openai-codex/gpt-5.6-terra", "chatgpt-subscription/gpt-5.6-terra"],
-      "thinking": "medium",
-      "tier": 2,
-      "use": "Backend or algorithmic implementation and test-driven fixes inside one subsystem"
+      "use": "Easier, well-specified work: mechanical edits, tests, small bug fixes, and refactors inside one subsystem"
     },
     {
       "key": "opus",
-      "models": ["anthropic/claude-opus-5-5"],
+      "models": ["anthropic-subscription/claude-opus-5-5", "anthropic/claude-opus-5-5", "chatgpt-subscription/gpt-6-sol", "openai-codex/gpt-6-sol"],
+      "spill": ["chatgpt-subscription/gpt-6-sol", "openai-codex/gpt-6-sol"],
       "thinking": "high",
-      "tier": 3,
-      "use": "Cross-cutting changes, subtle debugging, and careful code review"
-    },
-    {
-      "key": "gpt-sol",
-      "models": ["openai-codex/gpt-5.6-sol", "chatgpt-subscription/gpt-5.6-sol"],
-      "thinking": "high",
-      "tier": 3,
-      "use": "Hard logic, performance work, and deep debugging across modules"
+      "tier": 2,
+      "use": "Complex work: features across modules, cross-cutting changes, subtle debugging, performance work, and careful code review"
     },
     {
       "key": "fable",
-      "models": ["anthropic/claude-fable-5-1"],
+      "models": ["anthropic-subscription/claude-fable-5-1", "anthropic/claude-fable-5-1"],
       "thinking": "high",
-      "tier": 4,
-      "use": "Architecture and design decisions with no existing pattern to copy"
+      "tier": 3,
+      "use": "Orchestration-level planning, architecture, and design decisions with no existing pattern to copy"
     },
     {
       "key": "gpt-astra",
-      "models": ["openai-codex/gpt-6-astra", "chatgpt-subscription/gpt-6-astra"],
+      "models": ["chatgpt-subscription/gpt-6-astra", "openai-codex/gpt-6-astra"],
       "thinking": "high",
-      "tier": 4,
+      "tier": 3,
       "use": "The hardest reasoning: invariants, concurrency, and correctness arguments"
     }
   ]
