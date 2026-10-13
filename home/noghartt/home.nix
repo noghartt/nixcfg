@@ -4,6 +4,7 @@
 {
   imports = [
     ../../config/neovim
+    ./features/agent-evals
     ./features/cli
     ./features/herdr
     ./features/pi
