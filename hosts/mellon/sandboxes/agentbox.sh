@@ -1,6 +1,8 @@
 # agentbox: agent sandboxes on this host. Unprivileged steps (git, state) run
-# as the caller; everything touching a sandbox goes through agentbox-root.
-# Set by Nix above this text: AGENTBOX_ROOT, STOP_AFTER, EXPIRE_AFTER, ARCHIVE_TTL.
+# as the caller; everything touching a sandbox goes through agentbox-root,
+# which agentbox-rootd runs on this process's own stdin, stdout and stderr.
+# Set by Nix above this text: AGENTBOX_CLIENT, STOP_AFTER, EXPIRE_AFTER,
+# ARCHIVE_TTL, NET_NAMES, DEFAULT_NET, SIZE_HELP, DEFAULT_SIZE.
 
 state_dir=${XDG_STATE_HOME:-$HOME/.local/state}/agentbox
 
@@ -9,16 +11,17 @@ die() {
   exit 1
 }
 
-root() { /run/wrappers/bin/sudo -n "$AGENTBOX_ROOT" "$@"; }
+root() { "$AGENTBOX_CLIENT" "$@"; }
 
 usage() {
   cat <<EOF
 usage: agentbox COMMAND [ARGS]
   ls                          list sandboxes and their state
-  ensure NAME [--seed PATH [--from BOX]]
+  ensure NAME [--seed PATH [--from BOX]] [--net PROFILE] [--size CLASS]
                               create (seeding PATH's git repo, or BOX's clone
-                              of it) or start NAME; prints the sandbox
-                              directory that maps to PATH
+                              of it) or start NAME, with the given net profile
+                              and size (also applied to an existing NAME);
+                              prints the sandbox directory that maps to PATH
   exec NAME [--] COMMAND...   run COMMAND inside NAME as its agent user
   shell NAME                  interactive login shell inside NAME
   collect NAME [REPO] [--into BOX]
@@ -26,9 +29,17 @@ usage: agentbox COMMAND [ARGS]
                               of it) as sandbox/NAME/*
   env NAME [KEY...|--none]    show, set or clear the catalog variables NAME's
                               commands get (declared in env-catalog.nix)
+  net NAME [PROFILE]          show or set NAME's egress profile, at once:
+                              ${NET_NAMES[*]} (net-profiles.nix; new sandboxes
+                              get $DEFAULT_NET)
+  size NAME [CLASS]           show or set NAME's size, at once: $SIZE_HELP
+                              (new sandboxes get $DEFAULT_SIZE)
   keep NAME DURATION|forever|off
                               exempt NAME from expiry for e.g. 12h, 30d, 2w
   start|stop NAME
+  recreate NAME [--yes]       rebuild NAME on the current image, keeping its
+                              repos (uncommitted work too), env, keep, net and
+                              size
   rm NAME [--yes]             delete NAME and everything in it
 
 Idle sandboxes stop after $STOP_AFTER and are removed after $EXPIRE_AFTER unused; their
@@ -96,6 +107,8 @@ ensure)
   shift || true
   path=
   from=
+  net=
+  size=
   while (($#)); do
     case $1 in
     --seed)
@@ -106,13 +119,29 @@ ensure)
       from=${2-}
       shift 2 || die "--from needs a sandbox name"
       ;;
+    --net)
+      net=${2-}
+      shift 2 || die "--net needs a profile"
+      ;;
+    --size)
+      size=${2-}
+      shift 2 || die "--size needs a size class"
+      ;;
     *) die "unknown option for ensure: $1" ;;
     esac
   done
   [[ -z $from || -n $path ]] || die "--from needs --seed PATH"
-  case $(root state "$name") in
+  status=$(root state "$name")
+  if [[ $status != absent ]]; then
+    if [[ -n $net ]]; then root net "$name" "$net" >/dev/null; fi
+    if [[ -n $size ]]; then root size "$name" "$size" >/dev/null; fi
+  fi
+  case $status in
   absent)
-    root create "$name"
+    create=(create "$name")
+    if [[ -n $net ]]; then create+=(--net "$net"); fi
+    if [[ -n $size ]]; then create+=(--size "$size"); fi
+    root "${create[@]}"
     if [[ -n $path ]]; then seed "$name" "$path" "$from"; fi
     archived=$(root archived "$name")
     if [[ -n $archived ]]; then
@@ -132,10 +161,10 @@ exec)
   name=${1-}
   shift || true
   [[ ${1-} == -- ]] && shift
-  exec /run/wrappers/bin/sudo -n "$AGENTBOX_ROOT" exec "$name" -- "$@"
+  root exec "$name" -- "$@"
   ;;
 shell)
-  exec /run/wrappers/bin/sudo -n "$AGENTBOX_ROOT" exec "${1-}" -- bash -l
+  root exec "${1-}" -- bash -l
   ;;
 collect)
   name=${1-}
@@ -178,11 +207,23 @@ collect)
 start | stop)
   root "$cmd" "${1-}"
   ;;
+net | size)
+  root "$cmd" "$@"
+  ;;
 keep)
   root keep "${1-}" "${2-}"
   ;;
 env)
   root env "$@"
+  ;;
+recreate)
+  name=${1-}
+  if [[ ${2-} != --yes ]]; then
+    [[ -t 0 ]] || die "refusing to recreate $name without --yes"
+    read -r -p "Recreate sandbox $name? Its repos come back; everything else in it is lost. [y/N] " answer
+    [[ $answer == [yY]* ]] || exit 1
+  fi
+  root recreate "$name"
   ;;
 rm)
   name=${1-}

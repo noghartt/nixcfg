@@ -1,13 +1,41 @@
 # The NixOS system every agent sandbox boots. It carries its own Nix store and
 # daemon (copied into the base subvolume by `agentbox-root base`), so nothing
 # from the host store, home, or sockets is visible inside.
-{ lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 {
   boot.isContainer = true;
   networking.hostName = "sandbox";
 
+  # nspawn has already mounted /dev, /dev/pts, /dev/shm and /run, and inside a
+  # private user namespace those mounts are locked: the stock snippet's remounts
+  # fail on every boot. Mount only what is missing.
+  system.activationScripts.specialfs = lib.mkForce ''
+    specialMount() {
+      if mountpoint -q "$2"; then return 0; fi
+      mkdir -p "$2"
+      chmod 0755 "$2"
+      mount -t "$4" -o "$3" "$1" "$2"
+    }
+    source ${config.system.build.earlyMountScript}
+  '';
+  # The /tmp tmpfs is nspawn's and locked the same way, so stopping it at
+  # shutdown always fails; the container's mount namespace goes away anyway.
+  systemd.units."tmp.mount" = {
+    overrideStrategy = "asDropin";
+    text = ''
+      [Unit]
+      DefaultDependencies=no
+    '';
+  };
+
   # The host side of each veth runs a DHCP server (networkd) that hands out an
-  # address and public resolvers; the host's own resolver is not reachable.
+  # address and the host's sandbox resolver (network.nix), the one DNS server
+  # every net profile with egress may use.
   networking.useNetworkd = true;
   networking.useHostResolvConf = false;
   # The host's rules decide who may connect (only the tailnet); a firewall in

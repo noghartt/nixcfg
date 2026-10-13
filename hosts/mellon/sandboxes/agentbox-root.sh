@@ -1,11 +1,15 @@
-# agentbox-root: the only privileged entry point to agent sandboxes, reached
-# through one sudo rule (default.nix). It validates every argument and never
-# reads or runs content from inside a sandbox: `exec` only enters the
-# container's namespaces as its unprivileged agent user.
-# Set by Nix above this text: IMAGE (store path holding system + init), LIMITS,
-# the expiry policy as durations (12h, 7d, ...): STOP_AFTER, EXPIRE_AFTER,
-# ARCHIVE_TTL, and the env catalog: ENV_NAMES, ENV_VALUES (literals), ENV_DIR
-# (opnix-resolved secrets, one root-only file per name).
+# agentbox-root: the only privileged entry point to agent sandboxes, run by
+# agentbox-rootd for members of the agentbox group (default.nix). It validates
+# every argument and never reads or runs content from inside a sandbox: `exec`
+# only enters the container's namespaces as its unprivileged agent user.
+# Set by Nix above this text: IMAGE (store path holding system + init), LIMITS
+# (shared by every size), the size classes: SIZE_NAMES, SIZE_CPUS (the width
+# of a sandbox's CPU window), SIZE_MEMORY, DEFAULT_SIZE; the net profiles:
+# NET_NAMES, NET_OPEN (any public IPv4), NET_SET (each profile's source set),
+# DEFAULT_NET, make_sets (creates the kernel sets); the expiry policy as
+# durations (12h, 7d, ...): STOP_AFTER, EXPIRE_AFTER, ARCHIVE_TTL, and the env
+# catalog: ENV_NAMES, ENV_VALUES (literals), ENV_DIR (opnix-resolved secrets,
+# one root-only file per name).
 
 ROOT=/agent
 BASES=$ROOT/base
@@ -24,6 +28,13 @@ die() {
 
 valid() {
   [[ ${1-} =~ ^[a-z0-9][a-z0-9-]{0,30}$ ]] || die "invalid sandbox name '${1-}' (a-z, 0-9 and -, at most 31 characters)"
+}
+
+member() {
+  local want=$1 known
+  shift
+  for known; do [[ $known == "$want" ]] && return 0; done
+  return 1
 }
 
 # Names keep their dashes, which systemd reads as slice nesting; escaping makes
@@ -96,15 +107,87 @@ PoolOffset=2
 PoolSize=1
 PersistLeases=no
 EmitDNS=yes
-DNS=1.1.1.1 9.9.9.9
+DNS=$(address "$1" 1)
 EOF
   networkctl reload
   printf '%s %s.%s\n' "$(address "$1" 2)" "$1" "$DOMAIN" >"$DNS_DIR/$1"
 }
 
+# Net profiles. A sandbox's /28 sits in its profile's source set, which the
+# firewall matches (with a strict reverse-path check, so a sandbox cannot
+# borrow another's addresses). Sandboxes created before profiles existed have
+# none recorded and keep today's behaviour, open; a recorded profile that no
+# longer exists counts as none.
+profile() {
+  local p=open
+  if [[ -f $META/$1.net ]]; then p=$(<"$META/$1.net"); fi
+  if member "$p" "${NET_NAMES[@]}"; then echo "$p"; else echo none; fi
+}
+
+subnet() { echo "$(address "$1" 0)/28"; }
+
+admit() {
+  local net set want
+  [[ -f $NET/$1 ]] || return 0
+  make_sets
+  net=$(subnet "$1")
+  want=${NET_SET[$(profile "$1")]}
+  for set in "${NET_SET[@]}"; do
+    if [[ $set != "$want" ]]; then ipset -exist del "$set" "$net"; fi
+  done
+  ipset -exist add "$want" "$net"
+}
+
+release() {
+  local net set
+  [[ -f $NET/$1 ]] || return 0
+  make_sets
+  net=$(subnet "$1")
+  for set in "${NET_SET[@]}"; do ipset -exist del "$set" "$net"; done
+}
+
+# Only new connections are checked, so a narrower profile also drops the
+# sandbox's tracked ones; their next packet is then new, and refused.
+forget() {
+  conntrack -D -f ipv4 -s "$(address "$1" 0)" --mask-src 255.255.255.240 >/dev/null 2>&1 || true
+}
+
+size_of() {
+  local s=$DEFAULT_SIZE
+  if [[ -f $META/$1.size ]]; then s=$(<"$META/$1.size"); fi
+  if member "$s" "${SIZE_NAMES[@]}"; then echo "$s"; else echo "$DEFAULT_SIZE"; fi
+}
+
+# A window of as many cores as the size class gets, picked by subnet index so sandboxes
+# spread over the host. A quota alone leaves nproc and os.availableParallelism() at the
+# host's count, so test runners inside start a worker per host core and run out of the
+# sandbox's memory.
+cpus() {
+  local width=$2 total windows start
+  total=$(nproc --all)
+  if ((width >= total)); then
+    echo "0-$((total - 1))"
+    return
+  fi
+  windows=$((total / width))
+  start=$((($(index "$1") % windows) * width))
+  echo "$start-$((start + width - 1))"
+}
+
+# Applies to a running sandbox at once: cpuset changes reach its processes'
+# affinity, so nproc inside follows.
+limit() {
+  local size cores
+  size=$(size_of "$1")
+  cores=${SIZE_CPUS[$size]}
+  systemctl set-property --runtime "$(slice "$1")" "${LIMITS[@]}" \
+    "MemoryMax=${SIZE_MEMORY[$size]}" "CPUQuota=$((cores * 100))%" "AllowedCPUs=$(cpus "$1" "$cores")"
+}
+
 boot() {
   network "$1"
-  systemctl set-property --runtime "$(slice "$1")" "${LIMITS[@]}"
+  admit "$1"
+  limit "$1"
   systemctl start "$(unit "$1")"
 }
 
@@ -117,7 +200,7 @@ start() {
 # as the agent user. The scope puts that command under the sandbox's slice, so
 # it counts against the same memory, CPU and task limits as the container.
 # systemd-run would otherwise expand ${...} in the command (with its own,
-# sudo-reset environment) before the sandbox's shell ever saw it.
+# daemon-set environment) before the sandbox's shell ever saw it.
 enter() {
   local leader
   leader=$(machinectl show "ab-$1" --property=Leader --value 2>/dev/null) || return 1
@@ -135,7 +218,8 @@ enter() {
 remove() {
   systemctl stop "$(unit "$1")"
   btrfs subvolume delete --recursive "$BOXES/$1" >/dev/null
-  rm -f "$NET/$1" "$NETWORKD/40-agentbox-$1.network" "$DNS_DIR/$1" "$META/$1".{used,keep,env}
+  release "$1"
+  rm -f "$NET/$1" "$NETWORKD/40-agentbox-$1.network" "$DNS_DIR/$1" "$META/$1".{used,keep,env,net,size}
   networkctl reload
   # dnsmasq notices new hostsdir files by itself, but forgets removed ones
   # only when it rereads them.
@@ -234,13 +318,20 @@ expiry() {
   fi
 }
 
-# Bundles the committed branches and tags of every repo under the agent's home
-# into ARCHIVE/NAME/STAMP and prints that directory (nothing when there was
-# nothing to keep). git runs inside the sandbox as its agent, as for `agentbox
-# collect`: root never opens a sandbox's repos itself. Fails on any repo that
-# has refs but cannot be bundled, so nothing committed is lost unarchived.
+# Bundles the branches, tags and uncommitted work of every repo under the agent's
+# home into ARCHIVE/NAME/STAMP and prints that directory (nothing when there was
+# nothing to keep). Uncommitted work, untracked files included, becomes a commit
+# on HEAD at refs/agentbox/wip, built in a scratch index so the repo's own index
+# and working tree stay as they were. MANIFEST maps each bundle to its repo path
+# and origin, IDENTITY holds the agent's git name and email, so `restore` can put
+# everything back. git runs inside the sandbox as its agent, as for `agentbox
+# collect`: root never opens a sandbox's repos itself, and what it writes down is
+# passed back in only as arguments. Fails on any repo that has refs but cannot be
+# bundled, so nothing committed is lost unarchived.
+MANIFEST=repos.tsv
+IDENTITY=identity
 archive() {
-  local name=$1 repos repo dir file
+  local name=$1 repos repo dir file url
   enter "$name" || return 1
   repos=$("${ENTER[@]}" bash -c 'find /home/agent -maxdepth 6 -name .git -prune -printf "%h\n" 2>/dev/null; true' </dev/null) || return 1
   dir=$ARCHIVE/$name/$(date +%Y%m%d-%H%M%S)
@@ -250,17 +341,74 @@ archive() {
     file=$dir/$(printf '%s' "${repo#/home/agent/}" | tr -c 'A-Za-z0-9._-' '_').bundle
     # shellcheck disable=SC2016 # expanded by the shell inside the sandbox
     if ! "${ENTER[@]}" bash -c '
-      if [ -n "$(git -C "$1" for-each-ref --count=1 refs/heads refs/tags)" ]; then
-        git -C "$1" bundle create - --branches --tags
+      set -e
+      cd "$1"
+      [ -n "$(git for-each-ref --count=1 refs/heads refs/tags)" ] || exit 0
+      if git rev-parse -q --verify HEAD >/dev/null; then
+        index=$(mktemp)
+        GIT_INDEX_FILE=$index git read-tree HEAD
+        GIT_INDEX_FILE=$index git add -A
+        tree=$(GIT_INDEX_FILE=$index git write-tree)
+        rm -f "$index"
+        if [ "$tree" != "$(git rev-parse "HEAD^{tree}")" ]; then
+          git update-ref refs/agentbox/wip "$(git commit-tree "$tree" -p HEAD -m "agentbox: uncommitted work")"
+        else
+          git update-ref -d refs/agentbox/wip 2>/dev/null || true
+        fi
       fi
+      git bundle create - HEAD --branches --tags "--glob=refs/agentbox/*"
     ' _ "$repo" </dev/null >"$file" 2>/dev/null; then
       echo "agentbox: $name: could not bundle $repo" >&2
       rm -rf -- "$dir"
       return 1
     fi
-    if [[ -s $file ]]; then chmod 0640 "$file"; else rm -f "$file"; fi
+    if [[ -s $file ]]; then
+      chmod 0640 "$file"
+      url=$("${ENTER[@]}" git -C "$repo" remote get-url origin </dev/null 2>/dev/null | tr -d '\t\n' || true)
+      printf '%s\t%s\t%s\n' "${file##*/}" "$repo" "$url" >>"$dir/$MANIFEST"
+    else
+      rm -f "$file"
+    fi
   done <<<"$repos"
-  if rmdir "$dir" 2>/dev/null; then rmdir "$ARCHIVE/$name" 2>/dev/null || true; else echo "$dir"; fi
+  if rmdir "$dir" 2>/dev/null; then
+    rmdir "$ARCHIVE/$name" 2>/dev/null || true
+    return
+  fi
+  "${ENTER[@]}" bash -c 'git config --global user.name; git config --global user.email' </dev/null 2>/dev/null |
+    tr -d '\t' | head -n 2 >"$dir/$IDENTITY" || true
+  chmod 0640 "$dir/$MANIFEST" "$dir/$IDENTITY"
+  echo "$dir"
+}
+
+# Clones every bundle of an archive back into a running sandbox at its old path,
+# with its branches, tags, origin and git identity, and lays any uncommitted work
+# (refs/agentbox/wip) back over the checkout.
+restore() {
+  local name=$1 dir=$2 file repo url user email
+  enter "$name" || return 1
+  [[ -f $dir/$MANIFEST ]] || return 0
+  { read -r user && read -r email; } 2>/dev/null <"$dir/$IDENTITY" || true
+  while IFS=$'\t' read -r file repo url; do
+    [[ $repo == /home/agent/* && -s $dir/$file ]] || continue
+    # shellcheck disable=SC2016 # expanded by the shell inside the sandbox
+    "${ENTER[@]}" bash -c '
+      set -euo pipefail
+      bundle=$(mktemp)
+      cat >"$bundle"
+      mkdir -p "$(dirname "$1")"
+      git clone -q "$bundle" "$1"
+      cd "$1"
+      git fetch -q --update-head-ok "$bundle" "+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*" "+refs/agentbox/*:refs/agentbox/*"
+      rm -f "$bundle"
+      git for-each-ref --format="%(refname)" refs/remotes/origin | while read -r ref; do git update-ref -d "$ref"; done
+      if [[ -n $2 ]]; then git remote set-url origin "$2"; else git remote remove origin; fi
+      if [[ -n $3 ]]; then git config --global user.name "$3"; fi
+      if [[ -n $4 ]]; then git config --global user.email "$4"; fi
+      if git rev-parse -q --verify refs/agentbox/wip >/dev/null; then
+        git restore --source=refs/agentbox/wip --worktree -- .
+      fi
+    ' _ "$repo" "$url" "${user-}" "${email-}" <"$dir/$file" || echo "agentbox: $name: could not restore $repo from $dir/$file" >&2
+  done <"$dir/$MANIFEST"
 }
 
 # Archive, then remove; skipped when the sandbox was used meanwhile.
@@ -357,8 +505,44 @@ ls)
     where=-
     if [[ -f $NET/$name ]]; then where="$name.$DOMAIN ($(address "$name" 2))"; fi
     if attached "$name"; then use="in use"; else use="idle $(human "$(idle "$name")")"; fi
-    printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$(state "$name")" "$use" "$(expiry "$name")" "$where"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$name" "$(state "$name")" "$use" "$(expiry "$name")" "$where" \
+      "$(profile "$name")" "$(size_of "$name")"
   done
+  ;;
+net-sync)
+  # Run after the firewall starts: kernel sets are empty after a reboot or
+  # when first created.
+  for file in "$NET"/*; do
+    [[ -f $file ]] || continue
+    name=${file##*/}
+    if [[ -d $BOXES/$name ]]; then admit "$name"; fi
+  done
+  ;;
+net)
+  valid "${1-}"
+  name=$1
+  [[ -d $BOXES/$name ]] || die "no sandbox named $name"
+  if (($# > 1)); then
+    member "$2" "${NET_NAMES[@]}" || die "unknown net profile '$2' (${NET_NAMES[*]})"
+    old=$(profile "$name")
+    install -d -m 0700 "$META"
+    echo "$2" >"$META/$name.net"
+    admit "$name"
+    if [[ $2 != "$old" ]] && ! member "$2" "${NET_OPEN[@]}"; then forget "$name"; fi
+  fi
+  profile "$name"
+  ;;
+size)
+  valid "${1-}"
+  name=$1
+  [[ -d $BOXES/$name ]] || die "no sandbox named $name"
+  if (($# > 1)); then
+    member "$2" "${SIZE_NAMES[@]}" || die "unknown size '$2' (${SIZE_NAMES[*]})"
+    install -d -m 0700 "$META"
+    echo "$2" >"$META/$name.size"
+    if [[ $(state "$name") == running ]]; then limit "$name"; fi
+  fi
+  size_of "$name"
   ;;
 reap)
   reap
@@ -391,12 +575,60 @@ state)
   valid "${1-}"
   state "$1"
   ;;
+recreate)
+  # Moves a sandbox onto the current base image, keeping its repos (uncommitted work
+  # included), env opt-ins, keep, net profile, size and address; anything else in it
+  # starts fresh.
+  valid "${1-}"
+  name=$1
+  [[ -d $BOXES/$name ]] || die "no sandbox named $name"
+  [[ -L $BASES/current ]] || die "no base image yet; check agentbox-base.service"
+  if [[ $(state "$name") != running ]]; then boot "$name"; fi
+  dir=$(archive "$name") || die "could not archive $name; it is unchanged"
+  saved=$(mktemp -d)
+  cp -p "$NET/$name" "$saved/index"
+  for kind in env keep net size; do
+    if [[ -f $META/$name.$kind ]]; then cp -p "$META/$name.$kind" "$saved/$kind"; fi
+  done
+  remove "$name"
+  install -d -m 0700 "$NET" "$META"
+  cp -p "$saved/index" "$NET/$name"
+  for kind in env keep net size; do
+    if [[ -f $saved/$kind ]]; then cp -p "$saved/$kind" "$META/$name.$kind"; fi
+  done
+  rm -rf -- "$saved"
+  btrfs subvolume snapshot "$(readlink -f "$BASES/current")" "$BOXES/$name" >/dev/null
+  start "$name"
+  if [[ -n $dir ]]; then restore "$name" "$dir"; fi
+  echo "agentbox: recreated $name on $(readlink "$BASES/current")${dir:+; repos restored from $dir, which stays as a backup}"
+  ;;
 create)
   valid "${1-}"
+  name=$1
+  shift
+  net=$DEFAULT_NET
+  size=$DEFAULT_SIZE
+  while (($#)); do
+    case $1 in
+    --net)
+      member "${2-}" "${NET_NAMES[@]}" || die "unknown net profile '${2-}' (${NET_NAMES[*]})"
+      net=$2
+      ;;
+    --size)
+      member "${2-}" "${SIZE_NAMES[@]}" || die "unknown size '${2-}' (${SIZE_NAMES[*]})"
+      size=$2
+      ;;
+    *) die "unknown option for create: $1" ;;
+    esac
+    shift 2
+  done
   [[ -L $BASES/current ]] || die "no base image yet; check agentbox-base.service"
-  [[ ! -e $BOXES/$1 ]] || die "sandbox $1 already exists"
-  btrfs subvolume snapshot "$(readlink -f "$BASES/current")" "$BOXES/$1" >/dev/null
-  start "$1"
+  [[ ! -e $BOXES/$name ]] || die "sandbox $name already exists"
+  install -d -m 0700 "$META"
+  echo "$net" >"$META/$name.net"
+  echo "$size" >"$META/$name.size"
+  btrfs subvolume snapshot "$(readlink -f "$BASES/current")" "$BOXES/$name" >/dev/null
+  start "$name"
   ;;
 start)
   valid "${1-}"
@@ -450,6 +682,6 @@ env)
   if [[ -f $META/$name.env ]]; then cat "$META/$name.env"; fi
   ;;
 *)
-  die "usage: agentbox-root base|ls|state|create|start|stop|rm|exec|env|keep|archived|reap ..."
+  die "usage: agentbox-root base|ls|state|create|recreate|start|stop|rm|exec|env|net|size|keep|archived|reap|net-sync ..."
   ;;
 esac

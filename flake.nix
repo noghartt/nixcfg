@@ -148,6 +148,13 @@
                 touch $out
               '';
         }
+        # VM test of Mellon's agent sandboxes (about three minutes).
+        // nixpkgs.lib.optionalAttrs (pkgs.stdenv.hostPlatform.system == "x86_64-linux") {
+          agentbox = import ./hosts/mellon/sandboxes/tests {
+            inherit pkgs;
+            flake = self;
+          };
+        }
         # Each host's build check lands in the check set of its own platform.
         // nixpkgs.lib.concatMapAttrs (
           hostName: configuration:

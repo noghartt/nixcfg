@@ -3,7 +3,8 @@
 # Isolation: a private user namespace (container root is an unprivileged host
 # uid range), its own veth with internet-only egress, no host bind mounts, its
 # own Nix store, and per-sandbox cgroup limits. `agentbox` (any member of the
-# agentbox group) drives `agentbox-root`, the only privileged entry point.
+# agentbox group) drives `agentbox-root`, the only privileged entry point,
+# through agentbox-rootd on a socket anyone may connect to.
 {
   config,
   flake,
@@ -48,14 +49,50 @@ let
     })
   '';
 
-  # Per sandbox; agentbox.slice below caps all of them together.
+  # Per sandbox, by size class (`agentbox size`); agentbox.slice below caps all
+  # of them together. A sandbox also sees only a window of its class's cores
+  # (agentbox-root's cpus), so tools that size worker pools by core count stay
+  # within its quota and memory.
+  sizes = {
+    small = {
+      cpus = 4;
+      memory = "8G";
+    };
+    medium = {
+      cpus = 8;
+      memory = "16G";
+    };
+    large = {
+      cpus = 16;
+      memory = "32G";
+    };
+  };
+  defaultSize = "medium";
   limits = [
-    "MemoryMax=16G"
     "MemorySwapMax=4G"
-    "CPUQuota=800%"
     "TasksMax=4096"
     "IOWeight=50"
   ];
+  sizing = ''
+    SIZE_NAMES=(${lib.escapeShellArgs (builtins.attrNames sizes)})
+    declare -A SIZE_CPUS=(${
+      lib.concatStrings (lib.mapAttrsToList (name: size: "[${name}]=${toString size.cpus} ") sizes)
+    })
+    declare -A SIZE_MEMORY=(${
+      lib.concatStrings (lib.mapAttrsToList (name: size: "[${name}]=${size.memory} ") sizes)
+    })
+    DEFAULT_SIZE=${defaultSize}
+  '';
+
+  net = import ./net-sets.nix { inherit lib; };
+  profiles = ''
+    NET_NAMES=(${lib.escapeShellArgs net.names})
+    NET_OPEN=(${lib.escapeShellArgs net.open})
+    declare -A NET_SET=(${lib.concatMapStrings (name: "[${name}]=${net.src name} ") net.names})
+    DEFAULT_NET=${net.default}
+    make_sets() {
+    ${net.create}}
+  '';
 
   # Idle means no exec, start or attached process since; `agentbox keep`
   # exempts a sandbox. Removal reclaims its subvolume (and the extents it still
@@ -70,7 +107,10 @@ let
     name = "agentbox-root";
     runtimeInputs = [
       pkgs.btrfs-progs
+      pkgs.conntrack-tools
       pkgs.coreutils
+      pkgs.gnugrep
+      pkgs.ipset
       pkgs.util-linux
       config.nix.package
       config.systemd.package
@@ -79,10 +119,18 @@ let
       IMAGE=${image}
       LIMITS=(${lib.escapeShellArgs limits})
     ''
+    + sizing
+    + profiles
     + expiry
     + envCatalog
     + builtins.readFile ./agentbox-root.sh;
   };
+
+  python = pkgs.writers.writePython3Bin;
+  rootd = python "agentbox-rootd" { flakeIgnore = [ "E501" ]; } (builtins.readFile ./rootd.py);
+  client = python "agentbox-client" { flakeIgnore = [ "E501" ]; } (
+    builtins.readFile ./rootd-client.py
+  );
 
   agentbox = pkgs.writeShellApplication {
     name = "agentbox";
@@ -91,7 +139,17 @@ let
       pkgs.git
     ];
     text = ''
-      AGENTBOX_ROOT=${lib.getExe agentbox-root}
+      AGENTBOX_CLIENT=${lib.getExe client}
+      NET_NAMES=(${lib.escapeShellArgs net.names})
+      DEFAULT_NET=${net.default}
+      SIZE_HELP=${
+        lib.escapeShellArg (
+          lib.concatStringsSep ", " (
+            lib.mapAttrsToList (name: size: "${name} (${toString size.cpus} cores, ${size.memory})") sizes
+          )
+        )
+      }
+      DEFAULT_SIZE=${defaultSize}
     ''
     + expiry
     + builtins.readFile ./agentbox.sh;
@@ -115,57 +173,76 @@ let
     "--settings=no"
     "/agentbox/init"
   ];
-
-  # Everything a sandbox must not reach: this host, the LAN, the tailnet,
-  # other sandboxes, and special-purpose ranges.
-  blocked = [
-    "0.0.0.0/8"
-    "10.0.0.0/8"
-    "100.64.0.0/10"
-    "127.0.0.0/8"
-    "169.254.0.0/16"
-    "172.16.0.0/12"
-    "192.0.0.0/24"
-    "192.168.0.0/16"
-    "198.18.0.0/15"
-    "224.0.0.0/4"
-    "240.0.0.0/4"
-  ];
 in
 {
-  imports = [ ./env.nix ];
-
-  assertions = [
-    {
-      assertion = !config.networking.nftables.enable;
-      message = "hosts/mellon/sandboxes isolates sandboxes with iptables rules; port them before enabling nftables.";
-    }
+  imports = [
+    ./env.nix
+    ./network.nix
   ];
 
   environment.systemPackages = [ agentbox ];
 
+  # Membership is read from the group database on every request, so it takes
+  # effect without a new login.
   users.groups.agentbox = { };
-  security.sudo.extraRules = [
-    {
-      groups = [ "agentbox" ];
-      commands = [
-        {
-          command = lib.getExe agentbox-root;
-          options = [ "NOPASSWD" ];
-        }
-      ];
-    }
-  ];
-  # Cloud mode calls it once per tool call; logging each would flood the journal.
-  security.sudo.extraConfig = ''
-    Defaults!${lib.getExe agentbox-root} !log_allowed
-  '';
+
+  # One agentbox-rootd per connection: concurrent calls (cloud mode runs one
+  # exec per tool call) are independent processes, and a rebuild leaves
+  # running ones on their old code instead of cutting them off. Cloud mode
+  # also makes these per call, so systemd's per-unit start/stop lines are
+  # dropped (LogLevelMax applies to them too); refusals log as warnings.
+  systemd.sockets.agentbox-root = {
+    description = "agentbox-root requests";
+    wantedBy = [ "sockets.target" ];
+    listenStreams = [ "/run/agentbox/root.sock" ];
+    socketConfig = {
+      Accept = true;
+      SocketMode = "0666";
+      MaxConnections = 512;
+    };
+  };
+  systemd.services."agentbox-root@" = {
+    description = "agentbox-root request";
+    restartIfChanged = false;
+    unitConfig = {
+      RequiresMountsFor = "/agent";
+      CollectMode = "inactive-or-failed";
+    };
+    serviceConfig = {
+      ExecStart = "${lib.getExe rootd} ${lib.getExe agentbox-root}";
+      StandardInput = "socket";
+      StandardOutput = "journal";
+      StandardError = "journal";
+      LogLevelMax = "notice";
+    };
+  };
+
+  # Kernel sets start empty at boot and when first created; puts every
+  # sandbox's subnet back in its profile's set after the firewall (re)starts.
+  systemd.services.agentbox-net = {
+    description = "Agent sandbox net profiles";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "firewall.service" ];
+    partOf = [ "firewall.service" ];
+    unitConfig.RequiresMountsFor = "/agent";
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      ExecStart = "${lib.getExe agentbox-root} net-sync";
+    };
+  };
 
   systemd.slices.agentbox = {
     description = "Agent sandboxes";
     sliceConfig = {
+      # Throttled and reclaimed before the hard cap kills anything.
+      MemoryHigh = "36G";
       MemoryMax = "40G";
       CPUQuota = "2400%";
+      # Half the default weight: under contention the desktop and the agents
+      # driving the sandboxes stay responsive.
+      CPUWeight = 50;
+      IOWeight = 50;
       TasksMax = 16384;
     };
   };
@@ -222,85 +299,4 @@ in
       DevicePolicy = "closed";
     };
   };
-
-  # networkd handles only the sandboxes' veths, from per-sandbox runtime files
-  # agentbox-root writes (fixed /28 in 10.231.0.0/16, DHCP server, masquerade);
-  # NetworkManager keeps the uplink and must leave these links alone.
-  systemd.network = {
-    enable = true;
-    wait-online.enable = false;
-  };
-  networking.networkmanager.unmanaged = [ "interface-name:ve-ab-*" ];
-
-  # Tailnet devices reach sandboxes directly: the sandbox range is a subnet
-  # route (approve it once in the admin console), and <name>.sandbox.internal
-  # resolves through split DNS pointed at this host's tailnet address.
-  services.tailscale = {
-    useRoutingFeatures = "server";
-    extraSetFlags = [ "--advertise-routes=10.231.0.0/16" ];
-  };
-  systemd.tmpfiles.rules = [ "d /run/agentbox/dns 0755 root root -" ];
-  services.dnsmasq = {
-    enable = true;
-    resolveLocalQueries = false;
-    settings = {
-      interface = "tailscale0";
-      except-interface = "lo";
-      # tailscale0 may come up after dnsmasq.
-      bind-dynamic = true;
-      no-resolv = true;
-      no-hosts = true;
-      local = "/sandbox.internal/";
-      hostsdir = "/run/agentbox/dns";
-    };
-  };
-  networking.firewall.interfaces.tailscale0 = {
-    allowedUDPPorts = [ 53 ];
-    allowedTCPPorts = [ 53 ];
-  };
-  networking.firewall.interfaces."ve-ab-+".allowedUDPPorts = [ 67 ];
-
-  # The policy lives in mangle, which runs before every filter chain, so
-  # tailscaled's and Docker's own FORWARD accepts cannot get around it, however
-  # their jumps end up ordered. New connections: sandbox -> this host only for
-  # DHCP, sandbox -> public IPv4 only, into a sandbox only from the tailnet;
-  # no IPv6 at all. Filter then only has to let the survivors past Docker's
-  # FORWARD DROP policy.
-  networking.firewall.extraCommands = ''
-    ip46tables -t mangle -N agentbox-in 2>/dev/null || ip46tables -t mangle -F agentbox-in
-    iptables -t mangle -A agentbox-in -p udp --dport 67 -j RETURN
-    iptables -t mangle -A agentbox-in -m conntrack --ctstate NEW,INVALID -j DROP
-    ip6tables -t mangle -A agentbox-in -j DROP
-    ip46tables -t mangle -D INPUT -i ve-ab-+ -j agentbox-in 2>/dev/null || true
-    ip46tables -t mangle -I INPUT -i ve-ab-+ -j agentbox-in
-
-    ip46tables -t mangle -N agentbox-fwd 2>/dev/null || ip46tables -t mangle -F agentbox-fwd
-    ip6tables -t mangle -A agentbox-fwd -i ve-ab-+ -j DROP
-    ip6tables -t mangle -A agentbox-fwd -o ve-ab-+ -j DROP
-    iptables -t mangle -A agentbox-fwd -m conntrack --ctstate INVALID -i ve-ab-+ -j DROP
-    ${lib.concatMapStrings (net: ''
-      iptables -t mangle -A agentbox-fwd -i ve-ab-+ -m conntrack --ctstate NEW -d ${net} -j DROP
-    '') blocked}
-    iptables -t mangle -A agentbox-fwd -o ve-ab-+ ! -i tailscale0 -m conntrack --ctstate NEW,INVALID -j DROP
-    ip46tables -t mangle -D FORWARD -j agentbox-fwd 2>/dev/null || true
-    ip46tables -t mangle -I FORWARD -j agentbox-fwd
-
-    iptables -N agentbox-fwd 2>/dev/null || iptables -F agentbox-fwd
-    iptables -A agentbox-fwd -i ve-ab-+ -j ACCEPT
-    iptables -A agentbox-fwd -o ve-ab-+ -j ACCEPT
-    iptables -D FORWARD -j agentbox-fwd 2>/dev/null || true
-    iptables -I FORWARD -j agentbox-fwd
-
-    # The first layout's filter chains outlive a firewall reload; its INPUT
-    # chain also dropped replies to connections this host opens into sandboxes.
-    ip46tables -D INPUT -i ve-ab-+ -j agentbox-in 2>/dev/null || true
-    ip46tables -F agentbox-in 2>/dev/null && ip46tables -X agentbox-in 2>/dev/null || true
-    ip6tables -D FORWARD -j agentbox-fwd 2>/dev/null || true
-    ip6tables -F agentbox-fwd 2>/dev/null && ip6tables -X agentbox-fwd 2>/dev/null || true
-  '';
-  networking.firewall.extraStopCommands = ''
-    ip46tables -t mangle -D INPUT -i ve-ab-+ -j agentbox-in 2>/dev/null || true
-    ip46tables -t mangle -D FORWARD -j agentbox-fwd 2>/dev/null || true
-    iptables -D FORWARD -j agentbox-fwd 2>/dev/null || true
-  '';
 }
