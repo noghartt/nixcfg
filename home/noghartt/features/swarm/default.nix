@@ -1,5 +1,6 @@
 # Agent swarms (SWARM.md): the `swarm` CLI and daemon, the OmO/Pi extension that adds
-# `/leader` and `/swarms`, and the Docker Sandboxes kit members run in.
+# `/leader` and `/swarms`, and (Darwin) the Docker Sandboxes kit members run in. On Mellon
+# members use agentbox sandboxes instead, so no kit is built there.
 { lib, pkgs, ... }:
 let
   # Keep in step with features/omo: pods run the same OmO release as the host.
@@ -42,17 +43,22 @@ let
     ];
   };
 
-  # A local v3 workload kit: sbx builds it on first use and caches the image.
-  kit = pkgs.runCommand "swarm-omo-kit" { } ''
-    mkdir -p "$out/swarm"
-    cp ${./kit/swarm-omo.yaml} "$out/swarm-omo.yaml"
-    cp ${./kit/swarm-omo.dockerfile} "$out/swarm-omo.dockerfile"
-    install -m 755 ${omoLinux} "$out/omo"
-    cp -r ${swarmPackage}/. "$out/swarm/"
-  '';
+  # A local v3 workload kit: sbx builds it on first use and caches the image. sbx exists only
+  # on Darwin, and the kit embeds an arm64 OmO that Linux would download for nothing.
+  kit =
+    if pkgs.stdenv.hostPlatform.isDarwin then
+      pkgs.runCommand "swarm-omo-kit" { } ''
+        mkdir -p "$out/swarm"
+        cp ${./kit/swarm-omo.yaml} "$out/swarm-omo.yaml"
+        cp ${./kit/swarm-omo.dockerfile} "$out/swarm-omo.dockerfile"
+        install -m 755 ${omoLinux} "$out/omo"
+        cp -r ${swarmPackage}/. "$out/swarm/"
+      ''
+    else
+      null;
 
   swarm = pkgs.writeShellScriptBin "swarm" ''
-    export SWARM_KIT_DIR=${kit}
+    ${lib.optionalString (kit != null) "export SWARM_KIT_DIR=${kit}"}
     exec ${lib.getExe pkgs.bun} ${daemonSource}/swarm/src/cli.ts "$@"
   '';
 in

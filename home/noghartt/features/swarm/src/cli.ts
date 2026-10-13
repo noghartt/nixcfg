@@ -4,6 +4,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync, openSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { pickBackend, SIZE_CLASSES, SIZE_MEMORY, type SizeClass } from "./agentbox.ts";
 import { must, run } from "./backends.ts";
 import { loadConfig, SwarmDaemon } from "./daemon.ts";
 import {
@@ -24,8 +25,9 @@ import {
 
 const USAGE = `swarm - agent swarms with a shared board (see SWARM.md)
 
-  swarm start --goal TEXT [--repo DIR] [--backend sbx|local] [--pattern parallel|evolve]
+  swarm start --goal TEXT [--repo DIR] [--backend auto|agentbox|sbx|local] [--pattern parallel|evolve]
               [--criteria TEXT]... [--fitness CMD] [--pod-size N] [--pod-memory 3g]
+              [--net PROFILE] [--size small|medium|large]   (agentbox: sandbox network and size)
               [--max-members N] [--max-generations N] [--json]
   swarm ls [--json]                      swarms and their state
   swarm status ID [--json]               members, pods, pending permissions
@@ -103,8 +105,14 @@ async function start(flags: Record<string, string[]>, positional: string[]): Pro
 	const goal = (flags.goal?.join("\n") ?? positional.join(" ")).trim();
 	if (!goal) fail("--goal is required");
 	const cwd = resolve(flags.repo?.[0] ?? process.cwd());
-	const backend = (flags.backend?.[0] ?? config.backend) as BackendKind;
-	if (backend !== "sbx" && backend !== "local") fail(`unknown backend ${backend}`);
+	let backend: BackendKind;
+	try {
+		backend = pickBackend(flags.backend?.[0] ?? config.backend, !!Bun.which(process.env.SWARM_AGENTBOX || "agentbox"));
+	} catch (error) {
+		fail((error as Error).message);
+	}
+	const size = (flags.size?.[0] ?? config.agentbox.size) as SizeClass;
+	if (backend === "agentbox" && !SIZE_CLASSES.includes(size)) fail(`unknown size ${size}; use ${SIZE_CLASSES.join(", ")}`);
 	const pattern = (flags.pattern?.[0] ?? "parallel") as Pattern;
 	if (pattern !== "parallel" && pattern !== "evolve") fail(`unknown pattern ${pattern}`);
 	// sbx clone mode only accepts the main checkout; members still start from this checkout's HEAD.
@@ -123,7 +131,10 @@ async function start(flags: Record<string, string[]>, positional: string[]): Pro
 		criteria: flags.criteria ?? [],
 		fitnessCommand: flags.fitness?.[0],
 		podSize: Number(flags["pod-size"]?.[0] ?? config.podSize),
-		podMemory: flags["pod-memory"]?.[0] ?? config.podMemory,
+		// agentbox sandboxes are limited by their size class, which the scheduler budgets against.
+		podMemory: flags["pod-memory"]?.[0] ?? (backend === "agentbox" ? SIZE_MEMORY[size] : config.podMemory),
+		sandboxNet: backend === "agentbox" ? (flags.net?.[0] ?? config.agentbox.net) : undefined,
+		sandboxSize: backend === "agentbox" ? size : undefined,
 		maxMembers: Number(flags["max-members"]?.[0] ?? config.maxMembers),
 		maxGenerations: Number(flags["max-generations"]?.[0] ?? (pattern === "evolve" ? config.maxGenerations : 1)),
 		createdAt: nowIso(),

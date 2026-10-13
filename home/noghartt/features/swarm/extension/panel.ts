@@ -286,7 +286,7 @@ export async function openPanel(pi: ExtensionAPI, ctx: ExtensionCommandContext, 
 			}
 			if (action.type === "attach") {
 				const state = await client.get<SwarmState & { attach: Record<string, string[]> }>("/state");
-				await attachMember(pi, ctx, action.id, action.member, state.attach[action.member], state.spec.backend === "local");
+				await attachMember(pi, ctx, action.id, action.member, state.attach[action.member], state.spec.backend !== "sbx");
 				return;
 			}
 			if (action.type === "message") {

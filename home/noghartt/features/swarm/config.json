@@ -1,7 +1,17 @@
 {
-  "leader": { "model": "anthropic/claude-opus-5-5", "thinking": "xhigh" },
-  "member": { "model": "anthropic/claude-sonnet-5-5", "thinking": "high" },
-  "backend": "sbx",
+  "leader": {
+    "models": [
+      "anthropic-subscription/claude-opus-5-5",
+      "anthropic/claude-opus-5-5"
+    ],
+    "thinking": "xhigh"
+  },
+  "fallbackMember": "sonnet",
+  "backend": "auto",
+  "agentbox": {
+    "net": "dev",
+    "size": "small"
+  },
   "podSize": 5,
   "podMemory": "3g",
   "maxMembers": 30,
@@ -20,48 +30,48 @@
   },
   "pool": [
     {
-      "key": "sonnet-medium",
-      "models": ["anthropic/claude-sonnet-5-5"],
+      "key": "sonnet",
+      "models": [
+        "anthropic-subscription/claude-sonnet-5-5",
+        "anthropic/claude-sonnet-5-5",
+        "chatgpt-subscription/gpt-5.6-terra",
+        "openai-codex/gpt-5.6-terra"
+      ],
       "thinking": "medium",
       "tier": 1,
-      "use": "Well-specified, mostly mechanical work inside one area: edits, tests, and small fixes"
+      "use": "Easier, well-specified work: mechanical edits, tests, small bug fixes, and refactors inside one subsystem"
     },
     {
-      "key": "sonnet-high",
-      "models": ["anthropic/claude-sonnet-5-5"],
+      "key": "opus",
+      "models": [
+        "anthropic-subscription/claude-opus-5-5",
+        "anthropic/claude-opus-5-5",
+        "chatgpt-subscription/gpt-6-sol",
+        "openai-codex/gpt-6-sol"
+      ],
       "thinking": "high",
       "tier": 2,
-      "use": "Ordinary feature work, debugging, refactors, and exploring an approach inside one subsystem"
+      "use": "Complex work: features across modules, cross-cutting changes, subtle debugging, performance work, and careful code review"
     },
     {
-      "key": "gpt-terra",
-      "models": ["chatgpt-subscription/gpt-5.6-terra"],
-      "thinking": "medium",
-      "tier": 2,
-      "use": "Backend or algorithmic implementation and test-driven fixes inside one subsystem"
-    },
-    {
-      "key": "gpt-sol",
-      "models": ["chatgpt-subscription/gpt-5.6-sol"],
+      "key": "fable",
+      "models": [
+        "anthropic-subscription/claude-fable-5-1",
+        "anthropic/claude-fable-5-1"
+      ],
       "thinking": "high",
       "tier": 3,
-      "use": "Hard logic, performance work, and deep debugging across modules"
+      "use": "Orchestration-level planning, architecture, and design decisions with no existing pattern to copy"
     },
     {
-      "key": "haiku",
-      "models": ["anthropic/claude-haiku-5-5"],
-      "thinking": "medium",
-      "tier": 0,
-      "optIn": true,
-      "use": "Trivial lookups, bulk mechanical edits, and quick probes"
-    },
-    {
-      "key": "gpt-luna",
-      "models": ["chatgpt-subscription/gpt-5.6-luna"],
-      "thinking": "medium",
-      "tier": 1,
-      "optIn": true,
-      "use": "Mechanical, fully specified edits"
+      "key": "gpt-astra",
+      "models": [
+        "chatgpt-subscription/gpt-6-astra",
+        "openai-codex/gpt-6-astra"
+      ],
+      "thinking": "high",
+      "tier": 3,
+      "use": "The hardest reasoning: invariants, concurrency, and correctness arguments"
     }
   ]
 }

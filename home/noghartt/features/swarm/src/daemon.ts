@@ -9,9 +9,12 @@ import { appendFile, chmod, mkdir, readFile, rename, writeFile } from "node:fs/p
 import { totalmem } from "node:os";
 import { dirname, join, normalize } from "node:path";
 import { decideModel, gateResult, type JevConfig, jevApiKey, type PoolEntry } from "../../pi/extensions/orchestrator/jev.ts";
-import { type Backend, LocalBackend, run, SbxBackend } from "./backends.ts";
+import { boxName, type SizeClass } from "./agentbox.ts";
+import { AgentboxBackend, type Backend, LocalBackend, run, SbxBackend } from "./backends.ts";
 import { BILLING_ENV, hostAuthPath, podAuth, podSettings } from "./credentials.ts";
+import { type Choice, fallbackChoice, type ModelConfig, requestedChoice } from "./models.ts";
 import {
+	type BackendKind,
 	type DaemonInfo,
 	FINAL_STATES,
 	type Fitness,
@@ -32,10 +35,10 @@ import {
 	slug,
 } from "./protocol.ts";
 
-export interface SwarmConfig {
-	leader: { model: string; thinking: string };
-	member: { model: string; thinking: string };
-	backend: "sbx" | "local";
+export interface SwarmConfig extends ModelConfig {
+	// "auto" resolves when a swarm starts: agentbox where its CLI is on PATH (Mellon), else sbx.
+	backend: "auto" | BackendKind;
+	agentbox: { net?: string; size: SizeClass };
 	podSize: number;
 	podMemory: string;
 	maxMembers: number;
@@ -44,7 +47,7 @@ export interface SwarmConfig {
 	fitnessTimeoutSeconds: number;
 	permissionTimeoutSeconds: number;
 	jev: JevConfig;
-	pool: (PoolEntry & { optIn?: boolean })[];
+	pool: PoolEntry[];
 }
 
 export function loadConfig(): SwarmConfig {
@@ -104,10 +107,14 @@ export class SwarmDaemon {
 			.filter(Boolean)
 			.map((line) => JSON.parse(line) as Post);
 		const spec = this.state.spec;
+		const herdr = process.env.SWARM_HERDR || "herdr";
+		const omo = process.env.SWARM_OMO || "omo";
 		this.backend =
 			spec.backend === "sbx"
 				? new SbxBackend(spec, process.env.SWARM_SBX || "sbx", process.env.SWARM_KIT_DIR || join(dirname(new URL(import.meta.url).pathname), "..", "kit"))
-				: new LocalBackend(spec, this.dir, process.env.SWARM_HERDR || "herdr", process.env.SWARM_OMO || "omo");
+				: spec.backend === "agentbox"
+					? new AgentboxBackend(spec, this.dir, herdr, omo, process.env.SWARM_AGENTBOX || "agentbox")
+					: new LocalBackend(spec, this.dir, herdr, omo);
 
 		// Members that were mid-launch when a previous daemon died are relaunched by the scheduler.
 		for (const member of this.state.members) if (member.state === "starting") member.state = "queued";
@@ -246,17 +253,13 @@ export class SwarmDaemon {
 		for (let index = 2; ; index++) if (!taken.has(`${root}-${index}`)) return `${root}-${index}`;
 	}
 
-	private resolveModel(requested?: string): { model: string; thinking?: string; note: string } | undefined {
-		if (!requested) return undefined;
-		const entry = this.config.pool.find((candidate) => candidate.key === requested);
-		if (entry) return { model: entry.models[0], thinking: entry.thinking, note: `pool entry ${entry.key}` };
-		return { model: requested, note: "chosen by the leader" };
-	}
-
-	private async chooseModel(request: SpawnRequest, criteria: string[]): Promise<{ model: string; thinking: string; note: string }> {
-		const explicit = this.resolveModel(request.model);
-		if (explicit) return { model: explicit.model, thinking: request.thinking ?? explicit.thinking ?? this.config.member.thinking, note: explicit.note };
-		const pool = this.config.pool.filter((entry) => !entry.optIn);
+	private async chooseModel(request: SpawnRequest, criteria: string[]): Promise<Choice> {
+		if (request.model) {
+			const explicit = requestedChoice(this.config, request.model);
+			return { ...explicit, thinking: request.thinking ?? explicit.thinking };
+		}
+		const fallback = fallbackChoice(this.config);
+		const pool = this.config.pool;
 		if (jevApiKey() && pool.length > 1) {
 			try {
 				const decision = await decideModel(this.config.jev, pool, {
@@ -266,15 +269,15 @@ export class SwarmDaemon {
 				});
 				const entry = pool.find((candidate) => candidate.key === decision.key)!;
 				return {
-					model: entry.models[0],
+					models: entry.models,
 					thinking: request.thinking ?? entry.thinking,
 					note: `Jev picked ${entry.key} (p=${decision.confidence.toFixed(2)}${decision.escalated ? ", escalated a tier" : ""})`,
 				};
 			} catch (error) {
-				return { ...this.config.member, thinking: request.thinking ?? this.config.member.thinking, note: `Jev unavailable (${(error as Error).message.slice(0, 120)}); default model` };
+				return { ...fallback, thinking: request.thinking ?? fallback.thinking, note: `Jev unavailable (${(error as Error).message.slice(0, 120)}); default model` };
 			}
 		}
-		return { ...this.config.member, thinking: request.thinking ?? this.config.member.thinking, note: "default member model" };
+		return { ...fallback, thinking: request.thinking ?? fallback.thinking };
 	}
 
 	async spawn(requests: SpawnRequest[]): Promise<Member[]> {
@@ -296,7 +299,8 @@ export class SwarmDaemon {
 				approach: request.approach?.trim() || undefined,
 				criteria,
 				parents,
-				model: choice.model,
+				model: choice.models[0],
+				models: choice.models,
 				thinking: choice.thinking,
 				modelNote: choice.note,
 				state: "queued",
@@ -320,8 +324,13 @@ export class SwarmDaemon {
 		return Math.max(1, Math.floor(budget / parseMemory(this.state.spec.podMemory)));
 	}
 
-	private assignPod(): string | undefined {
+	private assignPod(member: Member): string | undefined {
 		if (this.backend.kind === "local") return "local";
+		if (this.backend.kind === "agentbox") {
+			// One sandbox per member; the budget caps how many members run at once.
+			const live = this.state.members.filter((other) => other.pod && (LIVE_STATES.has(other.state) || this.launching.has(other.name))).length;
+			return live >= this.maxPods() ? undefined : boxName(this.state.spec.id, member.name);
+		}
 		const occupancy = new Map<string, number>();
 		for (const pod of Object.keys(this.state.pods)) if (this.state.pods[pod].state !== "failed") occupancy.set(pod, 0);
 		for (const member of this.state.members) {
@@ -337,13 +346,13 @@ export class SwarmDaemon {
 		}
 	}
 
-	private ensurePod(pod: string): Promise<void> {
+	private ensurePod(pod: string, member: Member): Promise<void> {
 		const existing = this.podStarts.get(pod);
 		if (existing) return existing;
 		this.state.pods[pod] = { state: "creating" };
 		this.changed();
 		const started = this.backend
-			.ensurePod(pod, this.info.port)
+			.ensurePod(pod, this.info.port, member)
 			.then(({ root }) => {
 				this.state.pods[pod] = { state: "ready", root };
 				this.changed();
@@ -363,7 +372,7 @@ export class SwarmDaemon {
 		if (this.state.status !== "active") return;
 		for (const member of this.state.members) {
 			if (member.state !== "queued" || this.launching.has(member.name)) continue;
-			const pod = member.pod && this.state.pods[member.pod]?.state !== "failed" ? member.pod : this.assignPod();
+			const pod = member.pod && this.state.pods[member.pod]?.state !== "failed" ? member.pod : this.assignPod(member);
 			if (!pod) return;
 			member.pod = pod;
 			this.launching.add(member.name);
@@ -375,8 +384,10 @@ export class SwarmDaemon {
 		this.touch(member, { state: "starting", attention: undefined });
 		try {
 			let root = this.state.spec.repo;
-			if (this.backend.kind === "sbx") {
-				await this.ensurePod(member.pod);
+			if (this.backend.kind !== "local") {
+				// A restarted agentbox member re-runs ensure, which starts its sandbox again if it was stopped.
+				if (resume && this.backend.kind === "agentbox") this.podStarts.delete(member.pod);
+				await this.ensurePod(member.pod, member);
 				root = this.state.pods[member.pod].root!;
 			}
 			const worktree = await this.backend.prepareWorktree(member, root);
@@ -461,6 +472,7 @@ export class SwarmDaemon {
 		return {
 			name,
 			model: member.model,
+			models: member.models ?? [member.model],
 			thinking: member.thinking,
 			modelNote: member.modelNote,
 			worktree: member.worktree ?? "",
@@ -590,11 +602,12 @@ export class SwarmDaemon {
 
 	async collect(): Promise<{ repo: string; branches: { member: string; branch: string; generation: number; state: string; fitness?: number }[] }> {
 		const pods = [...new Set(this.state.members.map((member) => member.pod).filter((pod) => pod && this.state.pods[pod]?.state === "ready"))];
-		await this.backend.collect(pods);
+		await this.backend.collect(pods, Object.fromEntries(pods.map((pod) => [pod, this.state.pods[pod].root ?? ""])));
 		const branches: { member: string; branch: string; generation: number; state: string; fitness?: number }[] = [];
 		for (const member of this.state.members) {
-			const exists = await run("git", ["-C", this.state.spec.repo, "rev-parse", "--verify", "-q", `refs/heads/${member.branch}`]);
-			if (exists.code === 0) branches.push({ member: member.name, branch: member.branch, generation: member.generation, state: member.state, fitness: member.fitness?.score });
+			const branch = this.backend.hostBranch(member);
+			const exists = await run("git", ["-C", this.state.spec.repo, "rev-parse", "--verify", "-q", `refs/heads/${branch}`]);
+			if (exists.code === 0) branches.push({ member: member.name, branch, generation: member.generation, state: member.state, fitness: member.fitness?.score });
 		}
 		return { repo: this.state.spec.repo, branches };
 	}

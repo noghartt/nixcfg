@@ -13,6 +13,7 @@
     ./features/desktop/hyprsunset.nix
     ./features/desktop/noctalia.nix
     ./features/omo
+    ./features/swarm
   ];
 
   home.packages = with pkgs; [

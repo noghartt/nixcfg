@@ -20,8 +20,8 @@ import { onBeforeAgentStart, RELAY_NOTE, sleep, splitRef, text } from "./common.
 import { openPanel } from "./panel.ts";
 
 const config = JSON.parse(readFileSync(new URL("../config.json", import.meta.url), "utf8")) as {
-	leader: { model: string; thinking: string };
-	pool: { key: string; models: string[]; thinking: string; tier: number; use: string; optIn?: boolean }[];
+	leader: { models: string[]; thinking: string };
+	pool: { key: string; models: string[]; thinking: string; tier: number; use: string }[];
 };
 
 const ENTRY = "swarm-leader";
@@ -53,7 +53,7 @@ interface LeaderEntry {
 }
 
 const POOL_TEXT = config.pool
-	.map((entry) => `- ${entry.key}${entry.optIn ? " (opt-in: only when you name it)" : ""}: ${entry.models[0]}:${entry.thinking} - ${entry.use}`)
+	.map((entry) => `- ${entry.key}: ${entry.models[0]}:${entry.thinking} (tier ${entry.tier}) - ${entry.use}`)
 	.join("\n");
 
 const LEADER_PROMPT = `You are leading an agent swarm. You hold the master context: the end goal, who is doing what, and what the swarm has learned. You do not write the members' code; you plan, coordinate, decide, and finally integrate.
@@ -199,10 +199,13 @@ export function registerLeader(pi: ExtensionAPI) {
 
 	const applyLeaderModel = async (next: ExtensionContext) => {
 		if (!restore) restore = { provider: next.model?.provider, id: next.model?.id, thinking: pi.getThinkingLevel() };
-		const { provider, id } = splitRef(config.leader.model);
-		const model = next.modelRegistry.find(provider, id);
+		// The first listed model with credentials, as the orchestrator picks its leader.
+		const model = config.leader.models
+			.map((ref) => splitRef(ref))
+			.map(({ provider, id }) => next.modelRegistry.find(provider, id))
+			.find((candidate) => candidate && next.modelRegistry.hasConfiguredAuth(candidate));
 		if (model && (await pi.setModel(model))) pi.setThinkingLevel(config.leader.thinking as Parameters<typeof pi.setThinkingLevel>[0]);
-		else next.ui.notify(`Leader model ${config.leader.model} is unavailable; keeping the current model.`, "warning");
+		else next.ui.notify(`None of the leader models (${config.leader.models.join(", ")}) is available; keeping the current model.`, "warning");
 	};
 
 	const restoreModel = async (next: ExtensionContext) => {
@@ -245,7 +248,7 @@ export function registerLeader(pi: ExtensionAPI) {
 		for (let index = 0; index < args.length; index++) {
 			const arg = args[index];
 			if (arg === "--local") flags.push("--backend", "local");
-			else if (arg.startsWith("--") && ["--pattern", "--backend", "--criteria", "--fitness", "--max-members", "--max-generations", "--pod-size", "--pod-memory"].includes(arg.split("=")[0])) {
+			else if (arg.startsWith("--") && ["--pattern", "--backend", "--criteria", "--fitness", "--max-members", "--max-generations", "--pod-size", "--pod-memory", "--net", "--size"].includes(arg.split("=")[0])) {
 				if (arg.includes("=")) flags.push(arg);
 				else flags.push(arg, args[++index] ?? "");
 			} else goalWords.push(arg);
@@ -544,7 +547,7 @@ export function registerLeader(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "swarm_collect",
 		label: "Swarm Collect",
-		description: "Fetch every member's branch into the host repository (sbx pods via their sandbox-<pod> remotes) and list them with state and fitness, ready to integrate.",
+		description: "Fetch every member's branch into the host repository (sbx pods via their sandbox-<pod> remotes, agentbox sandboxes as sandbox/<box>/swarm/... branches) and list them with state and fitness, ready to integrate.",
 		defaultActive: false,
 		parameters: Type.Object({}),
 		async execute() {

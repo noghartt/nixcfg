@@ -5,6 +5,8 @@ import { homedir } from "node:os";
 import { dirname, join, normalize } from "node:path";
 import { Type } from "typebox";
 import { classifyBash, classifyWrite, type Scope } from "../src/approval.ts";
+import { run } from "../src/backends.ts";
+import { shellQuote } from "../src/shell.ts";
 import {
 	formatPost,
 	type Member,
@@ -29,6 +31,10 @@ export function registerMember(pi: ExtensionAPI) {
 	const client = new SwarmClient(process.env.SWARM_URL!, process.env.SWARM_TOKEN!);
 	const worktree = process.env.SWARM_WORKTREE ?? process.cwd();
 	const scope: Scope = { worktree, home: homedir(), extra: [SKILLS_DIR] };
+	// Set when cloud-mode aims every tool into an agentbox sandbox (agentbox backend): the host-side
+	// session cannot see the sandbox's files, so skills move through `agentbox exec`.
+	const sandbox = process.env.OMO_CLOUD_SANDBOX;
+	const inSandbox = (script: string) => run(process.env.SWARM_AGENTBOX || "agentbox", ["exec", sandbox!, "--", "bash", "-c", script], { timeoutMs: 60_000 });
 
 	let ctx: ExtensionContext | undefined;
 	let assignment: MemberAssignment | undefined;
@@ -89,19 +95,21 @@ export function registerMember(pi: ExtensionAPI) {
 			next.ui.notify("swarm: could not reach the swarm daemon; this member has no assignment.", "error");
 			return;
 		}
-		const wanted = splitRef(assignment.model);
+		// The first model of the assignment's chain with credentials here, as the orchestrator picks workers.
+		const wanted = (assignment.models?.length ? assignment.models : [assignment.model])
+			.map((ref) => splitRef(ref))
+			.map(({ provider, id }) => next.modelRegistry.find(provider, id))
+			.find((candidate) => candidate && next.modelRegistry.hasConfiguredAuth(candidate));
 		const current = next.model;
-		if (!current || current.provider !== wanted.provider || current.id !== wanted.id) {
-			const model = next.modelRegistry.find(wanted.provider, wanted.id);
-			if (model && (await pi.setModel(model))) pi.setThinkingLevel(assignment.thinking as Parameters<typeof pi.setThinkingLevel>[0]);
-			else {
-				await client.post("/post", {
-					from: self,
-					kind: "status",
-					to: "leader",
-					text: `Model ${assignment.model} is not available here; running on ${current ? `${current.provider}/${current.id}` : "the default model"} instead.`,
-				});
-			}
+		if (!wanted) {
+			await client.post("/post", {
+				from: self,
+				kind: "status",
+				to: "leader",
+				text: `Model ${assignment.model} is not available here; running on ${current ? `${current.provider}/${current.id}` : "the default model"} instead.`,
+			});
+		} else if (!current || current.provider !== wanted.provider || current.id !== wanted.id) {
+			if (await pi.setModel(wanted)) pi.setThinkingLevel(assignment.thinking as Parameters<typeof pi.setThinkingLevel>[0]);
 		}
 		pi.setSessionName(`swarm ${self}`);
 		await event("ready");
@@ -149,6 +157,8 @@ export function registerMember(pi: ExtensionAPI) {
 	};
 
 	pi.on("tool_call", async (call) => {
+		// A sandboxed member acts inside a disposable container without credentials, as destructive-guard assumes.
+		if (sandbox) return undefined;
 		const input = call.input as Record<string, unknown>;
 		const cwd = ctx?.cwd ?? worktree;
 		let verdict;
@@ -305,10 +315,21 @@ export function registerMember(pi: ExtensionAPI) {
 		async execute(_id, params) {
 			const files: Record<string, string> = { ...(params.files ?? {}) };
 			if (params.dir) {
-				const root = normalize(params.dir.startsWith("/") ? params.dir : join(ctx?.cwd ?? worktree, params.dir));
-				const listed = await pi.exec("bash", ["-c", `cd "$1" && find . -type f -size -256k | head -n 50`, "_", root]);
-				for (const relative of listed.stdout.split("\n").filter(Boolean)) {
-					files[relative.replace(/^\.\//, "")] = await readFile(join(root, relative), "utf8");
+				const root = normalize(params.dir.startsWith("/") ? params.dir : join(sandbox ? worktree : (ctx?.cwd ?? worktree), params.dir));
+				if (sandbox) {
+					const listed = await inSandbox(
+						`cd ${shellQuote(root)} && find . -type f -size -256k | head -n 50 | while IFS= read -r f; do printf '%s\\t' "$f"; base64 -w0 "$f"; echo; done`,
+					);
+					if (listed.code !== 0) throw new Error(`cannot read ${root} in the sandbox: ${(listed.stderr || listed.stdout).trim().slice(0, 300)}`);
+					for (const line of listed.stdout.split("\n").filter(Boolean)) {
+						const tab = line.indexOf("\t");
+						files[line.slice(0, tab).replace(/^\.\//, "")] = Buffer.from(line.slice(tab + 1), "base64").toString("utf8");
+					}
+				} else {
+					const listed = await pi.exec("bash", ["-c", `cd "$1" && find . -type f -size -256k | head -n 50`, "_", root]);
+					for (const relative of listed.stdout.split("\n").filter(Boolean)) {
+						files[relative.replace(/^\.\//, "")] = await readFile(join(root, relative), "utf8");
+					}
 				}
 			}
 			if (!Object.keys(files).length) throw new Error("Pass `dir` or `files`.");
@@ -335,6 +356,24 @@ export function registerMember(pi: ExtensionAPI) {
 		parameters: Type.Object({ name: Type.String() }),
 		async execute(_id, params) {
 			const { skill, files } = await client.get<{ skill: Skill; files: Record<string, string> }>(`/skill/${encodeURIComponent(params.name)}`);
+			if (sandbox) {
+				// The content rides in the command line, which bounds a file at about 90 KB.
+				const skipped: string[] = [];
+				for (const [relative, content] of Object.entries(files)) {
+					const encoded = Buffer.from(content).toString("base64");
+					if (encoded.length > 120_000) {
+						skipped.push(relative);
+						continue;
+					}
+					const mode = /\.(sh|py|ts|js)$/.test(relative) ? "755" : "644";
+					const written = await inSandbox(
+						`f="$HOME/.swarm-skills"/${shellQuote(skill.name)}/${shellQuote(relative)}; mkdir -p "$(dirname "$f")" && printf %s ${shellQuote(encoded)} | base64 -d > "$f" && chmod ${mode} "$f"`,
+					);
+					if (written.code !== 0) throw new Error(`cannot install ${relative} in the sandbox: ${(written.stderr || written.stdout).trim().slice(0, 300)}`);
+				}
+				const main = Object.entries(files).find(([relative]) => relative.endsWith("SKILL.md"))?.[1] ?? "";
+				return text(`Skill ${skill.name} by ${skill.author} installed in the sandbox at ~/.swarm-skills/${skill.name}.${skipped.length ? ` Skipped as too large: ${skipped.join(", ")}.` : ""}\n\n${main}`);
+			}
 			const root = join(SKILLS_DIR, skill.name);
 			for (const [relative, content] of Object.entries(files)) {
 				const target = normalize(join(root, relative));

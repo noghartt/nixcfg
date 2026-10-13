@@ -1,13 +1,18 @@
 // Where members run. `sbx` packs members into clone-mode Docker Sandboxes (pods), each member
 // in its own git worktree inside the pod's private clone and its own tmux session, because
 // `sbx exec` cannot detach. `local` runs each member in its own worktree on the host, as a
-// tab of the swarm's Herdr workspace.
+// tab of the swarm's Herdr workspace. `agentbox` (Mellon) also runs the member's OmO as a Herdr
+// tab on the host, but gives it a sandbox of its own that its tools are aimed into.
 
 import { spawn } from "node:child_process";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { boxName, cloudEnv, branchScript, collectArgs, ensureArgs, execArgs, hostBranch, lastLine, leftoversScript, rmArgs } from "./agentbox.ts";
 import type { Member, SwarmSpec } from "./protocol.ts";
+import { shellQuote } from "./shell.ts";
+
+export { shellQuote };
 
 export interface RunResult {
 	code: number;
@@ -55,10 +60,6 @@ export async function must(command: string, args: string[], options: Parameters<
 	return result.stdout.trim();
 }
 
-export function shellQuote(value: string): string {
-	return `'${value.replaceAll("'", `'\\''`)}'`;
-}
-
 export interface LaunchSpec {
 	member: Member;
 	env: Record<string, string>;
@@ -68,9 +69,9 @@ export interface LaunchSpec {
 }
 
 export interface Backend {
-	readonly kind: "sbx" | "local";
+	readonly kind: "sbx" | "local" | "agentbox";
 	podCapacity(): number;
-	ensurePod(pod: string, boardPort: number): Promise<{ root: string }>;
+	ensurePod(pod: string, boardPort: number, member?: Member): Promise<{ root: string }>;
 	prepareWorktree(member: Member, root: string): Promise<string>;
 	launch(spec: LaunchSpec): Promise<void>;
 	writeAgentFiles(member: Member, files: Record<string, string>): Promise<void>;
@@ -78,7 +79,10 @@ export interface Backend {
 	stop(member: Member): Promise<void>;
 	exec(member: Member, script: string, timeoutMs: number): Promise<RunResult>;
 	attachCommand(member: Member): string[];
-	collect(pods: string[]): Promise<void>;
+	// roots: each pod's repo directory, for backends that commit leftovers before fetching.
+	collect(pods: string[], roots?: Record<string, string>): Promise<void>;
+	// The branch holding the member's work in the host repository once collected.
+	hostBranch(member: Member): string;
 	setBillingSecret(pod: string, provider: string, placeholder: string, value: string): Promise<void>;
 	destroy(pods: string[]): Promise<void>;
 	boardUrl(port: number): string;
@@ -99,20 +103,21 @@ type HerdrPane = { pane_id: string; tab_id: string };
 
 // Members are tabs labeled with their name in one Herdr workspace per swarm, so they show up
 // beside every other agent pane. Ids are looked up by label, which survives daemon restarts.
-export class LocalBackend implements Backend {
-	readonly kind = "local" as const;
+abstract class HerdrBackend {
 	private readonly workspaceLabel: string;
 	// attachCommand is synchronous, so it reads the tab ids launch and alive last saw.
 	private readonly tabs = new Map<string, string>();
 
 	constructor(
-		private readonly spec: SwarmSpec,
-		private readonly dir: string,
+		protected readonly spec: SwarmSpec,
+		protected readonly dir: string,
 		private readonly herdr: string,
 		private readonly omo: string,
 	) {
 		this.workspaceLabel = `swarm ${spec.id}`;
 	}
+
+	protected abstract tabCwd(member: Member): string;
 
 	private async herdrResult<T>(args: string[]): Promise<T> {
 		const out = await must(this.herdr, args).catch((error: Error) => {
@@ -145,32 +150,15 @@ export class LocalBackend implements Backend {
 		const workspace = await this.workspace();
 		if (workspace) {
 			const created = await this.herdrResult<{ root_pane: HerdrPane }>([
-				"tab", "create", "--workspace", workspace, "--cwd", member.worktree!, "--label", member.name, "--no-focus",
+				"tab", "create", "--workspace", workspace, "--cwd", this.tabCwd(member), "--label", member.name, "--no-focus",
 			]);
 			return created.root_pane;
 		}
 		const created = await this.herdrResult<{ root_pane: HerdrPane }>([
-			"workspace", "create", "--cwd", member.worktree!, "--label", this.workspaceLabel, "--no-focus",
+			"workspace", "create", "--cwd", this.tabCwd(member), "--label", this.workspaceLabel, "--no-focus",
 		]);
 		await must(this.herdr, ["tab", "rename", created.root_pane.tab_id, member.name]);
 		return created.root_pane;
-	}
-
-	podCapacity(): number {
-		return Number.POSITIVE_INFINITY;
-	}
-
-	async ensurePod(): Promise<{ root: string }> {
-		return { root: this.spec.repo };
-	}
-
-	async prepareWorktree(member: Member, root: string): Promise<string> {
-		const path = join(this.dir, "worktrees", member.name);
-		const exists = await run("git", ["-C", path, "rev-parse", "--git-dir"]);
-		if (exists.code === 0) return path;
-		await mkdir(join(this.dir, "worktrees"), { recursive: true });
-		await must("git", ["-C", root, "worktree", "add", "-B", member.branch, path, member.startRef ?? this.spec.base]);
-		return path;
 	}
 
 	async launch(spec: LaunchSpec): Promise<void> {
@@ -205,25 +193,19 @@ export class LocalBackend implements Backend {
 		this.tabs.delete(member.name);
 	}
 
-	exec(member: Member, script: string, timeoutMs: number): Promise<RunResult> {
-		return run("bash", ["-lc", script], { cwd: member.worktree, timeoutMs });
-	}
-
 	attachCommand(member: Member): string[] {
 		const tab = this.tabs.get(member.name);
 		return tab ? [this.herdr, "tab", "focus", tab] : [];
 	}
 
-	async collect(): Promise<void> {}
-
-	async setBillingSecret(): Promise<void> {
-		throw new Error("Billing fallback needs the sbx backend: local members already use the host's own logins.");
-	}
-
-	async destroy(): Promise<void> {
+	protected async closeWorkspace(): Promise<void> {
 		const workspace = await this.workspace();
 		if (workspace) await must(this.herdr, ["workspace", "close", workspace]);
 		this.tabs.clear();
+	}
+
+	async setBillingSecret(): Promise<void> {
+		throw new Error("Billing fallback needs the sbx backend: these members already use the host's own logins.");
 	}
 
 	boardUrl(port: number): string {
@@ -232,6 +214,127 @@ export class LocalBackend implements Backend {
 
 	agentDir(): string {
 		return process.env.OMO_CODING_AGENT_DIR || join(homedir(), ".omo", "agent");
+	}
+}
+
+export class LocalBackend extends HerdrBackend implements Backend {
+	readonly kind = "local" as const;
+
+	protected tabCwd(member: Member): string {
+		return member.worktree!;
+	}
+
+	podCapacity(): number {
+		return Number.POSITIVE_INFINITY;
+	}
+
+	async ensurePod(): Promise<{ root: string }> {
+		return { root: this.spec.repo };
+	}
+
+	async prepareWorktree(member: Member, root: string): Promise<string> {
+		const path = join(this.dir, "worktrees", member.name);
+		const exists = await run("git", ["-C", path, "rev-parse", "--git-dir"]);
+		if (exists.code === 0) return path;
+		await mkdir(join(this.dir, "worktrees"), { recursive: true });
+		await must("git", ["-C", root, "worktree", "add", "-B", member.branch, path, member.startRef ?? this.spec.base]);
+		return path;
+	}
+
+	exec(member: Member, script: string, timeoutMs: number): Promise<RunResult> {
+		return run("bash", ["-lc", script], { cwd: member.worktree, timeoutMs });
+	}
+
+	async collect(): Promise<void> {}
+
+	hostBranch(member: Member): string {
+		return member.branch;
+	}
+
+	destroy(): Promise<void> {
+		return this.closeWorkspace();
+	}
+}
+
+// One nspawn sandbox per member (agentbox, Mellon). The member's OmO stays on the host as a Herdr
+// tab, like a local member, with OMO_CLOUD pointing cloud-mode at its sandbox: every tool call
+// runs inside while models, auth, and the board connection stay on the host, so no credential
+// and no network exception enters the sandbox. Results return as branches via `agentbox collect`.
+export class AgentboxBackend extends HerdrBackend implements Backend {
+	readonly kind = "agentbox" as const;
+
+	constructor(
+		spec: SwarmSpec,
+		dir: string,
+		herdr: string,
+		omo: string,
+		private readonly agentbox: string,
+	) {
+		super(spec, dir, herdr, omo);
+	}
+
+	// cloud-mode resolves the host path, so the tab starts in the repository, not in the sandbox.
+	protected tabCwd(): string {
+		return this.spec.repo;
+	}
+
+	podCapacity(): number {
+		return 1;
+	}
+
+	async ensurePod(pod: string, _boardPort: number, member?: Member): Promise<{ root: string }> {
+		// A child seeds from its first parent's sandbox, which holds the parent's branch (the host
+		// repo only gets it after a collect). A restarted member's sandbox already exists.
+		const parent = member && !member.worktree ? member.parents[0] : undefined;
+		const out = await must(
+			this.agentbox,
+			ensureArgs(pod, this.spec.repo, { from: parent ? boxName(this.spec.id, parent) : undefined, net: this.spec.sandboxNet, size: this.spec.sandboxSize }),
+			{ timeoutMs: 30 * 60_000 },
+		);
+		const root = lastLine(out);
+		if (!root) throw new Error(`agentbox ensure ${pod} printed no sandbox directory`);
+		return { root };
+	}
+
+	async prepareWorktree(member: Member, root: string): Promise<string> {
+		const start = member.startRef ?? this.spec.base;
+		const host = await run("git", ["-C", this.spec.repo, "rev-parse", "--verify", "-q", `${start}^{commit}`]);
+		const candidates = [...(host.code === 0 && host.stdout.trim() ? [host.stdout.trim()] : []), start, `origin/${start}`];
+		const result = await run(this.agentbox, execArgs(member.pod, root, branchScript(root, member.branch, start, candidates)), { timeoutMs: 120_000 });
+		if (result.code !== 0) throw new Error(`branch ${member.branch} in ${member.pod}: ${(result.stderr || result.stdout).trim().slice(0, 600)}`);
+		return root;
+	}
+
+	launch(spec: LaunchSpec): Promise<void> {
+		return super.launch({ ...spec, env: { ...spec.env, ...cloudEnv(this.spec.repo, spec.member.pod) } });
+	}
+
+	exec(member: Member, script: string, timeoutMs: number): Promise<RunResult> {
+		return run(this.agentbox, execArgs(member.pod, member.worktree!, script), { timeoutMs });
+	}
+
+	async collect(pods: string[], roots: Record<string, string> = {}): Promise<void> {
+		const failures: string[] = [];
+		for (const pod of pods) {
+			try {
+				if (roots[pod]) await must(this.agentbox, execArgs(pod, roots[pod], leftoversScript(roots[pod], `swarm: uncommitted work in ${pod}`)), { timeoutMs: 120_000 });
+				await must(this.agentbox, collectArgs(pod, this.spec.repo), { timeoutMs: 10 * 60_000 });
+			} catch (error) {
+				failures.push((error as Error).message);
+			}
+		}
+		if (failures.length) throw new Error(failures.join("\n"));
+	}
+
+	hostBranch(member: Member): string {
+		return hostBranch(member.pod, member.branch);
+	}
+
+	// Sandboxes outlive stopped members so a later generation can seed from them; `swarm rm`
+	// collects first, then deletes them. Idle expiry only backstops swarms nobody removes.
+	async destroy(pods: string[]): Promise<void> {
+		await this.closeWorkspace();
+		for (const pod of pods) await run(this.agentbox, rmArgs(pod), { timeoutMs: 5 * 60_000 });
 	}
 }
 
@@ -346,6 +449,10 @@ export class SbxBackend implements Backend {
 
 	attachCommand(member: Member): string[] {
 		return [this.sbx, "exec", "-it", member.pod, "tmux", "attach-session", "-t", member.name];
+	}
+
+	hostBranch(member: Member): string {
+		return member.branch;
 	}
 
 	async collect(pods: string[]): Promise<void> {

@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 export type Pattern = "parallel" | "evolve";
-export type BackendKind = "sbx" | "local";
+export type BackendKind = "sbx" | "local" | "agentbox";
 
 export type MemberState = "queued" | "starting" | "running" | "idle" | "done" | "failed" | "stopped";
 export const LIVE_STATES: ReadonlySet<MemberState> = new Set(["starting", "running", "idle"]);
@@ -66,6 +66,8 @@ export interface Member {
 	criteria: string[];
 	parents: string[];
 	model: string;
+	// Preference order; the member picks the first one it has credentials for.
+	models?: string[];
 	thinking: string;
 	modelNote: string;
 	state: MemberState;
@@ -130,6 +132,9 @@ export interface SwarmSpec {
 	fitnessCommand?: string;
 	podSize: number;
 	podMemory: string;
+	// agentbox: network profile and size class passed to `agentbox ensure` (its own defaults when unset).
+	sandboxNet?: string;
+	sandboxSize?: string;
 	maxMembers: number;
 	maxGenerations: number;
 	createdAt: string;
@@ -159,6 +164,7 @@ export interface DaemonInfo {
 export interface MemberAssignment {
 	name: string;
 	model: string;
+	models: string[];
 	thinking: string;
 	modelNote: string;
 	worktree: string;
