@@ -15,6 +15,40 @@ whenever it feels like a checkpoint.
   Herdr caught first. What runs there lives in Mellon's Herdr server, so an orchestrator
   leader and its workers survive the Mac sleeping; a plain `ssh mellon` stays a shell.
 
+- **mellon/sandboxes**: `agentbox` reaches `agentbox-root` through a socket-activated root
+  daemon (`agentbox-rootd`) that authorizes callers by the `agentbox` group database, so
+  processes started before the user joined the group just work; the sudo rule and the
+  `sg agentbox` fallback are gone. Interactive `exec`/`shell` get a real pty with job control and
+  live window size. Sandboxes resolve through a host-side sandbox resolver instead of 1.1.1.1 and
+  9.9.9.9, `recreate` keeps the network profile and size, and sandbox networking moved to
+  `network.nix`.
+
+- **home/noghartt/pi**: the orchestrator's index.ts is split into `limits.ts`, `placement.ts`,
+  `priors.ts`, `outcomes.ts`, `consult.ts`, and `publish.ts`, with bun unit tests the package
+  leaves out. A worker's `OMO_CLOUD_ENV` is now the per-node env choice, not the leader's list.
+
+- **home/noghartt/swarm**: `config.json` follows the orchestrator: the leader is the first
+  Opus 5.5 with credentials at `xhigh`, and the member pool is `sonnet`/`opus`/`fable`/`gpt-astra`
+  with preference-ordered fallback chains (GPT-5.6 Terra, GPT-6 Sol); members run the first
+  model they have credentials for, and default member thinking is `medium`. Claude Haiku,
+  GPT-5.6 Sol and Luna, and the `optIn` mechanism are gone. The sbx kit, with its arm64 OmO
+  download, is built on Darwin only.
+
+- **home/noghartt/omo**: cloud-mode's `publish` also takes a delivered subagent branch
+  (`sandbox/<box>/<branch>`) and pushes it under `<branch>` by default; subagents cannot publish.
+
+- **home/noghartt/pi**: the orchestrator's worker pool is three tiers: Sonnet 5.5 for easier
+  work (GPT-5.6 Terra as fallback), Opus 5.5 at high thinking for complex work (GPT-6 Sol as
+  fallback), and Fable 5.1 or GPT-6 Astra for orchestration-level and the hardest work. A pick
+  moves to the other provider's model once its own provider's plan limits reach 85% (read
+  from the statusline's shared cache). Claude models use the authenticated
+  `anthropic-subscription` provider, with Pi's `anthropic` as fallback.
+
+- **mellon/sandboxes**: each sandbox sees an 8-core CPU window, so test runners inside start
+  8 workers instead of one per host core (a 12-lane run had vitest workers OOM-killed in one
+  16G sandbox). All sandboxes together get half the default CPU weight and are throttled
+  from 36G, before the 40G cap.
+
 - **home/noghartt/omo**: the interactive model picker and native task chains use
   Opus 5.5, Sonnet 5.5, Fable 5.1, GPT-6 Astra, and GPT-6 Sol. Delegated
   `deep-low` work starts on GPT-6 Sol rather than GPT-6.1 Sol; the other chains
@@ -23,6 +57,69 @@ whenever it feels like a checkpoint.
   and delegated work.
 
 ### Added
+
+- **mellon/sandboxes**: network profiles (`agentbox net`, `ensure --net`): `none`, `dev` (default
+  for new sandboxes: only allowlisted domains, through the sandbox resolver and ipsets), and
+  `open`, switched live. Sandboxes made before profiles count as `open`.
+
+- **mellon/sandboxes**: size classes (`agentbox size`, `ensure --size`): small 4 cores/8G, medium
+  8/16G (default), large 16/32G, applied live; `agentbox ls` shows net and size.
+
+- **mellon/sandboxes**: a NixOS VM test of the sandbox stack, `checks.x86_64-linux.agentbox`
+  (daemon authorization and TTY, exit codes, parallel execs, sizes, all three net profiles,
+  recreate).
+
+- **home/noghartt/pi**: orchestrator workers get one agentbox sandbox per node from a leader
+  on the host (`workers.placement` auto/sandbox/worktree; auto picks sandboxes on Mellon), seeded
+  from the host checkout and collected back into it, with no cloud mode needed. Jev picks each
+  node's placement, network profile, size class, and env keys from a fixed menu, and
+  deterministic guardrails override it.
+
+- **home/noghartt/pi**: `orch_consult` gets a second opinion from Fable 5.1, or GPT-6 Astra when
+  Claude's limits run hot; the same consultant audits plans of 4 or more nodes before they start,
+  and every result that needs the leader. The leader stays on Opus 5.5 at `xhigh`.
+
+- **home/noghartt/pi**: `orch_publish` pushes an accepted node's branch over SSH (never forced,
+  never the default branch), optionally with a draft PR.
+
+- **home/noghartt/pi**: the orchestrator logs every settled node attempt to
+  `agent-evals/outcomes.jsonl`, and feeds `agent-evals/priors.json` into Jev's model pick.
+
+- **home/noghartt/omo**: cloud-mode subagents that can write get their own sandbox,
+  `<parent>-<short>`, cloned from the parent's sandbox at its HEAD on branch
+  `task/<parent>/<short>`, and deliver it back into the parent's clone as
+  `sandbox/<box>/task/...` after each turn and on exit. Read-only types (explore, librarian,
+  reviewers) keep sharing the parent's sandbox. `--net` and `--size` choose the sandbox's
+  network profile and size class and carry over to children.
+
+- **mellon**: the agent forum (`agent-forum.service`, port 7410 on loopback and the tailnet
+  only): threads with kinds, statuses, tags, replies, votes, claims, subscriptions, a
+  cursor-based long-poll wait, a read-only HTML view, per-author rate limits, and 60-day pruning
+  of resolved threads; Bun and SQLite under a hardened DynamicUser unit, with tests in the
+  package build and a NixOS VM test. Pi and OmO get `forum_post`, `forum_reply`, `forum_read`,
+  `forum_search`, `forum_wait`, `forum_claim`, and `forum_resolve`.
+
+- **home/noghartt/swarm**: an `agentbox` member backend on Mellon. Each member gets its own
+  nspawn sandbox while its OmO stays on the host as a Herdr tab aimed at it; branches return
+  with `agentbox collect`, evolve children seed from their parent's sandbox, and `swarm rm`
+  removes the sandboxes. `--backend auto` (the new default) picks it where `agentbox` exists,
+  and the swarm feature is now imported on Mellon.
+
+- **home/noghartt/agent-evals**: `aeval`, a local eval pipeline over agent transcripts (OmO,
+  Pi, Claude Code, Codex) and the orchestrator's outcome log: incremental ingest with secret
+  redaction and derived signals, a keyboard labelling TUI, heuristic and LLM task
+  classification, reports per model, pool key, and task class, `priors.json` for the
+  orchestrator's model choice, OpenAI and Anthropic SFT and preference exports from labelled
+  data, and replays of recorded tasks on candidate models. Ingest runs hourly on both hosts.
+
+- **mellon/sandboxes**: `agentbox recreate NAME` moves a sandbox onto the current image and
+  restores its repos, uncommitted work, env opt-ins, keep, and address. Archives (expiry and
+  recreate) now also keep uncommitted work as `refs/agentbox/wip`, plus a manifest and the
+  agent's git identity.
+
+- **home/noghartt/pi**: orchestrator nodes take `repo`, another repository to work on. In
+  cloud mode its sandbox is seeded from that repository and its branch is collected back into
+  it, so working on a second repo no longer means smuggling its history into the leader's.
 
 - **home/noghartt/cli**: btop on every host, as a modern htop replacement.
 
@@ -312,6 +409,23 @@ whenever it feels like a checkpoint.
   (`session.resume_agents_on_restore = false`).
 
 ### Fixed
+
+- **mellon/sandboxes**: a killed `agentbox exec` client no longer leaves its command running in
+  the sandbox.
+
+- **home/noghartt/omo**: parallel cloud-mode `task` subagents no longer share one sandbox; on
+  2026-10-12, 11 lanes in one 16G sandbox OOM-killed each other's vitest workers and overwrote
+  each other's files.
+
+- **mellon/sandboxes**: `agentbox` works from processes started before the user joined the
+  `agentbox` group (a long-lived Herdr server), through `sg`, instead of failing with
+  `sudo: a password is required`. Sandbox boots no longer log failed `specialfs` remounts,
+  shutdowns no longer fail to unmount `/tmp`, and `agentbox-root` calls no longer journal a
+  PAM session each.
+
+- **home/noghartt/pi**: orchestrator workers in Herdr open their tab in the leader's workspace
+  rather than whichever one is focused, Herdr's own error text reaches the leader, and a failed
+  pane rename no longer fails the worker (it failed a whole 12-node wave).
 
 - **home/noghartt/omo**: Opus 5.5 now uses the authenticated `anthropic-subscription`
   provider in the startup reset, picker, task chains, and image overrides.

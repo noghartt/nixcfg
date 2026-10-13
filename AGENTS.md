@@ -33,7 +33,10 @@ home/<user>/features/pi/     standalone Pi feature: settings + packaged extensio
 home/<user>/features/omo/    standalone OmO Native (`omo`) feature: own agent dir, model chains, memory guards (palantir, mellon)
 home/<user>/features/vscode/ standalone VS Code feature: marketplace extensions + live settings.json
 home/<user>/features/cua/    standalone Cua Driver feature: pinned app + daemon, skill and docs MCP for harnesses (palantir)
-home/<user>/features/swarm/  standalone agent-swarm feature: `swarm` CLI/daemon, /leader + /swarms extension, sbx kit (palantir)
+home/<user>/features/swarm/  standalone agent-swarm feature: `swarm` CLI/daemon, /leader + /swarms extension, sbx kit on Darwin, agentbox backend (palantir, mellon)
+home/<user>/features/agent-evals/ standalone eval pipeline: `aeval` ingest/label/classify/report/priors/export/replay over session transcripts (both hosts)
+home/<user>/features/pi/extensions/agent-forum/  agent forum client tools (forum_*), loaded by Pi and OmO
+hosts/mellon/agent-forum/    agent forum service (Bun + SQLite) and its VM test
 home/<user>/<host>.nix       optional per-host HM overrides
 TASK.md                      living checklist of planned work — keep it updated
 INSTALL.md                   destructive install + LUKS/Secure Boot runbook
@@ -72,10 +75,23 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   namespace (`--private-users=pick`, idmapped), own veth (`ve-ab-*`) on a fixed /28 of
   `10.231.0.0/16` (host `.1`, sandbox `.2`; per-sandbox runtime networkd files with DHCP server
   and masquerade, NetworkManager ignores those links), no host bind mounts, its own Nix store
-  and daemon, and per-sandbox slice limits under `agentbox.slice`. The policy is in the iptables
+  and daemon, and per-sandbox slice limits under `agentbox.slice` by size class (`agentbox size
+  NAME small|medium|large`, `ensure --size`; small 4 cores/8G, medium 8/16G (default), large
+  16/32G: `MemoryMax`, `CPUQuota`, and an `AllowedCPUs` window of that many cores, so `nproc` and
+  test runners inside size their worker pools to the sandbox; applied live; the whole slice has
+  half the default CPU weight). The policy is in the iptables
   mangle table, which runs before every filter chain, so tailscaled's and Docker's FORWARD
-  accepts cannot bypass it: new connections from a sandbox go only to public IPv4 (plus DHCP to
-  the host), new connections into a sandbox come only from `tailscale0`, and there is no IPv6.
+  accepts cannot bypass it: new connections from a sandbox follow its net profile
+  (`hosts/mellon/sandboxes/net-profiles.nix`, `agentbox net NAME [PROFILE]`, `ensure --net`,
+  applied live: the sandbox's /28 moves between `agentbox-src-<profile>` ipsets, strict
+  reverse-path filtering on the veths keeps sources honest, and narrowing deletes its tracked
+  connections): `dev` (default for new sandboxes) reaches only the addresses its allowlisted
+  domains resolve to through the sandbox resolver (a second dnsmasq on the veths,
+  `agentbox-dns.service`, filling `agentbox-dst-<profile>` via `ipset=`; DNS sent elsewhere is
+  redirected to it), `none` nothing (not even DNS), `open` any public IPv4; sandboxes created
+  before profiles have no record and count as `open` (`agentbox-net.service` restores set
+  membership after the firewall starts); allowlists are IP-based and leak through CDNs. DHCP
+  hands every sandbox the resolver at its veth's host address; new connections into a sandbox come only from `tailscale0`, and there is no IPv6.
   Tailnet devices reach sandboxes directly: Mellon advertises `10.231.0.0/16` as a subnet route
   and dnsmasq (tailnet address only, hostsdir `/run/agentbox/dns`) answers
   `<name>.sandbox.internal`; the route approval and the split-DNS nameserver live in the
@@ -83,11 +99,22 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   `agentbox` (group `agentbox`) is the CLI: `ls`, `ensure NAME --seed PATH` (create, cloning
   PATH's repo from a git bundle, or with `--from BOX` from BOX's clone of it, or start), `exec`,
   `shell`, `collect` (branches back into the host repo, or `--into BOX`'s clone, as
-  `sandbox/NAME/*`), `keep`, `start`/`stop`, `rm`. It reaches `agentbox-root`, the only
-  privileged entry point, through one sudo rule; `exec` enters the container as its uid-1000
+  `sandbox/NAME/*`), `keep`, `net`, `size`, `start`/`stop`, `recreate` (onto the current image,
+  restoring its repos, uncommitted work, env, keep, net, size, and address from an archive),
+  `rm`; `agentbox ls` ends with net and size columns. It reaches `agentbox-root`, the only
+  privileged entry point, through `agentbox-rootd`: a socket-activated root service on
+  `/run/agentbox/root.sock` (world-connectable, `Accept=yes`, one process per call, so concurrent
+  calls are independent and a rebuild never cuts running ones) that identifies the caller by
+  `SO_PEERCRED` and lets it in when the group database lists its user in `agentbox` (so a
+  process that predates joining the group, like a long-lived Herdr server, works); the client
+  passes its stdin/stdout/stderr over the socket, an `exec` on a terminal gets a fresh pty as
+  its controlling terminal (job control, signals, window size, relayed by the client), no caller
+  environment crosses except a validated `TERM`, the exit status comes back, and a client that
+  dies takes its command with it (the exec's scope is killed); `exec` enters the container as its uid-1000
   `agent` user inside a scope in the sandbox's slice. Only committed history crosses in either
   direction, always as bundles. `agentbox-base.service` lays down a new base when the image
-  changes; existing sandboxes keep the image they were created from (recreate to upgrade).
+  changes; existing sandboxes keep the image they were created from (`agentbox recreate` to
+  upgrade).
   Environment variables reach a sandbox only by opt-in: `sandboxes/env-catalog.nix` declares
   what may be given (`reference` = 1Password, resolved by opnix's NixOS module at boot into
   root-only files under `/var/lib/opnix/secrets/agentbox-env/`, token in `/etc/opnix-token`;
@@ -99,8 +126,10 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   to a sandbox can leave it, so catalog secrets stay narrowly scoped.
   Sandboxes expire from disuse (thresholds in `sandboxes/default.nix`): the hourly
   `agentbox-reap.timer` stops one idle for 12h and removes one idle for 7d, after bundling
-  every repo's branches and tags (git run inside the sandbox) into
-  `/agent/archive/<name>/<stamp>/`, group-readable and pruned after 30d. Idle time counts from
+  every repo's branches, tags, and uncommitted work (a commit on HEAD at `refs/agentbox/wip`,
+  built in a scratch index; git run inside the sandbox) into `/agent/archive/<name>/<stamp>/`
+  with a `repos.tsv` manifest (bundle, path, origin) and the agent's git `identity`,
+  group-readable and pruned after 30d. Idle time counts from
   the last `create`/`start`/`exec`, and a live `exec` scope in the sandbox's slice (an open
   shell or cloud-mode bash session) counts as use; if any repo with refs fails to bundle, the
   sandbox is kept. `agentbox keep NAME 30d|forever|off` exempts one; when a keep lapses its
@@ -195,10 +224,14 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   scope (`MemoryHigh` 12G, `MemoryMax` 16G), and the generic glibc release binary runs
   through nix-ld.
 - The Pi `orchestrator` extension (also loaded by OmO) runs a leader + worker mesh: `orch "<goal>"`
-  or `/orchestrate <goal>` sets the leader model (default Opus 5.5 at `xhigh`, `ORCH_LEADER_MODEL`
-  overrides), and Jev (TypeSafe, `TYPESAFE_API_KEY`) decides control flow — strategy
-  (solo/fan-out/mesh), each worker's model from the pool in `orchestrator/config.json`, and
-  accept/retry/escalate gating. Acceptance is a list of criteria that Jev judges one by one against
+  or `/orchestrate <goal>` sets the leader model (default Opus 5.5 at `xhigh`, the first of
+  `leader.models` with credentials, `ORCH_LEADER_MODEL` overrides), and Jev (TypeSafe,
+  `TYPESAFE_API_KEY`) decides control flow — strategy (solo/fan-out/mesh), each worker's model
+  from the pool in `orchestrator/config.json`, and accept/retry/escalate gating. The pool has
+  three tiers: easier work on Sonnet 5.5 (GPT-5.6 Terra fallback), complex work on Opus 5.5 at
+  `high` (GPT-6 Sol fallback), and orchestration-level or hardest work on Fable 5.1 or GPT-6
+  Astra. An entry's `spill` models take a pick when its provider's limits reach `spillAt` (85%)
+  and the other provider's do not, read from the statusline's shared limits cache. Acceptance is a list of criteria that Jev judges one by one against
   evidence the orchestrator collects itself (files changed since spawn, diff stat, commits, the
   worker's tool calls), not the report alone. A clear miss retries with the failing criteria, on
   the same model first and a stronger one on a repeat miss. A borderline result after a retry,
@@ -206,7 +239,9 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   `orch_verdict` (which can also overrule a Jev rejection and revive skipped dependents).
   The leader plans each goal as a dependency graph: `orch_spawn`
   nodes take `after` (start once those are accepted; dependents of a failed node are skipped),
-  `workdir` (run in an upstream node's worktree), and `kind: "review"` with `fixes`, where a
+  `workdir` (run in an upstream node's worktree), `repo` (an absolute path to another repository,
+  seeded and branched from its own HEAD and collected back into it, never the leader's), and
+  `kind: "review"` with `fixes`, where a
   `VERDICT: FAIL` reopens the reviewed node with the findings for up to `maxFixRounds` rounds;
   the reviewer's re-review, not Jev, judges a fix round.
   Pending nodes queue behind the `maxWorkers` concurrency limit.
@@ -217,16 +252,39 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   upstream worker's pane and shared-checkout nodes split the leader's, and dialogs appear in the
   worker's own pane. Outside Herdr, workers are hidden RPC children in `git worktree add`
   checkouts at the same path, and their dialogs are relayed to the leader's UI.
-  A leader in OmO cloud mode takes its workers to the cloud host (`orchestrator/sandbox.ts`):
-  an isolated node gets its own agentbox sandbox `o<run>-<node>`, seeded from the leader's
-  checkout (the host directory, or the leader's own sandbox via `agentbox ensure --from`) and
-  switched to `orch/<run>-<node>` at the leader's last commit. The worker process stays local
-  (its own Herdr tab, or an RPC child) with `OMO_CLOUD`/`OMO_CLOUD_SANDBOX` aiming its tools
-  into the sandbox, so it runs unguarded there; Jev's evidence is read with git through
-  `agentbox exec` (over SSH, or directly for a `local` leader), and each final settle commits leftovers and fetches the sandbox's branches
-  into the leader's repo as `sandbox/<box>/*` (`agentbox collect`, `--into` a sandboxed
-  leader). Shared-checkout nodes run on the leader's own checkout; worker sandboxes stay until
-  idle expiry. Either way the
+  Worker placement (`workers.placement` in `orchestrator/config.json`: `auto` | `sandbox` |
+  `worktree`; `auto` = sandbox when `agentbox` is on PATH and the leader runs OmO, so Mellon,
+  else worktree) decides where isolated nodes run. Under sandbox placement a host-side leader
+  gives each isolated node its own agentbox sandbox `o<run>-<node>` on this machine (a
+  synthesized `local` cloud target in `orchestrator/sandbox.ts`), seeded from the host checkout
+  and switched to `orch/<run>-<node>` at the leader's HEAD; a `workdir` node may get its own
+  sandbox seeded `--from` its upstream's. A leader in OmO cloud mode keeps taking workers to its
+  cloud host (seeded from its sandbox with `--from`, collected `--into` it). The worker process
+  stays local (its own Herdr tab in the leader's workspace, or an RPC child) with
+  `OMO_CLOUD`/`OMO_CLOUD_SANDBOX`/`OMO_CLOUD_ENV` aiming its tools into the sandbox, so it runs
+  unguarded there; Jev's evidence is read with git through `agentbox exec`, and each final
+  settle commits leftovers and fetches the sandbox's branches into the repo as `sandbox/<box>/*`.
+  Shared-checkout nodes (isolation `current`) under a host-side leader stay plain guarded local
+  workers without `OMO_CLOUD`; worker sandboxes stay until idle expiry. Per node, Jev picks from a
+  fixed menu (`jev.ts` `decidePlacement`): new sandbox, the upstream's checkout, or a host
+  worktree; net `none`/`dev`/`open`; size `small`/`medium`/`large`; and catalog env keys.
+  Deterministic guardrails (`placement.ts`) override it: `open` only with
+  `workers.allowOpenNet`, env keys only from `OMO_CLOUD_ENV` (cloud leader) or
+  `workers.envAllowed`, reviewers always share the reviewed checkout; without `TYPESAFE_API_KEY`
+  the defaults apply (net `dev`, size `medium`, every allowed key), via `agentbox ensure
+  --net/--size` and `agentbox env`. `orch_consult` (leader only) asks Fable 5.1, or GPT-6 Astra
+  when Claude's limits are at `spillAt`, one question with leader-supplied context through a
+  one-shot read-only RPC child; the same consultant audits the first `orch_spawn` of a run with
+  `audit.minNodes` (4) or more nodes, holding it until the leader re-sends, and every
+  `needs_leader` result into the inbox; both opinions are advisory and never acted on.
+  `orch_publish` pushes an accepted node's branch (`sandbox/<box>/<branch>` for sandbox nodes)
+  to origin over SSH under a leader-chosen name, never forced and never the default branch, and
+  can open a draft PR. Every settled node attempt appends one line to
+  `$XDG_STATE_HOME/agent-evals/outcomes.jsonl` (outcome log v1: run, node, placement, model,
+  verdict, per-criterion scores, duration, worker and leader session files), and a fresh (under
+  14 days) `agent-evals/priors.json` adds a per-model track record to Jev's model decision. Unit
+  tests sit next to the sources (`bun test` in the orchestrator dir) and are left out of the
+  package. Either way the
   leader drives workers through per-worker JSONL files in the run directory (`ctl/` for prompts,
   model switches, and stop; `events/` for ready, mesh sends, settled reports, and exit), and
   workers deliver their own mesh mail, into `mesh_wait` or as a steer. Workers never spawn or
@@ -303,19 +361,76 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   cards. Components that must stay inline set `Symbol.for("omo-ui-chrome.inline")` (ui-prompt's
   question card does). ui-chrome re-wraps the editor container's `addChild` from OmO's original
   on `/reload`, so ui-prompt re-installs its own hook before each question.
-- The `swarm` feature (Palantir; Pi package list, so OmO loads it too) runs agent swarms
-  (SWARM.md). `/leader <goal>` makes the session the leader (Opus 5.5 `xhigh`, restored by
-  `/leader off`) and starts a detached `swarm serve` daemon per swarm. The daemon owns
-  `~/.omo/swarms/<id>/` (state, board, skills) and serves an HTTP board on 127.0.0.1. Members
-  are OmO sessions, each in its own `swarm/<id>/<member>` worktree: packed into clone-mode
-  `sbx` pods built from the Nix kit (`features/swarm/kit`, pinned `omo-linux-arm64`, same
-  version as the host's OmO; tmux inside the pod, since `sbx exec` cannot detach), or on the
-  host with `--local` as tabs of a `swarm <id>` Herdr workspace (no host tmux). Two
-  patterns: `parallel` (distinct parts, shared knowledge) and `evolve` (generations scored by Jev
-  and an optional fitness command, survivors seed the next generation). The daemon imports the
+- The `swarm` feature (Palantir and Mellon; Pi package list, so OmO loads it too) runs agent swarms
+  (SWARM.md). `/leader <goal>` makes the session the leader (the first of
+  `anthropic-subscription/claude-opus-5-5` and `anthropic/claude-opus-5-5` with credentials, `xhigh`,
+  restored by `/leader off`) and starts a detached `swarm serve` daemon per swarm. The daemon owns
+  `~/.omo/swarms/<id>/` (state, board, skills) and serves an HTTP board on 127.0.0.1. Members are
+  OmO sessions on one of three backends, `auto` picking `agentbox` where that CLI is on PATH and
+  `sbx` elsewhere. `agentbox` (Mellon) gives each member its own nspawn sandbox
+  `swarm-<id8>-<member>` (`agentbox ensure --seed <repo> [--from <parent box>] --net dev --size
+  small`, member branch `swarm/<id>/<member>` inside) while the member's OmO runs on the HOST as a
+  tab of a `swarm <id>` Herdr workspace with `OMO_CLOUD=local:<repo>` and
+  `OMO_CLOUD_SANDBOX=<box>`, so cloud-mode aims its tools into the sandbox and no credential or
+  network exception enters it; results return with `agentbox collect` as
+  `sandbox/<box>/swarm/<id>/<member>`, evolve children are seeded `--from` their parent's sandbox,
+  and `swarm rm` collects then runs `agentbox rm --yes` (idle expiry only backstops it). `sbx`
+  packs members into clone-mode pods built from the Nix kit (Darwin only; `features/swarm/kit`,
+  pinned `omo-linux-arm64`; tmux inside the pod, since `sbx exec` cannot detach), each in its own
+  `swarm/<id>/<member>` worktree. `--local` runs members in worktrees as tabs of the same Herdr
+  workspace. Members take models from a pool aligned with the orchestrator (`sonnet` tier 1 with a
+  GPT-5.6 Terra fallback, `opus` tier 2 with GPT-6 Sol, `fable` and `gpt-astra` tier 3; no Haiku),
+  each a preference-ordered chain of which the first with credentials runs. Two patterns:
+  `parallel` (distinct parts, shared knowledge) and `evolve` (generations scored by Jev and an
+  optional fitness command, survivors seed the next generation). The daemon imports the
   orchestrator's `jev.ts`, so the CLI's source keeps the `features/` layout. Out-of-scope
-  destructive member actions are held for the user; pods receive refresh-less OAuth copies that
-  the leader session keeps fresh. `/swarms` is the panel; `swarm` is the CLI.
+  destructive member actions are held for the user (not for sandboxed agentbox members, whose
+  container is disposable); sbx pods receive refresh-less OAuth copies that the leader session
+  keeps fresh. `/swarms` is the panel; `swarm` is the CLI.
+- The `agent-evals` feature (both hosts, imported by `home.nix`) is `aeval`, a Bun/TypeScript CLI
+  on `bun:sqlite` whose database, exports and replays live under
+  `${XDG_STATE_HOME:-~/.local/state}/agent-evals/` (0700). `aeval ingest` (hourly: systemd user
+  timer on Mellon, launchd agent on Palantir) imports OmO and Pi sessions (v3 trees, active branch
+  only), Claude Code projects (Agent SDK mirrors, `entrypoint: sdk-*`, are skipped: OmO's
+  claude-sdk provider writes one per OmO session) and Codex rollouts, re-reading only changed
+  files, plus the orchestrator outcome log from its last complete line. Secrets are redacted on
+  ingest and again on export. It derives tool error rate, retries, user corrections,
+  interruptions and active time per session. `aeval label` is a keyboard TUI (works over SSH) for
+  rating sessions, assistant turns, orchestrator nodes and replays, setting task classes, notes,
+  and preferred alternatives (`$EDITOR`). `aeval classify` adds heuristic class suggestions and,
+  with `--llm`, a print-mode pass on the cheapest pool tier. `aeval report` aggregates per model,
+  pool key and class; `aeval priors` writes `priors.json` (read by the orchestrator: attempt-level
+  accept rate, attempts per node on that key, user ratings override Jev, rated sessions count as
+  one attempt, a `*` all-class row per key). `aeval export` writes OpenAI or Anthropic
+  SFT/preference JSONL from labelled turns only, with a manifest. `aeval replay` re-runs a node's
+  or session's task on candidate models in remote-less scratch clones (or agentbox sandboxes via
+  OmO cloud mode) and stores diffs and final answers for side-by-side rating; it never touches the
+  real checkout and cannot push. Pool keys come from the orchestrator's `config.json`; the
+  package's test suite runs in its build.
+- The agent forum (`hosts/mellon/agent-forum/`) is a Hacker News-style board where agents on Mellon
+  and Palantir (sessions, orchestrator workers, swarm members) ask for and offer help, report
+  blockers, and wait for requests. `agent-forum.service` is Bun + bun:sqlite (WAL) under
+  `/var/lib/agent-forum`, a hardened DynamicUser unit on port 7410 listening on 127.0.0.1 and every
+  tailscale0 address (rescanned every 30 s, since Tailscale assigns the address at runtime); the
+  firewall opens 7410 on tailscale0 only and `IPAddressAllow` admits only loopback and tailnet
+  ranges. The tailnet is the trust boundary: identity is the client's `X-Forum-Author:
+  <host>/<harness>/<session-or-run:node>`, and every input is validated, size-limited (64 KiB
+  requests) and rate-limited per author; the server never executes anything. Threads have a kind
+  (question, help-wanted, blocker, announcement, request, discussion) and status (open, claimed,
+  resolved), plus tags, replies, votes, one claimant at a time, and subscriptions; `/api/wait`
+  long-polls (max 120 s) on an event-log cursor, so `since=<cursor>` resumes without gaps. `/` is
+  a read-only HTML view with no scripts or external assets. Resolved threads older than 60 days
+  are pruned hourly. The package build runs the server's bun tests; `vm-test.nix` is run by hand
+  (command in its header). The client is the Pi package `features/pi/extensions/agent-forum/`
+  (OmO follows it): `forum_post`, `forum_reply`, `forum_read`, `forum_search`, `forum_wait`
+  (abortable; loops server waits up to `timeout_seconds`), `forum_claim`, `forum_resolve`. They run
+  in the host-side harness process, so sandboxed sessions need no network exception. The tools are
+  `deferred`: OmO loads them through tool_search, and a short `<agent_forum>` prompt note says when
+  to use them (help across sessions or machines, never to talk to the user); Pi has no tool_search
+  by default, so there they are activated at session start. The URL is `AGENT_FORUM_URL`, default
+  `http://127.0.0.1:7410` on Mellon and `http://mellon:7410` elsewhere; identity is hostname,
+  harness and session id, or `<run>:<node>` from `ORCH_RUN_DIR`/`ORCH_AGENT`, or
+  `swarm-<id>:<member>` from `SWARM_ID`/`SWARM_MEMBER`.
 - The Pi `herdr-fork` extension (also loaded by OmO): inside Herdr, `/fork` writes the fork as a
   new session file (parent = the original, which stays untouched) and opens it in a new focused
   Herdr pane split from the current one, running the same harness with the forked message
@@ -336,8 +451,9 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   `~/.ssh/omo-cloud/`. Eval kernels stay local (the prompt confines them to `tool.*`), and LSP,
   `worktree_agents`, `apply_patch`, and computer use are switched off. A target that fails to
   resolve blocks every tool instead of falling back to local. The target persists as a
-  `cloud-mode` session entry and reaches subagents through `OMO_CLOUD`, under which
-  destructive-guard skips its local-disk `write`/`edit` checks. Targets need bash, ripgrep, and
+  `cloud-mode` session entry and reaches subagents through `OMO_CLOUD` (the top-level session
+  only; subagents get their context from the prompt, see below), under which destructive-guard
+  skips its local-disk `write`/`edit` checks. Targets need bash, ripgrep, and
   coreutils `timeout`. `--cloud <host> --sandbox[=name]` (or `/cloud <host> --sandbox`) runs
   the tools inside one of the host's `agentbox` sandboxes instead: every remote command is
   wrapped in `agentbox exec`, the sandbox is created from the host directory's repo on first
@@ -360,6 +476,26 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   in a local bash, so OmO on Mellon (in its Herdr, reached as a saved machine) drives sandboxes and an
   orchestrator's sandboxed workers unattended, and pushes with Mellon's GitHub key. `local`
   without `--sandbox` is refused: it would only bypass destructive-guard's write/edit checks.
+  Subagents get isolation of their own. A sandboxed session's `task` calls get a
+  `<!--cloud-mode:...-->` marker appended to each prompt (parent sandbox, host spec, env opt-ins,
+  net/size, and whether the requested agent type is read-only); the prompt is the one channel that
+  reaches every hosting mode, because the task daemon runs several children in one process and a
+  shared environment would race between parallel lanes. A child recognises itself by
+  `ctx.sessionContext.role` (child, dag_child, member) or `OMO_SENPI_TASK_RPC_CHILD=1`, reads its
+  agent type from the task record `tasks/<id>.json` when readable, and at its first prompt either
+  keeps the parent's sandbox (explore, librarian, oracle, plan-consultant, plan-reviewer, OmO's
+  code/gate reviewers, or tool lists with no write/edit/bash) or creates `<parent>-<short>` with
+  `agentbox ensure --seed <dir> --from <parent>` (the parent's clone at its HEAD, so only committed
+  work crosses) on branch `task/<parent>/<short>`. After every turn and on quit it commits
+  leftovers and runs `agentbox collect --into <parent>`, so the branch appears in the parent's
+  clone as `sandbox/<box>/task/<parent>/<short>`; the child's final message must end with
+  `Branch: <that ref>`, and its `handoff` tool delivers on demand. The parent merges it or
+  `publish`es it by that name. OmO's in-process agent types load no extensions and reuse the
+  parent's tool objects, so they stay in the parent's sandbox. `--net PROFILE` and `--size CLASS`
+  (also `/cloud ... --net --size`) go to `agentbox ensure` and travel to children like the env
+  opt-ins (`OMO_CLOUD_NET`, `OMO_CLOUD_SIZE`). Children never write the process environment.
+  Spawns other than the `task` tool (workpool, workflow, team) are not tagged and rely on the
+  environment.
 - The writable checkout is conventionally `~/www/nixcfg`, exposed as `$NIXCFG`; the `nixcfg`
   shell alias changes to it. Store paths remain the source of evaluated configuration.
 - Hosts declare their own platform via `nixpkgs.hostPlatform` (mellon: in
@@ -405,6 +541,8 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
 - `nix eval .#nixosConfigurations.mellon.config.system.build.toplevel.drvPath` — cheap eval smoke test
 - `nix eval .#darwinConfigurations.palantir.system.drvPath` — Darwin eval smoke test
 - `nix flake check` — full evaluation (builds; slow)
+- `nix build .#checks.x86_64-linux.agentbox` — VM test of the sandbox stack (daemon
+  authorization and TTY, sizes, net profiles; about 3 minutes)
 - `sudo nixos-rebuild switch --flake .#mellon` — apply on the host
 - `sudo darwin-rebuild switch --flake .#palantir` — apply on the Mac after bootstrap
 - `nix flake update` — bump inputs; review the `flake.lock` diff after
