@@ -21,6 +21,7 @@
     ./power.nix
     ./agents.nix
     ./sandboxes
+    ./agent-forum
     ./maintenance.nix
     ./1password.nix
     ./github-ssh.nix
