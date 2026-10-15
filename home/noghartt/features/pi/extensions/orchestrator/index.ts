@@ -1319,6 +1319,8 @@ function registerLeader(pi: ExtensionAPI) {
 		const upstream = spec.workdir ? r.workers.get(spec.workdir) : undefined;
 		const inHerdr = process.env.HERDR_ENV === "1";
 		const leader = leaderCloud();
+		// sandbox.ts drives agentbox over SSH; an exe.dev leader (`--cloud exe`) has no host to reach.
+		if (leader?.dest === "exe") throw new Error("orchestrator workers do not support exe.dev sandboxes yet; run the leader without --cloud exe");
 		const upstreamSandbox = !!(upstream?.box && upstream.isolated && upstream.cloud);
 		const input: PlacementInput = {
 			kind: spec.kind ?? "work",

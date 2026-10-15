@@ -26,7 +26,7 @@ import {
 } from "./child.ts";
 import { remoteGrep } from "./grep.ts";
 import { registerPublish } from "./publish.ts";
-import { editOps, exec, isLocal, LOCAL, ptyCommand, q, readOps, run, type Target, userBashOps, writeOps } from "./ssh.ts";
+import { editOps, EXE, exec, isLocal, LOCAL, ptyCommand, q, readOps, run, sandboxCli, type Target, userBashOps, writeOps } from "./ssh.ts";
 
 const ENTRY = "cloud-mode";
 // Child sessions (task subagents, in-process or spawned) inherit the resolved
@@ -87,6 +87,8 @@ async function resolveTarget(
 	// Without a sandbox `local` would only reroute tools onto this same disk, past
 	// destructive-guard's write/edit checks (they are skipped in cloud mode).
 	if (dest === LOCAL && !sandbox) throw new Error(`--cloud ${LOCAL} needs --sandbox: it runs tools in one of this machine's agentbox sandboxes.`);
+	if (dest === EXE && !sandbox) throw new Error(`--cloud ${EXE} needs --sandbox: it runs tools in an exe.dev VM (exebox).`);
+	const cli = sandboxCli(dest);
 	const home = (await exec({ dest }, `printf '%s' "$HOME"`)).toString();
 	const local = homedir();
 	// By default the same home-relative directory as here: ~/www/x -> remote ~/www/x.
@@ -105,7 +107,7 @@ async function resolveTarget(
 	// Creates the sandbox (cloning the directory's repo into it) or starts it,
 	// and prints where the host directory lives inside.
 	const box = sandbox === true ? defaultSandbox(hostCwd, sessionId) : sandbox;
-	const ensured = await run({ dest }, `agentbox ${ensureArgs(box, hostCwd, opts).map(q).join(" ")}`);
+	const ensured = await run({ dest }, `${cli} ${ensureArgs(box, hostCwd, opts).map(q).join(" ")}`);
 	if (ensured.code !== 0) throw new Error(`sandbox ${box} on ${dest}: ${ensured.stderr.trim() || `exit ${ensured.code}`}`);
 	const cwd = ensured.stdout.toString().trim().split("\n").pop() ?? "";
 	const expired = /expired; its branches are archived in (\S+)/.exec(ensured.stderr)?.[1];
@@ -116,16 +118,19 @@ async function resolveTarget(
 		if (switched.code !== 0) throw new Error(`sandbox ${box}: cannot switch to ${opts.branch}: ${switched.stderr.trim() || `exit ${switched.code}`}`);
 	}
 	// Given a list, it replaces the sandbox's opt-ins; either way the effective list is read back.
-	const opted = await run({ dest }, `agentbox env ${q(box)}${opts.env ? (opts.env.length ? ` ${opts.env.map(q).join(" ")}` : " --none") : ""}`);
+	const opted = await run({ dest }, `${cli} env ${q(box)}${opts.env ? (opts.env.length ? ` ${opts.env.map(q).join(" ")}` : " --none") : ""}`);
 	if (opted.code !== 0) throw new Error(`sandbox ${box} env: ${opted.stderr.trim() || `exit ${opted.code}`}`);
 	const effective = opted.stdout.toString().split("\n").filter(Boolean);
-	const [boxHome = "", served] = (await exec({ dest, box }, `printf '%s\n%s' "$HOME" "\${AGENTBOX_HOST-}"`)).toString().split("\n");
+	const [boxHome = "", served] = (await exec({ dest, box }, `printf '%s\n%s' "$HOME" "\${AGENTBOX_HOST-\${EXEBOX_URL-}}"`)).toString().split("\n");
 	return { target: { dest, box, home: boxHome, cwd, served: served || undefined }, spec: hostSpec, expired, env: effective };
 }
 
 function promptSection(target: Target, expired: string | undefined, env: string[], role: Role): string {
 	const child = role.kind === "child" ? role : undefined;
-	const where = target.box
+	const exe = target.dest === EXE;
+	const where = exe
+		? `the isolated exe.dev VM \`${target.box}\` (a KVM virtual machine at exe.dev with its own filesystem; this machine's files and services are out of reach, and outbound network is unrestricted)`
+		: target.box
 		? `the isolated sandbox \`${target.box}\` on ${isLocal(target) ? "this machine" : `host \`${target.dest}\``} (a systemd-nspawn container with its own filesystem and Nix store; the host's files and services are out of reach, and outbound network is internet-only)`
 		: `the remote host \`${target.dest}\``;
 	return [
@@ -139,7 +144,7 @@ function promptSection(target: Target, expired: string | undefined, env: string[
 			]
 			: target.box
 				? [
-						"Only committed history leaves the sandbox: commit your work on a branch; the user fetches branches out with `agentbox collect` on the host. Sandboxes left unused for days expire and are deleted.",
+						`Only committed history leaves the sandbox: commit your work on a branch; the user fetches branches out with \`${sandboxCli(target.dest)} collect\` on ${exe ? "their machine" : "the host"}. Sandboxes left unused for days expire and are deleted.`,
 						...(role.kind === "top"
 							? [
 									"Subagents that can write (task tool) each get their own sandbox, a clone of this one at its HEAD with only committed work: commit what they need to see before delegating. Their result names a branch `sandbox/<their box>/task/...` that lands in this checkout; merge it (`git merge`, `git cherry-pick`) or publish it. Read-only subagents (explore, librarian, oracle, plan reviewers) share this sandbox.",
@@ -149,7 +154,7 @@ function promptSection(target: Target, expired: string | undefined, env: string[
 				: []),
 		...(expired
 			? [
-					`This sandbox was just created anew because an earlier sandbox with the same name expired from disuse: anything that was not committed there is gone. Its committed branches are archived on the host (not in here) as git bundles in \`${expired}\`; tell the user before relying on earlier work.`,
+					`This sandbox was just created anew because an earlier sandbox with the same name expired from disuse: anything that was not committed there is gone. Its committed branches are archived on ${exe ? "the user's machine" : "the host"} (not in here) as git bundles in \`${expired}\`; tell the user before relying on earlier work.`,
 				]
 			: []),
 		...(target.box && env.length
@@ -160,7 +165,9 @@ function promptSection(target: Target, expired: string | undefined, env: string[
 					`To push a branch or open a draft PR, use the \`publish\` tool: it brings the branch back to the user's machine and pushes it over SSH with their keys (never a force push, never the default branch).${target.box ? " Credentials in the sandbox cannot push." : ""} Name branches by the repository's own conventions, and publish only when the task asks for a push or PR.`,
 				]
 			: ["Pushing is the parent's job: do not try to push or open pull requests."]),
-		...(target.served
+		...(target.served && exe
+			? [`Servers you start here on ports 3000-9999, listening on 0.0.0.0, are reachable from the user's browser at \`${target.served}:<port>\` (behind their exe.dev login); give the user that address.`]
+			: target.served
 			? [`Servers you start here are reachable from the user's devices at \`${target.served}:<port>\` when they listen on 0.0.0.0 (not 127.0.0.1); give the user that address.`]
 			: []),
 		"The `<cwd>` in environment_context is this session's local directory, not where you work.",
@@ -188,9 +195,9 @@ export default function cloudMode(pi: ExtensionAPI) {
 	let lastRefs = "";
 	let handoffChain: Promise<unknown> = Promise.resolve();
 
-	pi.registerFlag("cloud", { description: "Run this session's tools on a remote host: host or host:/path (`local` with --sandbox: this machine's sandboxes, no SSH)", type: "string" });
+	pi.registerFlag("cloud", { description: "Run this session's tools on a remote host: host or host:/path (`local` with --sandbox: this machine's sandboxes, no SSH; `exe` with --sandbox: an exe.dev VM)", type: "string" });
 	// Boolean for --help; the engine also hands over a value (--sandbox=name).
-	pi.registerFlag("sandbox", { description: "With --cloud: run tools in an isolated agentbox sandbox on that host (--sandbox=name to pick one)", type: "boolean" });
+	pi.registerFlag("sandbox", { description: "With --cloud: run tools in an isolated agentbox sandbox on that host, or an exe.dev VM with --cloud exe (--sandbox=name to pick one)", type: "boolean" });
 	pi.registerFlag("env", { description: "With --cloud --sandbox: catalog variables the sandbox gets (KEY,KEY; agentbox env)", type: "string" });
 	pi.registerFlag("net", { description: "With --cloud --sandbox: outbound network profile of the sandbox (none, dev, open; agentbox net)", type: "string" });
 	pi.registerFlag("size", { description: "With --cloud --sandbox: size class of the sandbox (small, medium, large; agentbox size)", type: "string" });
@@ -364,7 +371,7 @@ export default function cloudMode(pi: ExtensionAPI) {
 			if (committed.code !== 0) throw new Error(`committing leftovers in ${box}: ${committed.stderr.trim() || `exit ${committed.code}`}`);
 			const refs = committed.stdout.toString();
 			if (refs !== lastRefs) {
-				const collected = await run({ dest }, `agentbox collect ${q(box)} --into ${q(role.parent)}`);
+				const collected = await run({ dest }, `${sandboxCli(dest)} collect ${q(box)} --into ${q(role.parent)}`);
 				if (collected.code !== 0) throw new Error(`collecting ${box} into ${role.parent}: ${collected.stderr.trim() || `exit ${collected.code}`}`);
 				lastRefs = refs;
 			}

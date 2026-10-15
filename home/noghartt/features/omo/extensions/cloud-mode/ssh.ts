@@ -19,7 +19,12 @@ export type Host = { dest: string; box?: string };
 // Mellon through the 1Password agent. sudo inside `agentbox exec` resets the
 // environment, so nothing of this process's environment reaches the sandbox.
 export const LOCAL = "local";
-export const isLocal = (host: Host): boolean => host.dest === LOCAL;
+// exe.dev VMs: `exebox` takes agentbox's command contract and does the SSH to
+// the VM itself (exe.dev's pinned host key, its own connection sharing), so
+// the target is driven from this machine like `local`.
+export const EXE = "exe";
+export const isLocal = (host: Host): boolean => host.dest === LOCAL || host.dest === EXE;
+export const sandboxCli = (dest: string): string => (dest === EXE ? "exebox" : "agentbox");
 /** `served` is the sandbox's tailnet DNS name, for servers bound to 0.0.0.0. */
 export type Target = Host & { home: string; cwd: string; served?: string };
 
@@ -47,12 +52,15 @@ export function sshOptions(shared = true): string[] {
 
 export const remoteShell = (cwd: string, command: string): string => `cd ${q(cwd)} && exec bash -c ${q(command)}`;
 
-const onHost = (host: Host, command: string): string =>
-	host.box ? `agentbox exec ${q(host.box)} -- bash -c ${q(command)}` : command;
+// `exebox exec --own` gives a command that must die with its client an SSH connection of its own.
+const onHost = (host: Host, command: string, shared = true): string =>
+	host.box
+		? `${sandboxCli(host.dest)} exec ${!shared && host.dest === EXE ? "--own " : ""}${q(host.box)} -- bash -c ${q(command)}`
+		: command;
 
 const spawnArgs = (host: Host, command: string, shared = true): [string, string[]] =>
 	isLocal(host)
-		? ["bash", ["-c", onHost(host, command)]]
+		? ["bash", ["-c", onHost(host, command, shared)]]
 		: ["ssh", [...sshOptions(shared), "-T", "--", host.dest, onHost(host, command)]];
 
 export function run(

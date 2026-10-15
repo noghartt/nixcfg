@@ -8,6 +8,14 @@ whenever it feels like a checkpoint.
 
 ## [Unreleased]
 
+### Added
+
+- **home/noghartt/exebox**: exe.dev sandboxes next to agentbox, opt-in on Palantir and Mithril.
+  `exebox` gives exe.dev VMs agentbox's command contract (seed and collect as git bundles,
+  `--from` children, keep, idle reaping with archives), and `omo --cloud exe --sandbox` runs a
+  session's tools in one, subagent sandboxes and `publish` included. exe.dev cannot restrict
+  egress, so these sandboxes are always `open`; orchestrator and swarm support come later.
+
 ### Changed
 
 - **home/noghartt/omo**: Claude limit savings, to test. Routine category subagents (quick,

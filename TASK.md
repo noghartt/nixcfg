@@ -179,6 +179,9 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
       (`hosts/common/optional/macbook.nix` + `home/noghartt/features/darwin`)
 - [ ] Bootstrap on the M4 Pro (DARWIN.md): set the hostname, install Nix, opnix token, first `darwin-rebuild switch --flake .#mithril`
 - [ ] Check `omo-memwatch` limits against this Mac's RAM (tuned for Palantir's 24 GB)
+- [x] exe.dev sandboxes alongside agentbox: `exebox` CLI (agentbox contract, contract tests at build, hourly reaper) and `omo --cloud exe --sandbox` (Palantir and Mithril)
+- [ ] exe.dev: register this Mac's 1Password agent key (or expose the registered one; optional `~/.ssh/exe_dev.pub` pins it), then verify end to end: `exebox ensure t --seed <repo>` creates a VM with rg/timeout, `omo --cloud exe --sandbox` runs read/edit/grep/PTY bash and `kill_bash` stops remote processes, a write `task` lane gets `<box>-<short>` and delivers `sandbox/<box>/task/...`, `publish` pushes, `exebox rm` frees the VM; check whether `start`/`resize` exist as assumed
+- [ ] exe.dev for orchestrator workers (`workers.placement: "exe"`) and a swarm `exe` backend, once the cloud-mode path has run for a while
 - [ ] homebrew module if an application is unavailable or unsuitable through nixpkgs
 - [ ] Karabiner/Hammerspoon-style key remaps (ref: fersilva16 darwin modules)
 
