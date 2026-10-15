@@ -173,9 +173,12 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
       (fixed upstream on the current `nixpkgs-darwin` pin; the Linux gate is removed)
 - [ ] Decide whether arm64 macOS CI is worth the hosted-runner cost; until then validate on palantir
 
-## mithril — personal macbook (later)
+## mithril — personal macbook
 
-- [ ] Create the personal Darwin host using the shared palantir foundation
+- [x] Create the personal Darwin host using the shared palantir foundation
+      (`hosts/common/optional/macbook.nix` + `home/noghartt/features/darwin`)
+- [ ] Bootstrap on the M4 Pro (DARWIN.md): set the hostname, install Nix, opnix token, first `darwin-rebuild switch --flake .#mithril`
+- [ ] Check `omo-memwatch` limits against this Mac's RAM (tuned for Palantir's 24 GB)
 - [ ] homebrew module if an application is unavailable or unsuitable through nixpkgs
 - [ ] Karabiner/Hammerspoon-style key remaps (ref: fersilva16 darwin modules)
 

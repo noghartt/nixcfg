@@ -64,6 +64,11 @@ whenever it feels like a checkpoint.
 
 ### Added
 
+- **mithril**: personal M4 Pro MacBook Pro as a nix-darwin host with Palantir's full setup.
+  Both Macs now share `hosts/common/optional/macbook.nix` (casks, language defaults) and
+  `home/noghartt/features/darwin` (apps, agent stack, Ghostty launching Herdr); the swarm
+  Pi package is pinned last with `mkAfter` so the shared import keeps its load order.
+
 - **home/noghartt/leverage**: Leverage Computer CLI (`leverage` 0.2.108) on Palantir, pinned
   by hash in Nix instead of upstream's `~/.local/bin` installer, with its self-updater off.
 

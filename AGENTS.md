@@ -10,6 +10,7 @@ Layout follows [Misterio77/Foundry](https://github.com/Misterio77/Foundry).
 | --- | --- | --- |
 | `mellon` | NixOS desktop | AMD CPU, NVIDIA RTX 5070 Ti (Blackwell) |
 | `palantir` | nix-darwin work laptop | Apple M5 MacBook Pro |
+| `mithril` | nix-darwin personal laptop | Apple M4 Pro MacBook Pro |
 
 ## Layout
 
@@ -22,7 +23,7 @@ modules/home-manager/        custom HM options — OPTION-ONLY, auto-imported in
 overlays/                    shared nixpkgs overlays applied to every host
 hosts/common/global/         imported by every NixOS host (nix settings, HM wiring)
 hosts/common/darwin/         imported by every Darwin host (nix settings, HM wiring)
-hosts/common/optional/       opt-in system modules shared by 2+ hosts (created when needed)
+hosts/common/optional/       opt-in system modules shared by 2+ hosts (macbook.nix: casks, defaults for both Macs)
 hosts/<host>/                host specs, routed to mkNixOSConfig or mkDarwinConfig
 home/<user>/user.nix         cross-platform user factory (functor + overrideAttrs)
 home/<user>/home.nix         portable HM baseline imported on every host
@@ -30,11 +31,12 @@ home/<user>/features/cli/    shared shell/dev tools; agents/ holds Claude, Codex
 home/<user>/features/desktop/ portable desktop default + platform-specific modules
 home/<user>/features/herdr/  standalone Herdr feature: native HM settings + pinned package
 home/<user>/features/pi/     standalone Pi feature: settings + packaged extensions
-home/<user>/features/omo/    standalone OmO Native (`omo`) feature: own agent dir, model chains, memory guards (palantir, mellon)
+home/<user>/features/omo/    standalone OmO Native (`omo`) feature: own agent dir, model chains, memory guards (palantir, mithril, mellon)
 home/<user>/features/vscode/ standalone VS Code feature: marketplace extensions + live settings.json
-home/<user>/features/cua/    standalone Cua Driver feature: pinned app + daemon, skill and docs MCP for harnesses (palantir)
-home/<user>/features/leverage/ standalone Leverage Computer CLI: hash-pinned `stable` build, self-updater off; bump package.nix (palantir)
-home/<user>/features/swarm/  standalone agent-swarm feature: `swarm` CLI/daemon, /leader + /swarms extension, sbx kit on Darwin, agentbox backend (palantir, mellon)
+home/<user>/features/cua/    standalone Cua Driver feature: pinned app + daemon, skill and docs MCP for harnesses (palantir, mithril)
+home/<user>/features/darwin/  shared Mac composition (apps, agent stack, Ghostty+Herdr) imported by palantir.nix and mithril.nix
+home/<user>/features/leverage/ standalone Leverage Computer CLI: hash-pinned `stable` build, self-updater off; bump package.nix (palantir, mithril)
+home/<user>/features/swarm/  standalone agent-swarm feature: `swarm` CLI/daemon, /leader + /swarms extension, sbx kit on Darwin, agentbox backend (palantir, mithril, mellon)
 home/<user>/features/agent-evals/ standalone eval pipeline: `aeval` ingest/label/classify/report/priors/export/replay over session transcripts (both hosts)
 home/<user>/features/pi/extensions/agent-forum/  agent forum client tools (forum_*), loaded by Pi and OmO
 hosts/mellon/agent-forum/    agent forum service (Bun + SQLite) and its VM test
@@ -157,7 +159,7 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   baseline, while `<host>.nix` combines portable desktop features with the platform-specific
   modules it needs. `desktop/default.nix` must remain evaluable on both Linux and Darwin;
   platform-only integrations are imported directly by the corresponding host entrypoint.
-- Mellon and Palantir both launch Herdr directly from Ghostty; tmux and Pi's tmux helpers
+- Mellon and the Macs (Palantir, Mithril) launch Herdr directly from Ghostty; tmux and Pi's tmux helpers
   (`features/cli/tmux.nix`, `features/pi/tmux.nix`) are no longer imported anywhere.
   The Mac reaches Mellon's Herdr as a saved Herdr machine (`herdr machine add mellon`, Herdr
   client state, not Nix): Mellon's workspaces sit in the Mac's sidebar with the Mac's keys and
@@ -532,7 +534,7 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   `lanzaboote` (Secure Boot signing and systemd-boot integration),
   `nixpkgs-hardware` (independently locked kernel/firmware package set),
   `nixos-hardware` (upstream hardware quirks; Mellon uses its Blackwell module),
-  `nix-darwin` (Darwin system constructor for palantir),
+  `nix-darwin` (Darwin system constructor for palantir and mithril),
   `nix-homebrew` (declarative, pinned Homebrew installation on Darwin; casks are
   declared via nix-darwin's `homebrew` module with cleanup enabled),
   `brew-src` (temporary override of nix-homebrew's brew pin — cask definitions
@@ -551,12 +553,12 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   nixfmt 1.4 it mis-invokes nixfmt and has already corrupted a file once (moved an attribute
   between attrsets). Format per-file, then check `git diff`.
 - `nix eval .#nixosConfigurations.mellon.config.system.build.toplevel.drvPath` — cheap eval smoke test
-- `nix eval .#darwinConfigurations.palantir.system.drvPath` — Darwin eval smoke test
+- `nix eval .#darwinConfigurations.palantir.system.drvPath` — Darwin eval smoke test (same for `mithril`)
 - `nix flake check` — full evaluation (builds; slow)
 - `nix build .#checks.x86_64-linux.agentbox` — VM test of the sandbox stack (daemon
   authorization and TTY, sizes, net profiles; about 3 minutes)
 - `sudo nixos-rebuild switch --flake .#mellon` — apply on the host
-- `sudo darwin-rebuild switch --flake .#palantir` — apply on the Mac after bootstrap
+- `sudo darwin-rebuild switch --flake .#palantir` — apply on the Mac after bootstrap (`.#mithril` on the personal one)
 - `nix flake update` — bump inputs; review the `flake.lock` diff after
 - `nix flake update nixpkgs` — update userspace without moving mellon's hardware stack
 - `nix flake update nixpkgs-hardware` — deliberately update the hardware stack

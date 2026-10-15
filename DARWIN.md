@@ -56,3 +56,20 @@ nix-store --verify --check-contents
 Confirm Chrome, Firefox, Ghostty, and Claude Code launch, and that Spotlight can
 find the three graphical applications. Keep work identities, device serials,
 MDM identifiers, tokens, and employer-specific settings outside this repository.
+
+## Mithril (personal M4 Pro)
+
+`mithril` follows the same runbook with `.#mithril` in place of `.#palantir`;
+there is no MDM step. Both Macs share `hosts/common/optional/macbook.nix` and
+`home/noghartt/features/darwin`, so app and agent changes land on both.
+
+1. Setup Assistant with the `noghartt` account, then the Nix installer.
+2. Get the checkout to `~/www/nixcfg`: no SSH key exists yet, so copy it from
+   Palantir (AirDrop, `rsync`) or clone after 1Password's SSH agent is up.
+3. `nix eval .#darwinConfigurations.mithril.system.drvPath`, then
+   `sudo nix run nix-darwin/master#darwin-rebuild -- switch --flake .#mithril`.
+   Activation sets the hostname, ComputerName, and LocalHostName to `mithril`.
+4. Set the opnix token so Home Manager can resolve the git identity and shell
+   secrets: `opnix token -path ~/.config/opnix/token set && chmod 600 ~/.config/opnix/token`,
+   then switch again.
+5. Sign in to Tailscale so `mellon` resolves for cloud mode and the agent forum.

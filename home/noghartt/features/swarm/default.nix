@@ -63,6 +63,8 @@ let
   '';
 in
 {
-  programs.pi-coding-agent.settings.packages = [ swarmPackage ];
+  # Loads after the other Pi packages (destructive-guard included) whatever the
+  # import depth, so its member-side tool_call hold runs last on every host.
+  programs.pi-coding-agent.settings.packages = lib.mkAfter [ swarmPackage ];
   home.packages = [ swarm ];
 }
