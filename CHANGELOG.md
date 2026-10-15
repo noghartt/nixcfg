@@ -523,6 +523,8 @@ whenever it feels like a checkpoint.
   Claude models now use the native `anthropic` provider (`/login anthropic`). Under
   OmO the bridge's Claude Code query is aborted at every tool call, so sessions that
   inherited it failed with "Model returned an empty response twice".
+- **home/noghartt**: Leverage Computer CLI is no longer installed on Mithril; it stays on
+  Palantir.
 
 ## [2026-09-23]
 

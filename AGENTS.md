@@ -35,7 +35,7 @@ home/<user>/features/omo/    standalone OmO Native (`omo`) feature: own agent di
 home/<user>/features/vscode/ standalone VS Code feature: marketplace extensions + live settings.json
 home/<user>/features/cua/    standalone Cua Driver feature: pinned app + daemon, skill and docs MCP for harnesses (palantir, mithril)
 home/<user>/features/darwin/  shared Mac composition (apps, agent stack, Ghostty+Herdr) imported by palantir.nix and mithril.nix
-home/<user>/features/leverage/ standalone Leverage Computer CLI: hash-pinned `stable` build, self-updater off; bump package.nix (palantir, mithril)
+home/<user>/features/leverage/ standalone Leverage Computer CLI: hash-pinned `stable` build, self-updater off; bump package.nix (palantir)
 home/<user>/features/swarm/  standalone agent-swarm feature: `swarm` CLI/daemon, /leader + /swarms extension, sbx kit on Darwin, agentbox backend (palantir, mithril, mellon)
 home/<user>/features/agent-evals/ standalone eval pipeline: `aeval` ingest/label/classify/report/priors/export/replay over session transcripts (both hosts)
 home/<user>/features/pi/extensions/agent-forum/  agent forum client tools (forum_*), loaded by Pi and OmO
