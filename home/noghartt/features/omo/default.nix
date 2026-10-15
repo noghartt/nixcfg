@@ -85,9 +85,13 @@ let
   # serialized like OmO's own writes (no trailing newline).
   # codemode's process-isolated eval kernel (codemode.nix) spawns `bun` from
   # PATH; without it eval only worked when started inside a direnv dev shell.
+  # Claude Code writes the subscription cache with a 1h TTL (2x input price),
+  # but session logs showed reads after 5+ idle minutes missing ~85% of the
+  # time anyway; 5m writes cost 1.25x. Experiment: export =1h to compare.
   omo = pkgs.writeShellScriptBin "omo" ''
     ${agentPath.prependPath}
     export PATH="${pkgs.bun}/bin:$PATH"
+    export CLAUDE_CODE_PROMPT_CACHE_TTL="''${CLAUDE_CODE_PROMPT_CACHE_TTL:-5m}"
     export OMO_CODING_AGENT_DIR="''${OMO_CODING_AGENT_DIR:-$HOME/.omo/agent}"
     settings="$OMO_CODING_AGENT_DIR/settings.json"
     if [ -f "$settings" ] && [ ! -L "$settings" ]; then

@@ -208,10 +208,16 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   image overrides; `anthropic` has no login and made new sessions pick ChatGPT
   instead. OmO saves every model or thinking switch as the global default, so the
   `omo` launcher restores Opus 5.5 at `high` before each new session; resumed
-  sessions keep their own model.
+  sessions keep their own model. The baseline also compacts Opus 5.5 and Sonnet 5.5 sessions at
+  ~250k (`compaction.modelOverrides` reserve of 750k on the 1M window; the default reserve let
+  them grow to ~770k uncompacted), and the launcher defaults `CLAUDE_CODE_PROMPT_CACHE_TTL` to
+  `5m` (an experiment: 1h writes cost 2x yet missed after ~5 idle minutes; export `1h` to compare).
   Claude Haiku 4.5 is not used anywhere (catalogs, chains, orchestrator pool). `session-model`
-  rewrites every category `task` spawn (in `tool_call`) into one pinned to the session's current
-  model and thinking level, because OmO resolves categories only from `omo.jsonc` (loaded once
+  rewrites every category `task` spawn (in `tool_call`) into a model-pinned one: while the session
+  is on `anthropic-subscription`, the routine lanes (quick and writing at `low`, deep-low and
+  unspecified-low at `medium`, unspecified-high and visual-engineering at `high`) run on Sonnet
+  5.5 so delegated work spares the Opus limit, and every other lane (or any lane off the Claude
+  subscription) gets the session's current model and thinking level, because OmO resolves categories only from `omo.jsonc` (loaded once
   per process) and rejects `category` + `model`; the child gets a one-line lane note instead of
   OmO's category prompt, tools, and chain fallback, so the category chains below only apply
   when the session has no model. `subagent_type` spawns keep their agent chains. `~/.omo/omo.jsonc` is a read-only

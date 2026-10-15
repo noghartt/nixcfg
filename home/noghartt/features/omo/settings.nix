@@ -30,6 +30,24 @@ let
       ;
     # OmO-only: the rotating startup and working-status tips.
     tips = false;
+    # Compaction fires past contextWindow - reserveTokens, so on the 1M Claude
+    # models the default reserve let sessions grow to ~770k without compacting
+    # once; every request re-read that and every cache miss rewrote it at 2x.
+    # This reserve compacts them at ~250k.
+    compaction = {
+      enabled = true;
+      reserveTokens = 16384;
+      keepRecentTokens = 20000;
+      modelOverrides =
+        lib.genAttrs
+          [
+            "anthropic-subscription/claude-opus-5-5"
+            "anthropic-subscription/claude-sonnet-5-5"
+          ]
+          (_: {
+            reserveTokens = 750000;
+          });
+    };
     # Keep the interactive picker on the five current Claude and ChatGPT models.
     # Claude Haiku 4.5 is left out of the catalog: it is a generation behind.
     defaultProvider = startupModel.provider;

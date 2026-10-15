@@ -10,6 +10,12 @@ whenever it feels like a checkpoint.
 
 ### Changed
 
+- **home/noghartt/omo**: Claude limit savings, to test. Routine category subagents (quick,
+  writing, deep-low, unspecified-low/high, visual-engineering) run on Sonnet 5.5 while the session
+  is on the Claude subscription; Opus 5.5 and Sonnet 5.5 sessions compact at ~250k instead of
+  ~984k; the `omo` launcher defaults `CLAUDE_CODE_PROMPT_CACHE_TTL=5m`, since 1h cache writes
+  cost 2x but monobloco logs showed them missing after ~5 idle minutes anyway.
+
 - **docs**: Mellon's Herdr is reached from the Mac as a saved Herdr machine
   (`herdr machine add mellon`) instead of an SSH login running Herdr, whose keys the Mac's
   Herdr caught first. What runs there lives in Mellon's Herdr server, so an orchestrator
