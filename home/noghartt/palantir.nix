@@ -12,6 +12,7 @@
     ./features/desktop/firefox.nix
     ./features/desktop/ghostty.nix
     ./features/desktop/obsidian.nix
+    ./features/leverage
     ./features/omo
     ./features/swarm
     ./features/vscode

@@ -64,6 +64,9 @@ whenever it feels like a checkpoint.
 
 ### Added
 
+- **home/noghartt/leverage**: Leverage Computer CLI (`leverage` 0.2.108) on Palantir, pinned
+  by hash in Nix instead of upstream's `~/.local/bin` installer, with its self-updater off.
+
 - **home/noghartt/omo**: `session-model` extension. Category subagents (`task` with
   `category`) now run on the parent session's current model and thinking level, following
   `/model` switches, instead of the category chain in `omo.jsonc`. Each category spawn is

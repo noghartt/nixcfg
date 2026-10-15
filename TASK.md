@@ -111,6 +111,8 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [ ] Tune `omo-memwatch` limits (4 GB warn / 12 GB stop) from its first real snapshots
 - [x] Pi/OmO statusline: badge-free footer and fixed right sidebar column (fullscreen TUI) with title, context, subagents, orchestrator workers, a tokens-per-turn sparkline, Claude plan limit meters with pace words and run-out time, and a Todo section mirroring OmO's todo list
 - [x] Cua Driver 0.33.1 on Palantir: pinned app + launchd daemon, skill for Pi/Claude/Codex (not OmO), Cua docs MCP
+- [x] Leverage Computer CLI 0.2.108 on Palantir: hash-pinned binary, self-updater off
+- [ ] Leverage onboarding: `leverage login`, then `leverage agent docs onboard` (scan, approve, apply, open the activation URL)
 - [x] Agent PATH `gh` shim refusing GitHub comments/reviews for every harness (Pi, pi-durable, OmO, Claude Code, Codex)
 - [x] Global `.omo/` git ignore; quiet Pi/OmO startup, condensed changelog, resume-hint exit, OmO tips off
 - [x] OmO-only extension packages auto-discovered from `features/omo/extensions/`
