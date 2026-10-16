@@ -7,7 +7,7 @@
   ...
 }:
 let
-  version = "5.1.28";
+  version = "5.1.33";
 
   # Every new session starts here: settings.nix seeds it, the launcher restores it.
   startupModel = {
@@ -20,13 +20,13 @@ let
   releases = {
     aarch64-darwin = {
       asset = "omo-darwin-arm64";
-      hash = "sha256-2s5s1cgQZ0Tw9cOrajVslCcqaGFcMV7fjL2Io+5EECw=";
+      hash = "sha256-I5BM5XHNsZXoQIG6zES3dwNDAcV5UDlyzlZ6+yHwMBE=";
     };
     # A generic glibc build: it runs on NixOS through nix-ld (mellon's
     # agents.nix). Patching its interpreter would risk the appended payload.
     x86_64-linux = {
       asset = "omo-linux-x64";
-      hash = "sha256-oNO209vMY80DtHXpTlqH3XPPk4Cx4052CgDRpZaLG/c=";
+      hash = "sha256-iTf8kZ1Mullz1xtZDE2zmfJh3e7Y2r6fPrYi3GLOIiA=";
     };
   };
   release = releases.${pkgs.stdenv.hostPlatform.system};

@@ -4,11 +4,11 @@
 { lib, pkgs, ... }:
 let
   # Keep in step with features/omo: pods run the same OmO release as the host.
-  omoVersion = "5.1.28";
+  omoVersion = "5.1.33";
 
   omoLinux = pkgs.fetchurl {
     url = "https://github.com/code-yeongyu/oh-my-openagent/releases/download/v${omoVersion}/omo-linux-arm64";
-    hash = "sha256-a7ZTAf56k7EGrs0pXDzZRAbGfvl3dOV+E6JMgYFTmSU=";
+    hash = "sha256-bVrd6AaNnIGdLrT/ts9vuRwgYqu6UspKJBjxnxG308A=";
   };
 
   packageFiles = lib.fileset.unions [

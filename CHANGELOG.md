@@ -18,6 +18,13 @@ whenever it feels like a checkpoint.
 
 ### Changed
 
+- **home/noghartt/omo**: OmO 5.1.28 -> 5.1.33, on the host and in swarm pods. 5.1.28 refused
+  every MCP call in a running session after any config reload (a Home Manager switch or another
+  non-routine `settings.json` write) with "MCP session or server configuration was replaced",
+  until the session restarted; 5.1.33 no longer ties a session's MCP tools to the config
+  object that was current when they were registered. The builtin `unspecified-low` chain now
+  leads with `gpt-6.1-sol` on the ChatGPT lane, which is not in the picker catalog; this file
+  does not override that category, and `session-model` pins it on the Claude subscription.
 - **home/noghartt/omo**: Claude limit savings, to test. Routine category subagents (quick,
   writing, deep-low, unspecified-low/high, visual-engineering) run on Sonnet 5.5 while the session
   is on the Claude subscription; Opus 5.5 and Sonnet 5.5 sessions compact at ~250k instead of
