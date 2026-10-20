@@ -17,6 +17,16 @@ whenever it feels like a checkpoint.
   session's tools in one, subagent sandboxes and `publish` included. exe.dev cannot restrict
   egress, so these sandboxes are always `open`; orchestrator and swarm support come later.
 
+### Fixed
+
+- **home/noghartt/omo**: new OmO sessions start at `high` again instead of `xhigh`. OmO 5.1.x
+  keeps per-model thinking memory in `state.json`, where it outranks `defaultThinkingLevel`, and
+  the launcher was still resetting the old `settings.json` key, so one Opus switch to `xhigh`
+  (the orchestrator leader) became every session's start. Subagents are capped at `high` too:
+  `session-model` lanes that inherit the session's level, every `omo.jsonc` chain (`max` before,
+  plus a new `plan-reviewer` override of the builtin `xhigh` chain), and swarm member picks.
+  Only the orchestrator and swarm leaders run at `xhigh`.
+
 ### Changed
 
 - **home/noghartt/cli**: interactive zsh starts in ~0.2s again instead of ~5s. The

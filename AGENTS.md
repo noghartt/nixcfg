@@ -211,8 +211,10 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   `anthropic-subscription` provider throughout startup, picker, task chains, and
   image overrides; `anthropic` has no login and made new sessions pick ChatGPT
   instead. OmO saves every model or thinking switch as the global default, so the
-  `omo` launcher restores Opus 5.5 at `high` before each new session; resumed
-  sessions keep their own model. The baseline also compacts Opus 5.5 and Sonnet 5.5 sessions at
+  `omo` launcher restores Opus 5.5 at `high` before each new session (the default in
+  `settings.json` and Opus's per-model thinking memory in `state.json`, which outranks the
+  default); resumed sessions keep their own model. Only the orchestrator and swarm leaders run
+  above `high`: subagent chains, inherited lanes, and swarm members are capped there. The baseline also compacts Opus 5.5 and Sonnet 5.5 sessions at
   ~250k (`compaction.modelOverrides` reserve of 750k on the 1M window; the default reserve let
   them grow to ~770k uncompacted), and the launcher defaults `CLAUDE_CODE_PROMPT_CACHE_TTL` to
   `5m` (an experiment: 1h writes cost 2x yet missed after ~5 idle minutes; export `1h` to compare).
@@ -221,7 +223,7 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   is on `anthropic-subscription`, the routine lanes (quick and writing at `low`, deep-low and
   unspecified-low at `medium`, unspecified-high and visual-engineering at `high`) run on Sonnet
   5.5 so delegated work spares the Opus limit, and every other lane (or any lane off the Claude
-  subscription) gets the session's current model and thinking level, because OmO resolves categories only from `omo.jsonc` (loaded once
+  subscription) gets the session's current model and thinking level (capped at `high`), because OmO resolves categories only from `omo.jsonc` (loaded once
   per process) and rejects `category` + `model`; the child gets a one-line lane note instead of
   OmO's category prompt, tools, and chain fallback, so the category chains below only apply
   when the session has no model. `subagent_type` spawns keep their agent chains. `~/.omo/omo.jsonc` is a read-only
