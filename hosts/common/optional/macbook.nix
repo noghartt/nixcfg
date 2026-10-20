@@ -6,6 +6,7 @@
   # Apps unavailable or unsuitable through nixpkgs on Darwin.
   homebrew.casks = [
     "1password"
+    "claude"
     "cloudflare-warp"
     "discord"
     "granola"

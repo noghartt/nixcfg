@@ -10,6 +10,7 @@ whenever it feels like a checkpoint.
 
 ### Added
 
+- **hosts/common**: the Claude desktop app (`claude` cask) on both MacBooks.
 - **home/noghartt/exebox**: exe.dev sandboxes next to agentbox, opt-in on Palantir and Mithril.
   `exebox` gives exe.dev VMs agentbox's command contract (seed and collect as git bundles,
   `--from` children, keep, idle reaping with archives), and `omo --cloud exe --sandbox` runs a
