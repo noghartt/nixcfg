@@ -33,6 +33,12 @@ whenever it feels like a checkpoint.
   1Password secrets resolved into the shell env (`opnix env`, ~4s per call) are cached for 4h
   in a private per-user runtime dir and refreshed in the background once stale; only the
   first shell after login, or after the env var list changes, waits for 1Password.
+- **home/noghartt/pi**: orchestrator workers default to Sonnet 5.5; Jev moves a node to Opus 5.5,
+  now at `medium` instead of `high`, only when it confidently rates the work complex (an unsure
+  pick stays on Sonnet instead of taking the higher tier). Fable 5.1 and GPT-6 Astra are no
+  longer Jev picks or escalation steps: the leader assigns them to specific nodes through
+  `orch_spawn`'s new `model` field. The leader stays on Opus 5.5 at `xhigh` and plain OmO
+  sessions on Opus 5.5 at `high`.
 - **home/noghartt/omo**: OmO 5.1.28 -> 5.1.33, on the host and in swarm pods. 5.1.28 refused
   every MCP call in a running session after any config reload (a Home Manager switch or another
   non-routine `settings.json` write) with "MCP session or server configuration was replaced",

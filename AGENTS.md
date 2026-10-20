@@ -244,10 +244,12 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   or `/orchestrate <goal>` sets the leader model (default Opus 5.5 at `xhigh`, the first of
   `leader.models` with credentials, `ORCH_LEADER_MODEL` overrides), and Jev (TypeSafe,
   `TYPESAFE_API_KEY`) decides control flow — strategy (solo/fan-out/mesh), each worker's model
-  from the pool in `orchestrator/config.json`, and accept/retry/escalate gating. The pool has
-  three tiers: easier work on Sonnet 5.5 (GPT-5.6 Terra fallback), complex work on Opus 5.5 at
-  `high` (GPT-6 Sol fallback), and orchestration-level or hardest work on Fable 5.1 or GPT-6
-  Astra. An entry's `spill` models take a pick when its provider's limits reach `spillAt` (85%)
+  from the pool in `orchestrator/config.json`, and accept/retry/escalate gating. Workers run on
+  Sonnet 5.5 (GPT-5.6 Terra fallback) by default; Jev moves a node to Opus 5.5 at `medium`
+  (GPT-6 Sol fallback) only when it confidently rates the work complex, and an unsure pick stays
+  on Sonnet. Fable 5.1 and GPT-6 Astra are `onRequest` specialists: Jev never picks them and
+  escalation never reaches them; the leader assigns one to a node with `orch_spawn`'s `model`
+  for the specific part that needs it, alongside the other nodes. An entry's `spill` models take a pick when its provider's limits reach `spillAt` (85%)
   and the other provider's do not, read from the statusline's shared limits cache. Acceptance is a list of criteria that Jev judges one by one against
   evidence the orchestrator collects itself (files changed since spawn, diff stat, commits, the
   worker's tool calls), not the report alone. A clear miss retries with the failing criteria, on
