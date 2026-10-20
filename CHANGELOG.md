@@ -19,6 +19,10 @@ whenever it feels like a checkpoint.
 
 ### Changed
 
+- **home/noghartt/cli**: interactive zsh starts in ~0.2s again instead of ~5s. The
+  1Password secrets resolved into the shell env (`opnix env`, ~4s per call) are cached for 4h
+  in a private per-user runtime dir and refreshed in the background once stale; only the
+  first shell after login, or after the env var list changes, waits for 1Password.
 - **home/noghartt/omo**: OmO 5.1.28 -> 5.1.33, on the host and in swarm pods. 5.1.28 refused
   every MCP call in a running session after any config reload (a Home Manager switch or another
   non-routine `settings.json` write) with "MCP session or server configuration was replaced",

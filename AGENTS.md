@@ -633,8 +633,10 @@ Patterns here are adapted from:
   outside the repo (`~/.config/opnix/token` for HM, `/etc/opnix-token` for NixOS,
   provisioned with `opnix token set`); never commit it.
   Shell environment secrets are declared by reference in
-  `home/noghartt/features/cli/secrets-env.nix` and resolved at interactive zsh startup.
-  New mappings require configuration activation and a new shell; adding a vault
+  `home/noghartt/features/cli/secrets-env.nix` and resolved at interactive zsh startup,
+  cached for 4h in a 0700 per-user runtime dir (`$XDG_RUNTIME_DIR` or `$TMPDIR`,
+  `opnix-env-$UID/`) because each `opnix env` call takes ~4s; stale values are served
+  while a background refresh runs. New mappings require configuration activation and a new shell; adding a vault
   item alone does not export it. Never resolve secret values during Nix evaluation.
 - No personal data in the repo: no real names, emails, or other PII in any file
   (git identity, SSH config with personal hosts, etc. stay local).
