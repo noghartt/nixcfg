@@ -33,12 +33,17 @@ function lanePin(ctx: ExtensionContext, category: string, sessionModel: string):
 	return thinking && ctx.model?.provider === SUBSCRIPTION ? `${SONNET}:${thinking}` : sessionModel;
 }
 
+// Only the orchestrator leader runs above high; a child of a leader (or of a
+// session left at xhigh) inherits its model but not that level.
+const ABOVE_HIGH = new Set(["xhigh", "max"]);
+
 // `provider/model[:thinking]`, the pin format the task tool parses.
 function sessionPin(ctx: ExtensionContext, thinking: string): string | undefined {
 	const model = ctx.model;
 	if (!model) return undefined;
 	const base = `${model.provider}/${model.id}`;
-	return model.reasoning && thinking !== "off" ? `${base}:${thinking}` : base;
+	const level = ABOVE_HIGH.has(thinking) ? "high" : thinking;
+	return model.reasoning && level !== "off" ? `${base}:${level}` : base;
 }
 
 function lane(category: string, prompt: unknown): unknown {

@@ -66,7 +66,8 @@ interface Config {
 	maxFixRounds: number;
 	// Limit percent (any window) at which a pick spills to its entry's other-provider models.
 	spillAt: number;
-	pool: (PoolEntry & { spill?: string[] })[];
+	// onRequest entries are never Jev's pick nor an escalation step; the leader assigns them per node.
+	pool: (PoolEntry & { spill?: string[]; onRequest?: boolean })[];
 	workers: WorkersConfig;
 	consultant: ConsultantConfig;
 	// A plan of at least this many nodes gets an auditor's opinion before its first node starts.
@@ -157,6 +158,8 @@ interface NodeSpec {
 	fixes?: string;
 	// Another repository (absolute path; on the cloud host in cloud mode) instead of the leader's.
 	repo?: string;
+	// An onRequest pool key the leader chose instead of Jev's pick.
+	model?: string;
 }
 // A graph node that has no process yet: waiting on dependencies or capacity, or never started.
 interface PendingNode {
@@ -480,7 +483,7 @@ function registerWorker(pi: ExtensionAPI) {
 }
 
 interface Resolved {
-	entry: PoolEntry;
+	entry: Config["pool"][number];
 	ref: string;
 	// The entry's first other-provider model with credentials.
 	spill?: string;
@@ -701,7 +704,7 @@ function registerLeader(pi: ExtensionAPI) {
 
 	const escalation = (current: Resolved, pool: Resolved[]): Resolved => {
 		const provider = splitRef(current.ref).provider;
-		const higher = pool.filter((option) => option.entry.tier > current.entry.tier);
+		const higher = pool.filter((option) => !option.entry.onRequest && option.entry.tier > current.entry.tier);
 		const minTier = Math.min(...higher.map((option) => option.entry.tier));
 		const next = higher.filter((option) => option.entry.tier === minTier);
 		return next.find((option) => splitRef(option.ref).provider === provider) ?? next[0] ?? current;
@@ -872,13 +875,22 @@ function registerLeader(pi: ExtensionAPI) {
 		return { strategy, note, decision };
 	};
 
+	// Workers run on the fallback entry unless Jev confidently rates the node as needing another
+	// automatic entry; onRequest entries run only where the leader names them.
 	const pickModel = async (
 		task: string,
 		acceptance: string,
 		pool: Resolved[],
+		requested?: string,
 		signal?: AbortSignal,
 	): Promise<{ choice: Resolved; note: string }> => {
-		const fallback = pool.find((option) => option.entry.key === config.fallbackWorker) ?? pool[0];
+		const assigned = requested ? pool.find((option) => option.entry.key === requested) : undefined;
+		if (assigned) {
+			const spilled = spillOver(assigned);
+			return { choice: spilled.choice, note: `Leader assigned ${assigned.entry.key}.${spilled.note}` };
+		}
+		const auto = pool.filter((option) => !option.entry.onRequest);
+		const fallback = auto.find((option) => option.entry.key === config.fallbackWorker) ?? auto[0] ?? pool[0];
 		if (!jevApiKey()) {
 			const spilled = spillOver(fallback);
 			return { choice: spilled.choice, note: `Jev unavailable (TYPESAFE_API_KEY unset); fallback model.${spilled.note}` };
@@ -888,19 +900,23 @@ function registerLeader(pi: ExtensionAPI) {
 			const priors = await readPriors();
 			decision = await decideModel(
 				config.jev,
-				pool.map((option) => option.entry),
+				auto.map((option) => option.entry),
 				{ task, acceptance, strategy: run!.strategy },
 				signal,
-				priors && summarizePriors(priors, pool.map((option) => option.entry.key)),
+				priors && summarizePriors(priors, auto.map((option) => option.entry.key)),
 			);
 		} catch (error) {
 			const spilled = spillOver(fallback);
 			return { choice: spilled.choice, note: `Jev failed (${(error as Error).message}); fallback model.${spilled.note}` };
 		}
-		const picked = pool.find((option) => option.entry.key === decision.key) ?? fallback;
+		// An unsure Jev means the default, not decideModel's higher-tier tiebreak (which the swarm keeps).
+		const confident = decision.confidence >= config.jev.modelConfidence;
+		const picked = (confident ? auto.find((option) => option.entry.key === decision.key) : undefined) ?? fallback;
 		const { choice, note: spillNote } = spillOver(picked);
-		const unsure = decision.escalated ? " Unsure between its top two, so the higher tier won." : "";
-		return { choice, note: `Jev chose ${choice.entry.key} (confidence ${pct(decision.confidence)}).${unsure}${spillNote}` };
+		const verdict = confident
+			? `Jev chose ${choice.entry.key} (confidence ${pct(decision.confidence)}).`
+			: `Jev was unsure (confidence ${pct(decision.confidence)}), so the default ${choice.entry.key} runs it.`;
+		return { choice, note: `${verdict}${spillNote}` };
 	};
 
 	// Catalog variables a worker's sandbox may get: in cloud mode the leader's own opt-ins,
@@ -1330,7 +1346,7 @@ function registerLeader(pi: ExtensionAPI) {
 			mode: placementMode.mode,
 		};
 		const [{ choice, note }, placed] = await Promise.all([
-			pickModel(spec.task, spec.acceptance, pool, signal),
+			pickModel(spec.task, spec.acceptance, pool, spec.model, signal),
 			pickPlacement(spec, input, signal),
 		]);
 
@@ -1642,9 +1658,14 @@ function registerLeader(pi: ExtensionAPI) {
 			"Split the goal into independent subtasks and spawn one worker per subtask. Workers cannot talk to each other, only to you.",
 		mesh: "Split the goal into parallel subtasks that may share interfaces or files. Workers coordinate directly through mesh messages and the shared board.",
 	};
+	const SPECIALISTS = config.pool
+		.filter((entry) => entry.onRequest)
+		.map((entry) => `"${entry.key}" (${entry.use})`)
+		.join("; ");
 	const LEAD_GUIDE = [
 		"How to lead:",
 		"- Give each worker a self-contained task and a list of concrete, checkable acceptance criteria. Jev picks each worker's model and judges every criterion separately against the checkout's real changes and the commands the worker ran.",
+		`- Workers run on ${config.fallbackWorker} unless Jev confidently rates the node complex enough for a stronger model. For a specific part that needs a specialist, set that node's \`model\` so it works alongside the rest: ${SPECIALISTS}.`,
 		"- A clear miss is retried with the failing criteria (same model first, a stronger one on a repeat miss). A borderline result after a retry, or a blocked worker, becomes needs_leader and its dependents wait: decide it with orch_verdict, or reopen it with orch_send. orch_verdict also overrules a Jev rejection.",
 		"- Record shared decisions with mesh_note before spawning, so workers start aligned.",
 		"- Call orch_wait to block until workers finish or one of them messages you; answer with orch_send. orch_send to a finished worker reopens it with new instructions.",
@@ -1844,7 +1865,7 @@ function registerLeader(pi: ExtensionAPI) {
 		name: "orch_spawn",
 		label: "Orchestrator: Spawn Workers",
 		description:
-			"Add a graph of worker nodes to the current orchestration. Nodes without unmet `after` dependencies start now (up to the concurrency limit); the rest start as their dependencies are accepted. Jev picks each node's model and gates work nodes; review nodes decide by their VERDICT line. Returns immediately; use orch_wait for results.",
+			"Add a graph of worker nodes to the current orchestration. Nodes without unmet `after` dependencies start now (up to the concurrency limit); the rest start as their dependencies are accepted. Jev picks each node's model (unless `model` names a specialist) and gates work nodes; review nodes decide by their VERDICT line. Returns immediately; use orch_wait for results.",
 		promptSnippet: "Spawn a dependency graph of Jev-routed worker and review nodes",
 		defaultActive: false,
 		parameters: Type.Object({
@@ -1879,6 +1900,11 @@ function registerLeader(pi: ExtensionAPI) {
 						Type.String({
 							description:
 								"Absolute path of a different Git repository this node works on (on the sandbox host in cloud mode), branched from its own HEAD; default: the leader's checkout. Not with `workdir`.",
+						}),
+					),
+					model: Type.Optional(
+						Type.String({
+							description: `A specialist for this node instead of Jev's pick, only where its strength is needed: ${SPECIALISTS}`,
 						}),
 					),
 				}),
@@ -1946,6 +1972,13 @@ function registerLeader(pi: ExtensionAPI) {
 
 			if (r.pool.length === 0) r.pool = resolvePool(ctx);
 			if (r.pool.length === 0) throw new Error("No model in the orchestrator pool has credentials.");
+			const specialists = r.pool.filter((option) => option.entry.onRequest).map((option) => option.entry.key);
+			const misassigned = specs.find((spec) => spec.model !== undefined && !specialists.includes(spec.model));
+			if (misassigned) {
+				throw new Error(
+					`${misassigned.name}: model "${misassigned.model}" is not a specialist with credentials (${specialists.join(", ") || "none available"}); omit it to let Jev pick.`,
+				);
+			}
 
 			// A large plan is audited once, before anything starts, so the leader can still change it.
 			let auditNote: string | undefined;

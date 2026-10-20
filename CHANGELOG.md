@@ -10,14 +10,46 @@ whenever it feels like a checkpoint.
 
 ### Added
 
+- **hosts/common**: the Claude desktop app (`claude` cask) on both MacBooks.
 - **home/noghartt/exebox**: exe.dev sandboxes next to agentbox, opt-in on Palantir and Mithril.
   `exebox` gives exe.dev VMs agentbox's command contract (seed and collect as git bundles,
   `--from` children, keep, idle reaping with archives), and `omo --cloud exe --sandbox` runs a
   session's tools in one, subagent sandboxes and `publish` included. exe.dev cannot restrict
   egress, so these sandboxes are always `open`; orchestrator and swarm support come later.
 
+### Fixed
+
+- **home/noghartt/omo**: new OmO sessions start at `high` again instead of `xhigh`. OmO 5.1.x
+  keeps per-model thinking memory in `state.json`, where it outranks `defaultThinkingLevel`, and
+  the launcher was still resetting the old `settings.json` key, so one Opus switch to `xhigh`
+  (the orchestrator leader) became every session's start. Subagents are capped at `high` too:
+  `session-model` lanes that inherit the session's level, every `omo.jsonc` chain (`max` before,
+  plus a new `plan-reviewer` override of the builtin `xhigh` chain), and swarm member picks.
+  Only the orchestrator and swarm leaders run at `xhigh`.
+- **home/noghartt/darwin**: the Rex terminal's `rex` CLI is on PATH on both MacBooks. Rex keeps it
+  in its per-account server bundle and prepends that dir when it spawns a shell, but
+  nix-darwin's `set-environment` rebuilds PATH from scratch, so `rex skill setup` and the agent
+  hooks it installs could not find `rex`.
+
 ### Changed
 
+- **home/noghartt/cli**: interactive zsh starts in ~0.2s again instead of ~5s. The
+  1Password secrets resolved into the shell env (`opnix env`, ~4s per call) are cached for 4h
+  in a private per-user runtime dir and refreshed in the background once stale; only the
+  first shell after login, or after the env var list changes, waits for 1Password.
+- **home/noghartt/pi**: orchestrator workers default to Sonnet 5.5; Jev moves a node to Opus 5.5,
+  now at `medium` instead of `high`, only when it confidently rates the work complex (an unsure
+  pick stays on Sonnet instead of taking the higher tier). Fable 5.1 and GPT-6 Astra are no
+  longer Jev picks or escalation steps: the leader assigns them to specific nodes through
+  `orch_spawn`'s new `model` field. The leader stays on Opus 5.5 at `xhigh` and plain OmO
+  sessions on Opus 5.5 at `high`.
+- **home/noghartt/omo**: OmO 5.1.28 -> 5.1.33, on the host and in swarm pods. 5.1.28 refused
+  every MCP call in a running session after any config reload (a Home Manager switch or another
+  non-routine `settings.json` write) with "MCP session or server configuration was replaced",
+  until the session restarted; 5.1.33 no longer ties a session's MCP tools to the config
+  object that was current when they were registered. The builtin `unspecified-low` chain now
+  leads with `gpt-6.1-sol` on the ChatGPT lane, which is not in the picker catalog; this file
+  does not override that category, and `session-model` pins it on the Claude subscription.
 - **home/noghartt/omo**: Claude limit savings, to test. Routine category subagents (quick,
   writing, deep-low, unspecified-low/high, visual-engineering) run on Sonnet 5.5 while the session
   is on the Claude subscription; Opus 5.5 and Sonnet 5.5 sessions compact at ~250k instead of

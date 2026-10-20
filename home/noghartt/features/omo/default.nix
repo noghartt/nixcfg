@@ -7,7 +7,7 @@
   ...
 }:
 let
-  version = "5.1.28";
+  version = "5.1.33";
 
   # Every new session starts here: settings.nix seeds it, the launcher restores it.
   startupModel = {
@@ -20,13 +20,13 @@ let
   releases = {
     aarch64-darwin = {
       asset = "omo-darwin-arm64";
-      hash = "sha256-2s5s1cgQZ0Tw9cOrajVslCcqaGFcMV7fjL2Io+5EECw=";
+      hash = "sha256-I5BM5XHNsZXoQIG6zES3dwNDAcV5UDlyzlZ6+yHwMBE=";
     };
     # A generic glibc build: it runs on NixOS through nix-ld (mellon's
     # agents.nix). Patching its interpreter would risk the appended payload.
     x86_64-linux = {
       asset = "omo-linux-x64";
-      hash = "sha256-oNO209vMY80DtHXpTlqH3XPPk4Cx4052CgDRpZaLG/c=";
+      hash = "sha256-iTf8kZ1Mullz1xtZDE2zmfJh3e7Y2r6fPrYi3GLOIiA=";
     };
   };
   release = releases.${pkgs.stdenv.hostPlatform.system};
@@ -79,6 +79,9 @@ let
   # OmO saves every model pick and thinking change as the global default, so one
   # session's switch became every later session's starting model. Each launch
   # restores the startup model; resumed sessions keep their own, and --model wins.
+  # The per-model thinking memory lives in state.json (OmO 5.1.x moved it out of
+  # settings.json and strips it from there) and outranks defaultThinkingLevel, so
+  # an Opus switch to xhigh (orchestrator leader) started every session at xhigh.
   # Every running session hot-reloads when settings.json changes, and OmO only
   # ignores edits that change routine keys, so a byte-only rewrite (jq's trailing
   # newline) reloaded them all. The file is rewritten only when the bytes differ,
@@ -93,27 +96,31 @@ let
     export PATH="${pkgs.bun}/bin:$PATH"
     export CLAUDE_CODE_PROMPT_CACHE_TTL="''${CLAUDE_CODE_PROMPT_CACHE_TTL:-5m}"
     export OMO_CODING_AGENT_DIR="''${OMO_CODING_AGENT_DIR:-$HOME/.omo/agent}"
-    settings="$OMO_CODING_AGENT_DIR/settings.json"
-    if [ -f "$settings" ] && [ ! -L "$settings" ]; then
-      tmp="$(mktemp "$settings.XXXXXX")"
+    reset() {
+      file="$1"; shift
+      [ -f "$file" ] && [ ! -L "$file" ] || return 0
+      tmp="$(mktemp "$file.XXXXXX")"
       if ${lib.getExe pkgs.jq} \
         --arg provider ${lib.escapeShellArg startupModel.provider} \
         --arg model ${lib.escapeShellArg startupModel.model} \
         --arg thinking ${lib.escapeShellArg startupModel.thinking} \
-        '.defaultProvider = $provider | .defaultModel = $model | .defaultThinkingLevel = $thinking
-          | .modelThinkingLevels[$provider + "/" + $model] = $thinking' \
-        --join-output "$settings" > "$tmp"; then
-        if ${pkgs.diffutils}/bin/cmp -s "$tmp" "$settings"; then
+        "$@" --join-output "$file" > "$tmp"; then
+        if ${pkgs.diffutils}/bin/cmp -s "$tmp" "$file"; then
           rm -f "$tmp"
         else
           chmod 644 "$tmp"
-          mv -f "$tmp" "$settings"
+          mv -f "$tmp" "$file"
         fi
       else
         rm -f "$tmp"
-        echo "omo: could not reset the startup model in $settings" >&2
+        echo "omo: could not reset the startup model in $file" >&2
       fi
-    fi
+    }
+    reset "$OMO_CODING_AGENT_DIR/settings.json" \
+      '.defaultProvider = $provider | .defaultModel = $model | .defaultThinkingLevel = $thinking'
+    reset "$OMO_CODING_AGENT_DIR/state.json" \
+      '.modelThinkingLevels[$provider + "/" + $model] = $thinking
+        | .modelLastOnThinkingLevels[$provider + "/" + $model] = $thinking'
     ${launch}
   '';
 in

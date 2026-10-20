@@ -30,7 +30,9 @@ in
 
     # Route tasks among the five models in the interactive picker. Keep
     # cross-provider rungs so a provider-wide outage (429/5xx/529) can fall
-    # back to the other login. Claude Haiku 4.5 is never used.
+    # back to the other login. Claude Haiku 4.5 is never used. No rung goes above
+    # `high`: xhigh is reserved for the orchestrator leader, and the builtin
+    # plan-consultant/plan-reviewer chains run at max/xhigh.
     # Recheck the builtin chains in omo-task.js when bumping OmO.
     "[native]" = {
       agents = {
@@ -44,26 +46,30 @@ in
           (rung (gpt "gpt-6-sol") "low")
         ];
         plan-consultant.models = [
-          (rung (claude "claude-fable-5-1") "max")
-          (rung (claude "claude-opus-5-5") "max")
-          (rung (gpt "gpt-6-astra") "max")
+          (rung (claude "claude-fable-5-1") "high")
+          (rung (claude "claude-opus-5-5") "high")
+          (rung (gpt "gpt-6-astra") "high")
+        ];
+        plan-reviewer.models = [
+          (rung (gpt "gpt-6-astra") "high")
+          (rung (claude "claude-opus-5-5") "high")
         ];
       };
 
       categories = {
         visual-engineering.models = [
-          (rung (claude "claude-fable-5-1") "max")
-          (rung (claude "claude-opus-5-5") "max")
-          (rung (gpt "gpt-6-astra") "max")
+          (rung (claude "claude-fable-5-1") "high")
+          (rung (claude "claude-opus-5-5") "high")
+          (rung (gpt "gpt-6-astra") "high")
         ];
         architect.models = [
-          (rung (claude "claude-fable-5-1") "max")
-          (rung (gpt "gpt-6-astra") "max")
+          (rung (claude "claude-fable-5-1") "high")
+          (rung (gpt "gpt-6-astra") "high")
         ];
         ultrabrain.models = [
-          (rung (gpt "gpt-6-astra") "max")
-          (rung (gpt "gpt-6-sol") "max")
-          (rung (claude "claude-fable-5-1") "max")
+          (rung (gpt "gpt-6-astra") "high")
+          (rung (gpt "gpt-6-sol") "high")
+          (rung (claude "claude-fable-5-1") "high")
         ];
         deep-low.models = [
           (rung (gpt "gpt-6-sol") "medium")
@@ -75,9 +81,9 @@ in
           (rung (claude "claude-fable-5-1") "high")
         ];
         artistry.models = [
-          (rung (claude "claude-fable-5-1") "max")
-          (rung (claude "claude-opus-5-5") "max")
-          (rung (gpt "gpt-6-astra") "max")
+          (rung (claude "claude-fable-5-1") "high")
+          (rung (claude "claude-opus-5-5") "high")
+          (rung (gpt "gpt-6-astra") "high")
         ];
         # The builtin quick chain ends on Haiku for our logins.
         quick.models = [

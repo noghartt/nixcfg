@@ -211,8 +211,10 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   `anthropic-subscription` provider throughout startup, picker, task chains, and
   image overrides; `anthropic` has no login and made new sessions pick ChatGPT
   instead. OmO saves every model or thinking switch as the global default, so the
-  `omo` launcher restores Opus 5.5 at `high` before each new session; resumed
-  sessions keep their own model. The baseline also compacts Opus 5.5 and Sonnet 5.5 sessions at
+  `omo` launcher restores Opus 5.5 at `high` before each new session (the default in
+  `settings.json` and Opus's per-model thinking memory in `state.json`, which outranks the
+  default); resumed sessions keep their own model. Only the orchestrator and swarm leaders run
+  above `high`: subagent chains, inherited lanes, and swarm members are capped there. The baseline also compacts Opus 5.5 and Sonnet 5.5 sessions at
   ~250k (`compaction.modelOverrides` reserve of 750k on the 1M window; the default reserve let
   them grow to ~770k uncompacted), and the launcher defaults `CLAUDE_CODE_PROMPT_CACHE_TTL` to
   `5m` (an experiment: 1h writes cost 2x yet missed after ~5 idle minutes; export `1h` to compare).
@@ -221,7 +223,7 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   is on `anthropic-subscription`, the routine lanes (quick and writing at `low`, deep-low and
   unspecified-low at `medium`, unspecified-high and visual-engineering at `high`) run on Sonnet
   5.5 so delegated work spares the Opus limit, and every other lane (or any lane off the Claude
-  subscription) gets the session's current model and thinking level, because OmO resolves categories only from `omo.jsonc` (loaded once
+  subscription) gets the session's current model and thinking level (capped at `high`), because OmO resolves categories only from `omo.jsonc` (loaded once
   per process) and rejects `category` + `model`; the child gets a one-line lane note instead of
   OmO's category prompt, tools, and chain fallback, so the category chains below only apply
   when the session has no model. `subagent_type` spawns keep their agent chains. `~/.omo/omo.jsonc` is a read-only
@@ -242,10 +244,12 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   or `/orchestrate <goal>` sets the leader model (default Opus 5.5 at `xhigh`, the first of
   `leader.models` with credentials, `ORCH_LEADER_MODEL` overrides), and Jev (TypeSafe,
   `TYPESAFE_API_KEY`) decides control flow — strategy (solo/fan-out/mesh), each worker's model
-  from the pool in `orchestrator/config.json`, and accept/retry/escalate gating. The pool has
-  three tiers: easier work on Sonnet 5.5 (GPT-5.6 Terra fallback), complex work on Opus 5.5 at
-  `high` (GPT-6 Sol fallback), and orchestration-level or hardest work on Fable 5.1 or GPT-6
-  Astra. An entry's `spill` models take a pick when its provider's limits reach `spillAt` (85%)
+  from the pool in `orchestrator/config.json`, and accept/retry/escalate gating. Workers run on
+  Sonnet 5.5 (GPT-5.6 Terra fallback) by default; Jev moves a node to Opus 5.5 at `medium`
+  (GPT-6 Sol fallback) only when it confidently rates the work complex, and an unsure pick stays
+  on Sonnet. Fable 5.1 and GPT-6 Astra are `onRequest` specialists: Jev never picks them and
+  escalation never reaches them; the leader assigns one to a node with `orch_spawn`'s `model`
+  for the specific part that needs it, alongside the other nodes. An entry's `spill` models take a pick when its provider's limits reach `spillAt` (85%)
   and the other provider's do not, read from the statusline's shared limits cache. Acceptance is a list of criteria that Jev judges one by one against
   evidence the orchestrator collects itself (files changed since spawn, diff stat, commits, the
   worker's tool calls), not the report alone. A clear miss retries with the failing criteria, on
@@ -633,8 +637,10 @@ Patterns here are adapted from:
   outside the repo (`~/.config/opnix/token` for HM, `/etc/opnix-token` for NixOS,
   provisioned with `opnix token set`); never commit it.
   Shell environment secrets are declared by reference in
-  `home/noghartt/features/cli/secrets-env.nix` and resolved at interactive zsh startup.
-  New mappings require configuration activation and a new shell; adding a vault
+  `home/noghartt/features/cli/secrets-env.nix` and resolved at interactive zsh startup,
+  cached for 4h in a 0700 per-user runtime dir (`$XDG_RUNTIME_DIR` or `$TMPDIR`,
+  `opnix-env-$UID/`) because each `opnix env` call takes ~4s; stale values are served
+  while a background refresh runs. New mappings require configuration activation and a new shell; adding a vault
   item alone does not export it. Never resolve secret values during Nix evaluation.
 - No personal data in the repo: no real names, emails, or other PII in any file
   (git identity, SSH config with personal hosts, etc. stay local).

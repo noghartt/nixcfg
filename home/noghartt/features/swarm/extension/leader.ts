@@ -354,7 +354,8 @@ export function registerLeader(pi: ExtensionAPI) {
 		approach: Type.Optional(Type.String({ description: "evolve: the distinct approach or mutation this member tries" })),
 		criteria: Type.Optional(Type.Array(Type.String(), { description: "Member-specific acceptance criteria; defaults to the swarm's" })),
 		model: Type.Optional(Type.String({ description: "Pool key or provider/model id; omit to let Jev choose" })),
-		thinking: Type.Optional(StringEnum(["low", "medium", "high", "xhigh"] as const)),
+		// xhigh is reserved for leaders; members stay at high or below.
+		thinking: Type.Optional(StringEnum(["low", "medium", "high"] as const)),
 		parents: Type.Optional(Type.Array(Type.String(), { description: "Members whose branch this one starts from (the first one)" })),
 	});
 

@@ -48,7 +48,7 @@
       "key": "opus",
       "models": ["anthropic-subscription/claude-opus-5-5", "anthropic/claude-opus-5-5", "chatgpt-subscription/gpt-6-sol", "openai-codex/gpt-6-sol"],
       "spill": ["chatgpt-subscription/gpt-6-sol", "openai-codex/gpt-6-sol"],
-      "thinking": "high",
+      "thinking": "medium",
       "tier": 2,
       "use": "Complex work: features across modules, cross-cutting changes, subtle debugging, performance work, and careful code review"
     },
@@ -57,6 +57,7 @@
       "models": ["anthropic-subscription/claude-fable-5-1", "anthropic/claude-fable-5-1"],
       "thinking": "high",
       "tier": 3,
+      "onRequest": true,
       "use": "Orchestration-level planning, architecture, and design decisions with no existing pattern to copy"
     },
     {
@@ -64,6 +65,7 @@
       "models": ["chatgpt-subscription/gpt-6-astra", "openai-codex/gpt-6-astra"],
       "thinking": "high",
       "tier": 3,
+      "onRequest": true,
       "use": "The hardest reasoning: invariants, concurrency, and correctness arguments"
     }
   ]
