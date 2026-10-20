@@ -32,6 +32,15 @@
     # and would drift from the self-updating app).
     shellAliases.tailscale = "/Applications/Tailscale.app/Contents/MacOS/Tailscale";
 
+    # The Rex terminal (a .dmg, self-updating) keeps its `rex` CLI in the server
+    # bundle it unpacks per account and links nothing onto PATH. Rex prepends that
+    # dir when it spawns a shell, but nix-darwin's set-environment rebuilds PATH
+    # from scratch, so it is added here; agent hooks from `rex skill setup` call
+    # `rex` too. `Versions/Current` follows updates.
+    sessionPath = [
+      "$HOME/Library/Application Support/com.superlogical.rex/RexServer/Versions/Current/Rex Server.app/Contents/MacOS"
+    ];
+
     # sbx reports every CLI invocation; swarms call it constantly.
     sessionVariables.SBX_NO_TELEMETRY = 1;
   };

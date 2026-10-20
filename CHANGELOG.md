@@ -26,6 +26,10 @@ whenever it feels like a checkpoint.
   `session-model` lanes that inherit the session's level, every `omo.jsonc` chain (`max` before,
   plus a new `plan-reviewer` override of the builtin `xhigh` chain), and swarm member picks.
   Only the orchestrator and swarm leaders run at `xhigh`.
+- **home/noghartt/darwin**: the Rex terminal's `rex` CLI is on PATH on both MacBooks. Rex keeps it
+  in its per-account server bundle and prepends that dir when it spawns a shell, but
+  nix-darwin's `set-environment` rebuilds PATH from scratch, so `rex skill setup` and the agent
+  hooks it installs could not find `rex`.
 
 ### Changed
 
