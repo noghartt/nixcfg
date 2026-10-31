@@ -13,8 +13,10 @@
       # menu settings and signing every bootable generation.
       systemd-boot = {
         enable = lib.mkForce false;
-        # systemd-pcrlock supports policy predictions for up to 8 generations.
-        configurationLimit = 8;
+        # Lanzaboote follows this limit. Since 1.2.0 its Measured Boot covers
+        # bootloader updates, and systemd-pcrlock can then predict only 4
+        # generations (systemd/systemd#41526).
+        configurationLimit = 4;
         consoleMode = "max";
         # Kernel cmdline editing at boot would bypass the login password.
         editor = false;
@@ -36,11 +38,9 @@
     };
 
     initrd = {
-      # systemd stage-1: clean LVM activation and TPM2 unlock.
-      systemd = {
-        enable = true;
-        tpm2.enable = true;
-      };
+      # systemd stage-1 (the only initrd NixOS still ships): clean LVM
+      # activation and TPM2 unlock.
+      systemd.tpm2.enable = true;
       luks.devices.cryptlvm.crypttabExtraOpts = [ "tpm2-device=auto" ];
       services.lvm.enable = true;
     };

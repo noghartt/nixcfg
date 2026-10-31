@@ -6,6 +6,11 @@
   programs.niri.enable = true;
   environment.systemPackages = [ pkgs.xwayland-satellite ];
 
+  # nixpkgs still builds Zotero (features/desktop/applications.nix) on Firefox
+  # ESR 140, end-of-life since 2026-10-13. Zotero only browses its own pages.
+  # The exact version stops matching once nixpkgs moves Zotero to a newer runtime.
+  nixpkgs.config.permittedInsecurePackages = [ "firefox-esr-140-bin-unwrapped-140.17.0esr" ];
+
   security = {
     polkit.enable = true;
     rtkit.enable = true;
