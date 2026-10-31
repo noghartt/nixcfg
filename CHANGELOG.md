@@ -10,6 +10,9 @@ whenever it feels like a checkpoint.
 
 ### Added
 
+- **mellon/mouse**: the Logitech mouse (Logi Bolt receiver) runs at 3200 DPI. Solaar's user
+  daemon runs in the session. Before it starts, `solaar-set-dpi` writes the DPI to the mouse and
+  saves it in Solaar's config, and the daemon re-applies it whenever the mouse reconnects or wakes.
 - **mellon/audio**: guitar setup. Guitarix and the qpwgraph patchbay join pavucontrol, and a
   PipeWire JACK rule gives Guitarix a 128-frame quantum (~2.7 ms) while it runs. The user joins
   `audio`, which gets an unlimited memlock limit so Guitarix's `mlockall` succeeds. Guitarix is

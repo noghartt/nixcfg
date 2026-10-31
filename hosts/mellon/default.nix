@@ -15,6 +15,7 @@
     ./boot.nix
     ./nvidia.nix
     ./desktop.nix
+    ./mouse.nix
     ./audio.nix
     ./gaming.nix
     ./networking.nix
