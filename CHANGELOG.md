@@ -26,6 +26,11 @@ whenever it feels like a checkpoint.
   Manager link `~/.codex/config.toml` into the read-only Nix store, where Codex also keeps
   project trust, plugins, and hook state. Activation now writes a regular file instead, replacing
   only the Nix-owned leaves (tracked in `$XDG_STATE_HOME/nixcfg/codex-config-baseline.json`).
+- **overlays**: `codex` starts again. Since 0.162 it runs through a background app-server
+  daemon, which installs itself from the CLI's complete release package and refused the bare
+  binary the overlay shipped ("this CLI has no complete local package"). The overlay now
+  installs `codex-package-<target>.tar.gz` intact under `libexec/codex` and wraps
+  `bin/codex` around it.
 - **home/noghartt/omo**: new OmO sessions start at `high` again instead of `xhigh`. OmO 5.1.x
   keeps per-model thinking memory in `state.json`, where it outranks `defaultThinkingLevel`, and
   the launcher was still resetting the old `settings.json` key, so one Opus switch to `xhigh`
