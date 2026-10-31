@@ -1,7 +1,63 @@
 # Niri session (hosts/mellon/desktop.nix) with the Noctalia shell and i3-style
 # keys. Niri reloads this file live when it changes. No legacy NVIDIA env
 # hacks: with the open kernel module (hosts/mellon/nvidia.nix) they are obsolete.
-{ pkgs, ... }:
+{
+  lib,
+  osConfig,
+  pkgs,
+  ...
+}:
+let
+  # Niri only resizes the focused column, so this focuses each neighbour in
+  # turn and returns focus to the original window. `niri-split N` spreads the
+  # focused column and the next N-1 (borrowing from the left at the strip's
+  # end) across the screen in equal widths; N=1 restores full width. With no
+  # argument it toggles between full width and a two-way split.
+  niriSplit = pkgs.writeShellApplication {
+    name = "niri-split";
+    runtimeInputs = [
+      osConfig.programs.niri.package
+      pkgs.jq
+    ];
+    text = ''
+      focused=$(niri msg --json focused-window)
+      if jq -e '. == null or .is_floating' <<<"$focused" >/dev/null; then exit 0; fi
+      id=$(jq -r .id <<<"$focused")
+      ws=$(jq -r .workspace_id <<<"$focused")
+      col=$(jq -r '.layout.pos_in_scrolling_layout[0]' <<<"$focused")
+
+      n=''${1:-toggle}
+      if [ "$n" = toggle ]; then
+        out=$(niri msg --json focused-output | jq -r .logical.width)
+        if jq -e --argjson o "$out" '.layout.tile_size[0] > $o * 0.75' <<<"$focused" >/dev/null; then
+          n=2
+        else
+          n=1
+        fi
+      fi
+      if [ "$n" -le 1 ]; then
+        niri msg action set-column-width 100%
+        exit 0
+      fi
+
+      # One window id per tiled column of this workspace, left to right.
+      mapfile -t ids < <(niri msg --json windows | jq -r --argjson ws "$ws" '
+        [.[] | select(.workspace_id == $ws and (.is_floating | not))]
+        | group_by(.layout.pos_in_scrolling_layout[0])
+        | .[][0].id')
+      start=$((col - 1))
+      if [ $((start + n)) -gt ''${#ids[@]} ]; then start=$((''${#ids[@]} - n)); fi
+      if [ "$start" -lt 0 ]; then start=0; fi
+
+      width=$(jq -n --argjson n "$n" '100 / $n * 1000 | floor / 1000')
+      for target in "''${ids[@]:start:n}"; do
+        niri msg action focus-window --id "$target"
+        niri msg action set-column-width "$width%"
+      done
+      niri msg action focus-window --id "$id"
+    '';
+  };
+in
 {
   # Noctalia's own polkit agent is off (noctalia.nix); this one is a plain
   # Qt app that works under any Wayland compositor.
@@ -45,9 +101,9 @@
         xcursor-size 24
     }
 
-    // Columns start at the strip's left edge by default, which on the ultrawide
-    // leaves a lone window pinned left. A lone column (one window or a tabbed
-    // stack) is centred; half-width defaults make two windows an even split.
+    // Each new window fills the ultrawide on its own column; neighbours sit
+    // off-screen on the strip until Mod+S splits the screen with them.
+    // A column narrowed on its own (Mod+R, Mod+Minus) is centred when alone.
     layout {
         gaps 12
         always-center-single-column
@@ -58,7 +114,24 @@
             proportion 0.66667
             proportion 1.0
         }
-        default-column-width { proportion 0.5; }
+        default-column-width { proportion 1.0; }
+
+        // The default 4 px side bar vanishes in the overview, where a tabbed
+        // column shows only its active tab. A top strip with one clickable
+        // segment per tab shows how many tabs a column holds.
+        tab-indicator {
+            position "top"
+            place-within-column
+            width 8
+            gap 4
+            gaps-between-tabs 6
+            hide-when-single-tab
+        }
+    }
+
+    // Slightly larger than the 0.5 default so the strip stays readable.
+    overview {
+        zoom 0.6
     }
 
     prefer-no-csd
@@ -107,6 +180,10 @@
         // Tabbed columns stand in for i3's tabbed containers.
         Mod+W { toggle-column-tabbed-display; }
 
+        // Mod+S toggles full width / half and half with the next column;
+        // Mod+Shift+S makes thirds, which still fit a terminal on 2560 px.
+        Mod+S hotkey-overlay-title="Split with the next column / unsplit" { spawn "${lib.getExe niriSplit}"; }
+        Mod+Shift+S hotkey-overlay-title="Split into thirds" { spawn "${lib.getExe niriSplit}" "3"; }
         Mod+R { switch-preset-column-width; }
         Mod+C { center-column; }
         Mod+Shift+C { center-visible-columns; }

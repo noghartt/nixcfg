@@ -13,6 +13,11 @@ whenever it feels like a checkpoint.
 - **mellon/mouse**: the Logitech mouse (Logi Bolt receiver) runs at 3200 DPI. Solaar's user
   daemon runs in the session. Before it starts, `solaar-set-dpi` writes the DPI to the mouse and
   saves it in Solaar's config, and the daemon re-applies it whenever the mouse reconnects or wakes.
+- **home/noghartt/desktop**: on Niri, `Mod+S` splits the focused window and the next column
+  half and half, and pressing it again makes the focused one full width. `Mod+Shift+S` splits
+  into thirds. A new window now fills the ultrawide instead of taking half of it. Tabbed
+  columns show a clickable strip across the top with one segment per tab, and the overview
+  zooms to 0.6 so it stays readable.
 - **mellon/audio**: guitar setup. Guitarix and the qpwgraph patchbay join pavucontrol, and a
   PipeWire JACK rule gives Guitarix a 128-frame quantum (~2.7 ms) while it runs. The user joins
   `audio`, which gets an unlimited memlock limit so Guitarix's `mlockall` succeeds. Guitarix is
