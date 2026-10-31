@@ -144,6 +144,8 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
 - Package overrides shared by Linux and Darwin live in `overlays/` and are applied by both
   common host modules. `overlays/pi.nix` keeps Pi ahead of the lock and also builds
   `pi-durable`, the experimental durable agent upstream runs only from source.
+  `overlays/ghostty.nix` (Darwin only) keeps `ghostty-bin` at a release newer than the
+  locked `nixpkgs-darwin` and steps aside once the lock reaches that version.
 - HM features are import-based (`home/<user>/features/<area>/`), not enable-flag-based.
   Portable baseline areas are imported by `home.nix`; platform features are composed by the
   user host entrypoint. Do not nest a substantial feature under `cli/` merely because its

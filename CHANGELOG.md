@@ -49,6 +49,9 @@ whenever it feels like a checkpoint.
   Mac restart, the server outlives the shell that started it, Ctrl shortcuts on non-Latin
   layouts, lower CPU on big sessions; 0.9.5 fixes prefix keys sent as text (input methods,
   Ghostty `text:` binds) and stops installing Codex turn hooks.
+- **overlays**: Ghostty 1.3.1 -> 1.4.0 on the Macs. `overlays/ghostty.nix` pins the release `.dmg`
+  until the locked `nixpkgs-darwin` reaches 1.4.0, then steps aside. Mellon stays on nixos-unstable's
+  1.3.1 until that channel ships 1.4.0.
 - **home/noghartt/pi**: destructive-guard no longer asks Jev to clear gray-zone actions. What
   its deterministic checks (self-harm blocks, temp-dir and session-owned files and processes,
   worker worktrees) cannot clear now always asks you, or is refused without a UI or during an

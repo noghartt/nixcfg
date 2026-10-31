@@ -107,6 +107,7 @@
     {
       overlays.codex = import ./overlays/codex.nix;
       overlays.pi = import ./overlays/pi.nix;
+      overlays.ghostty = import ./overlays/ghostty.nix;
 
       # Custom option-only modules, auto-imported everywhere.
       nixosModules = import ./modules/nixos;

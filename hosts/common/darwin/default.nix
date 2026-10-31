@@ -20,6 +20,7 @@
   nixpkgs.overlays = [
     flake.outputs.overlays.codex
     flake.outputs.overlays.pi
+    flake.outputs.overlays.ghostty
   ];
 
   home-manager = {
