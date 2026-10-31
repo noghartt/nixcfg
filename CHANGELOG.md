@@ -19,6 +19,9 @@ whenever it feels like a checkpoint.
 
 ### Fixed
 
+- **home/noghartt/pi**: destructive-guard no longer asks for approval when editing or deleting files in
+  a Herdr worktree (`~/.herdr/worktrees/...`) of the session's repository. Every worktree that
+  `git worktree list` reports now counts as part of the project; each worktree's root and its `.git` still ask.
 - **home/noghartt/omo**: new OmO sessions start at `high` again instead of `xhigh`. OmO 5.1.x
   keeps per-model thinking memory in `state.json`, where it outranks `defaultThinkingLevel`, and
   the launcher was still resetting the old `settings.json` key, so one Opus switch to `xhigh`
@@ -33,6 +36,14 @@ whenever it feels like a checkpoint.
 
 ### Changed
 
+- **home/noghartt/pi**: destructive-guard no longer asks Jev to clear gray-zone actions. What
+  its deterministic checks (self-harm blocks, temp-dir and session-owned files and processes,
+  worker worktrees) cannot clear now always asks you, or is refused without a UI or during an
+  `/unsupervised` run. Applies to Pi and OmO alike; Jev still drives the orchestrator and swarm.
+  In its place the project is the boundary: `rm`, truncate, forced `cp`/`mv`, recursive
+  `chmod`/`chown`, and overwriting writes pass when every target is inside the session's git
+  repository (or worktree), while its root, `.git`, `.env`/credential files, destructive Git
+  commands, and anything outside it still ask.
 - **home/noghartt/cli**: interactive zsh starts in ~0.2s again instead of ~5s. The
   1Password secrets resolved into the shell env (`opnix env`, ~4s per call) are cached for 4h
   in a private per-user runtime dir and refreshed in the background once stale; only the

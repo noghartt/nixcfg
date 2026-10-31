@@ -1,7 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { basename, dirname, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { judge, judgeAvailable } from "./judge.ts";
 import {
 	buildFacts,
 	canonicalize,
@@ -9,10 +8,13 @@ import {
 	type Exec,
 	exists,
 	type Facts,
+	inProject,
 	inWorkerWorktree,
 	isProtected,
+	isSensitivePath,
 	isWithin,
 	resolvePath,
+	scopedVerdict,
 	selfHarm,
 	terminationVerdict,
 	type Verdict,
@@ -107,28 +109,8 @@ const destructivePatterns: DestructivePattern[] = [
 	},
 ];
 
-// Shared, remote, or irreversible at system level: only the user approves these.
-const CONFIRM_ONLY = new Set([
-	"privileged command",
-	"filesystem or block-device overwrite",
-	"destructive Git remote operation",
-	"system shutdown or restart",
-	"infrastructure destruction",
-	"database destruction",
-	"package removal",
-	"system configuration activation",
-	"write to a protected system or credential path",
-]);
-
-const sensitivePathPatterns = [
-	/(^|\/)\.git(?:\/|$)/,
-	/(^|\/)\.env(?:\.|\/|$)/i,
-	/(^|\/)(?:credentials?|secrets?)(?:\.|\/|$)/i,
-	/(^|\/)(?:id_(?:rsa|dsa|ecdsa|ed25519)|authorized_keys|known_hosts)$/i,
-	/(^|\/)\.ssh(?:\/|$)/,
-	/(^|\/)\.gnupg(?:\/|$)/,
-	/(^|\/)\.config\/opnix(?:\/|$)/,
-];
+// Their targets are files, so they pass when every one stays inside the project.
+const SCOPED = new Set(["file truncation", "forced file replacement", "recursive permission or ownership change"]);
 
 const SHELLS = new Set(["bash", "sh", "zsh", "dash"]);
 
@@ -140,8 +122,6 @@ const NOT_RUN =
 interface Unresolved {
 	category: string;
 	why: string;
-	confirmOnly: boolean;
-	facts?: Record<string, unknown>;
 }
 
 interface Evaluation {
@@ -158,43 +138,12 @@ function display(value: string, maxLength = 1200): string {
 	return value.length <= maxLength ? value : `${value.slice(0, maxLength)}\n…`;
 }
 
-function isSensitivePath(path: string): boolean {
-	return sensitivePathPatterns.some((pattern) => pattern.test(path));
-}
-
-function textOf(content: unknown): string {
-	if (typeof content === "string") return content;
-	if (!Array.isArray(content)) return "";
-	return content
-		.flatMap((block: { type?: string; text?: string }) => (block.type === "text" && block.text ? [block.text] : []))
-		.join("\n");
-}
-
-function sessionContext(ctx: ExtensionContext): { userMessages: string[]; recentActions: string[] } {
-	const userMessages: string[] = [];
-	const recentActions: string[] = [];
-	for (const entry of ctx.sessionManager.getBranch()) {
-		if (entry.type !== "message") continue;
-		const message = entry.message as { role?: string; content?: unknown };
-		if (message.role === "user") {
-			const text = textOf(message.content).trim();
-			if (text) userMessages.push(text);
-		} else if (message.role === "assistant" && Array.isArray(message.content)) {
-			for (const block of message.content as { type?: string; name?: string; arguments?: unknown }[]) {
-				if (block.type === "toolCall") recentActions.push(`${block.name}: ${JSON.stringify(block.arguments)}`);
-			}
-		}
-	}
-	return { userMessages: userMessages.slice(-6), recentActions: recentActions.slice(-12) };
-}
-
 export default function destructiveGuard(pi: ExtensionAPI) {
 	const guardDir = dirname(fileURLToPath(import.meta.url));
 	const sessionFiles = new Set<string>();
 	const pendingCreates = new Map<string, string>();
-	let sessionStartedAt = Date.now();
-	// A `/unsupervised` run has nobody to answer a dialog, so what Jev does not
-	// clear is refused and the run goes on without it. Typing anything else ends
+	// A `/unsupervised` run has nobody to answer a dialog, so what the checks do
+	// not clear is refused and the run goes on without it. Typing anything else ends
 	// it. The variable carries it into orchestrator workers and subagents.
 	let unsupervised = process.env.OMO_UNSUPERVISED === "1";
 
@@ -206,6 +155,23 @@ export default function destructiveGuard(pi: ExtensionAPI) {
 	const gitRoot = async (cwd: string): Promise<string | undefined> => {
 		const result = await exec(cwd)("git", ["rev-parse", "--show-toplevel"]);
 		return result.code === 0 ? canonicalize(result.stdout.trim()) : undefined;
+	};
+
+	// A session started in the main checkout edits its Herdr worktrees (~/.herdr/worktrees/...)
+	// and vice versa; every worktree of the repository is the same project. Bare entries hold no checkout.
+	const projectRoots = async (cwd: string): Promise<string[]> => {
+		const root = await gitRoot(cwd);
+		if (!root) return [];
+		const result = await exec(cwd)("git", ["worktree", "list", "--porcelain"]);
+		const worktrees =
+			result.code === 0
+				? result.stdout
+						.split("\n\n")
+						.map((block) => block.split("\n"))
+						.filter((lines) => lines[0]?.startsWith("worktree ") && !lines.includes("bare"))
+						.map((lines) => lines[0].slice("worktree ".length))
+				: [];
+		return [...new Set([root, ...(await Promise.all(worktrees.map(canonicalize)))])];
 	};
 
 	const evaluate = async (
@@ -236,7 +202,7 @@ export default function destructiveGuard(pi: ExtensionAPI) {
 						: undefined;
 			if (inner !== undefined && depth < 3) {
 				if (segment.dynamic || !cwd) {
-					if (classifyCommand(inner)) result.unresolved.push({ category: "nested shell", why: "nested command is only known at run time", confirmOnly: false });
+					if (classifyCommand(inner)) result.unresolved.push({ category: "nested shell", why: "nested command is only known at run time" });
 					continue;
 				}
 				const nested = await evaluate(parseCommand(inner), cwd, facts, depth + 1);
@@ -254,25 +220,20 @@ export default function destructiveGuard(pi: ExtensionAPI) {
 				if (repoRoot === null) repoRoot = await gitRoot(cwd);
 				verdict = await deletionVerdict(invocation, cwd, facts, repoRoot);
 			} else if (category === TERMINATION && invocation && /^(?:kill|pkill|killall)$/.test(invocation.name)) {
-				verdict = await terminationVerdict(invocation, exec(cwd), facts);
+				verdict = await terminationVerdict(invocation, exec(cwd));
+			} else if (SCOPED.has(category) && invocation && /^(?:truncate|cp|mv|chmod|chown|chgrp)$/.test(invocation.name)) {
+				verdict = await scopedVerdict(invocation, cwd, facts);
 			} else {
-				verdict = { kind: "unresolved", why: category, confirmOnly: CONFIRM_ONLY.has(category) };
+				verdict = { kind: "unresolved", why: category };
 			}
 			if (verdict.kind === "self") return { ...result, self: verdict.why };
 			if (verdict.kind === "allow") result.allowed.push(verdict.why);
-			else {
-				result.unresolved.push({
-					category,
-					why: verdict.why,
-					confirmOnly: Boolean(verdict.confirmOnly) || CONFIRM_ONLY.has(category),
-					facts: verdict.facts,
-				});
-			}
+			else result.unresolved.push({ category, why: verdict.why });
 		}
 		for (const body of parsed.heredocs) {
 			const category = classifyCommand(body);
 			if (category) {
-				result.unresolved.push({ category: `${category} in heredoc`, why: "a heredoc carries a destructive command", confirmOnly: CONFIRM_ONLY.has(category) });
+				result.unresolved.push({ category: `${category} in heredoc`, why: "a heredoc carries a destructive command" });
 			}
 		}
 		return result;
@@ -293,7 +254,9 @@ export default function destructiveGuard(pi: ExtensionAPI) {
 		return { block: true, reason: `${title} Declined by the user. ${NOT_RUN}` };
 	};
 
-	const judgeOrConfirm = async (
+	// Whatever the deterministic checks cannot clear goes to the user; no model
+	// approves on their behalf.
+	const confirmUnresolved = async (
 		ctx: ExtensionContext,
 		tool: string,
 		subject: string,
@@ -301,35 +264,9 @@ export default function destructiveGuard(pi: ExtensionAPI) {
 		title: string,
 		details: string,
 	) => {
-		let note = "";
-		if (unresolved.some((item) => item.confirmOnly)) note = "Needs your approval: shared, remote, or system-level effect.";
-		else if (!judgeAvailable()) note = "Jev unavailable (TYPESAFE_API_KEY unset).";
-		else {
-			try {
-				const verdict = await judge(
-					{
-						...sessionContext(ctx),
-						action: {
-							tool,
-							input: display(subject, 2000),
-							cwd: ctx.cwd,
-							concerns: unresolved.map(({ category, why, facts }) => ({ category, why, facts })),
-						},
-					},
-					ctx.signal,
-				);
-				if (verdict.allow) {
-					audit("jev-allow", tool, subject, verdict.summary);
-					if (ctx.hasUI) ctx.ui.notify(`Auto-approved by Jev (${verdict.summary})`, "info");
-					return undefined;
-				}
-				note = `Jev did not clear it: ${verdict.summary}`;
-			} catch (error) {
-				note = `Jev failed: ${(error as Error).message}`;
-			}
-		}
-		const outcome = await confirmOrBlock(ctx, title, `${details}\n\n${unresolved.map((item) => `- ${item.category}: ${item.why}`).join("\n")}\n${note}`);
-		audit(outcome ? "blocked" : "user-allow", tool, subject, note);
+		const concerns = unresolved.map((item) => `- ${item.category}: ${item.why}`).join("\n");
+		const outcome = await confirmOrBlock(ctx, title, `${details}\n\n${concerns}`);
+		audit(outcome ? "blocked" : "user-allow", tool, subject, concerns);
 		return outcome;
 	};
 
@@ -339,7 +276,6 @@ export default function destructiveGuard(pi: ExtensionAPI) {
 	};
 
 	pi.on("session_start", () => {
-		sessionStartedAt = Date.now();
 		sessionFiles.clear();
 	});
 
@@ -348,7 +284,7 @@ export default function destructiveGuard(pi: ExtensionAPI) {
 		unsupervised = /^\/unsupervised(?:\s|$)/.test(event.text.trimStart());
 		if (unsupervised) {
 			process.env.OMO_UNSUPERVISED = "1";
-			if (ctx.hasUI) ctx.ui.notify("Unsupervised run: destructive actions Jev does not clear are refused, not asked.", "info");
+			if (ctx.hasUI) ctx.ui.notify("Unsupervised run: destructive actions the guard cannot clear are refused, not asked.", "info");
 		} else delete process.env.OMO_UNSUPERVISED;
 	});
 
@@ -366,19 +302,21 @@ export default function destructiveGuard(pi: ExtensionAPI) {
 
 	pi.on("tool_call", async (event, ctx) => {
 		if (sandboxed(event.toolName)) return undefined;
-		const facts = await buildFacts(sessionFiles, sessionStartedAt, guardDir);
 
 		if (/(^|[_-])(delete|remove|destroy|drop|truncate|wipe|prune)([_-]|$)/i.test(event.toolName)) {
 			const subject = JSON.stringify(event.input, null, 2);
-			return judgeOrConfirm(
+			return confirmUnresolved(
 				ctx,
 				event.toolName,
 				subject,
-				[{ category: "destructive tool", why: event.toolName, confirmOnly: false }],
+				[{ category: "destructive tool", why: event.toolName }],
 				"Allow destructive tool?",
 				`Tool: ${event.toolName}\nWorking directory: ${ctx.cwd}\n\n${display(subject)}`,
 			);
 		}
+		if (event.toolName !== "bash" && event.toolName !== "write" && event.toolName !== "edit") return undefined;
+		// The project is the session cwd's repository, not wherever a command `cd`s to.
+		const facts = await buildFacts(sessionFiles, guardDir, await projectRoots(ctx.cwd));
 
 		if (event.toolName === "bash") {
 			const command = (event.input as { command?: unknown }).command;
@@ -390,7 +328,7 @@ export default function destructiveGuard(pi: ExtensionAPI) {
 				if (evaluation.allowed.length) audit("auto-allow", "bash", command, evaluation.allowed.join("; "));
 				return undefined;
 			}
-			return judgeOrConfirm(
+			return confirmUnresolved(
 				ctx,
 				"bash",
 				command,
@@ -419,29 +357,22 @@ export default function destructiveGuard(pi: ExtensionAPI) {
 		if (event.toolName === "write" && !existed) pendingCreates.set(event.toolCallId, targetPath);
 
 		const inTmp = facts.tmpRoots.some((root) => root !== targetPath && isWithin(root, targetPath));
-		const inWorktree = inWorkerWorktree(targetPath, facts);
-		const outsideProject = !isWithin(projectRoot, targetPath) && !inTmp && !inWorktree;
+		const inScope = inWorkerWorktree(targetPath, facts) || inProject(targetPath, facts);
+		const outsideProject = !isWithin(projectRoot, targetPath) && !inTmp && !inScope;
 		const sensitive = isSensitivePath(targetPath);
-		let overwritesFile = event.toolName === "write" && existed && !sessionFiles.has(targetPath) && !inTmp && !inWorktree;
-		if (overwritesFile && !outsideProject && !sensitive) {
-			const git = exec(dirname(targetPath));
-			const tracked = await git("git", ["ls-files", "--error-unmatch", "--", basename(targetPath)]);
-			const unchanged = tracked.code === 0 && (await git("git", ["diff", "--quiet", "HEAD", "--", basename(targetPath)])).code === 0;
-			// A tracked file with no uncommitted changes can be restored from Git.
-			if (unchanged) overwritesFile = false;
-		}
+		// Inside the project an overwrite is the agent's call; in a cwd with no repository it
+		// still asks unless this session wrote the file.
+		const overwritesFile = event.toolName === "write" && existed && !sessionFiles.has(targetPath) && !inTmp && !inScope;
 
 		if (!outsideProject && !sensitive && !overwritesFile) return undefined;
 
 		const unresolved: Unresolved[] = [
-			outsideProject ? { category: "outside project", why: "target is outside the current project", confirmOnly: false } : undefined,
-			sensitive ? { category: "sensitive path", why: "target looks sensitive", confirmOnly: true } : undefined,
-			overwritesFile
-				? { category: "overwrite", why: "write replaces a file with uncommitted or untracked content", confirmOnly: false }
-				: undefined,
+			outsideProject ? { category: "outside project", why: "target is outside the current project" } : undefined,
+			sensitive ? { category: "sensitive path", why: "target looks sensitive" } : undefined,
+			overwritesFile ? { category: "overwrite", why: "write replaces a file with uncommitted or untracked content" } : undefined,
 		].filter((item): item is Unresolved => item !== undefined);
 
-		return judgeOrConfirm(
+		return confirmUnresolved(
 			ctx,
 			event.toolName,
 			targetPath,

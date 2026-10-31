@@ -87,7 +87,7 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [x] Pi 1.0.1 overlay ahead of nixpkgs, plus the experimental `pi-durable` agent
 - [x] Pi/tmux integration: CSI-u modified keys, checkout-rooted launcher, and cross-project transcript search popup
 - [x] Pi destructive-action guard with fail-closed confirmation for dangerous commands and out-of-project or sensitive writes
-- [x] Context-aware destructive guard: self-harm hard blocks, deterministic temp-file and session-process approvals, Jev-judged gray zone, worker dialogs relayed to the orchestrator leader
+- [x] Context-aware destructive guard: self-harm hard blocks, deterministic temp-file and session-process approvals, gray zone asks the user (Jev judge removed 2026-10-24), worker dialogs relayed to the orchestrator leader
 - [x] Pi worktree agents for isolated parallel delegation, with an explicit current-checkout opt-out
 - [x] Pi Workflows extension with its bundled workflow-authoring and automation skills
 - [x] Pi/OmO orchestrator: Opus 5.5 (xhigh) leader + worker mesh, Jev-decided strategy, worker models, and result gating (`orch`)

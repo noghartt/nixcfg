@@ -6,7 +6,7 @@ import { type Invocation, operands, type Segment, type Word } from "./shell.ts";
 export type Verdict =
 	| { kind: "allow"; why: string }
 	| { kind: "self"; why: string }
-	| { kind: "unresolved"; why: string; confirmOnly?: boolean; facts?: Record<string, unknown> };
+	| { kind: "unresolved"; why: string };
 
 export interface Process {
 	pid: number;
@@ -26,9 +26,25 @@ export interface Facts {
 	tmpRoots: string[];
 	protectedRoots: string[];
 	sessionFiles: ReadonlySet<string>;
-	sessionStartedAt: number;
 	// Set only in orchestrator workers: the linked worktree the run created for them.
 	worktree?: string;
+	// Git toplevel of the session's cwd and every worktree of that repository (Herdr's linked
+	// worktrees live outside the main checkout): the agent's own working copies.
+	projects: string[];
+}
+
+const sensitivePathPatterns = [
+	/(^|\/)\.git(?:\/|$)/,
+	/(^|\/)\.env(?:\.|\/|$)/i,
+	/(^|\/)(?:credentials?|secrets?)(?:\.|\/|$)/i,
+	/(^|\/)(?:id_(?:rsa|dsa|ecdsa|ed25519)|authorized_keys|known_hosts)$/i,
+	/(^|\/)\.ssh(?:\/|$)/,
+	/(^|\/)\.gnupg(?:\/|$)/,
+	/(^|\/)\.config\/opnix(?:\/|$)/,
+];
+
+export function isSensitivePath(path: string): boolean {
+	return sensitivePathPatterns.some((pattern) => pattern.test(path));
 }
 
 // Harness and terminal state that lives under the temp roots; deleting it can
@@ -59,7 +75,7 @@ export async function exists(path: string): Promise<boolean> {
 	}
 }
 
-export async function buildFacts(sessionFiles: ReadonlySet<string>, sessionStartedAt: number, guardDir: string): Promise<Facts> {
+export async function buildFacts(sessionFiles: ReadonlySet<string>, guardDir: string, repoRoots: string[]): Promise<Facts> {
 	const home = homedir();
 	const tmpRoots = [...new Set(await Promise.all([tmpdir(), process.env.TMPDIR ?? tmpdir(), "/tmp", "/var/tmp"].map(canonicalize)))];
 	// Both spellings: Home Manager links some of these files into /nix/store, so a
@@ -69,7 +85,26 @@ export async function buildFacts(sessionFiles: ReadonlySet<string>, sessionStart
 	const protectedRoots = [...new Set([...lexicalRoots, ...(await Promise.all(lexicalRoots.map(canonicalize)))])];
 	const worktree =
 		process.env.ORCH_ROLE === "worker" && process.env.ORCH_WORKTREE ? await canonicalize(process.env.ORCH_WORKTREE) : undefined;
-	return { home: await canonicalize(home), tmpRoots, protectedRoots, sessionFiles, sessionStartedAt, worktree };
+	// A repository at $HOME, at /, or holding the agent's own configuration would make
+	// "the project" cover what the guard exists to protect.
+	const projects = repoRoots.filter(
+		(repoRoot) => !protectedRoots.some((root) => isWithin(root, repoRoot) || isWithin(repoRoot, root)),
+	);
+	return { home: await canonicalize(home), tmpRoots, protectedRoots, sessionFiles, worktree, projects };
+}
+
+// The innermost checkout holding the path, so a worktree nested in another keeps its own root guarded.
+export function projectRootOf(path: string, facts: Facts): string | undefined {
+	return facts.projects
+		.filter((root) => isWithin(root, path))
+		.reduce<string | undefined>((best, root) => (best === undefined || root.length > best.length ? root : best), undefined);
+}
+
+// Inside the session's project the agent works on its own checkout, so deletions and
+// overwrites there are its call; the root, .git, and sensitive files stay guarded.
+export function inProject(path: string, facts: Facts): boolean {
+	const root = projectRootOf(path, facts);
+	return root !== undefined && path !== root && !isSensitivePath(relative(root, path));
 }
 
 // The orchestrator's worker worktree is a disposable checkout of the leader's commit, so any
@@ -144,6 +179,16 @@ async function globVerdict(word: Word, cwd: string, facts: Facts): Promise<Verdi
 	const directory = literal.endsWith("/") ? literal : dirname(literal) + "/";
 	const partial = literal.endsWith("/") ? "" : basename(literal);
 	const base = await canonicalize(resolve(cwd, directory || "."));
+	const root = projectRootOf(base, facts);
+	if (root && (base === root || inProject(base, facts))) {
+		const pattern = text.slice(literal.length - partial.length);
+		// A bare pattern at the root takes the whole tree; a dot-led one can reach .git.
+		if ((base === root && !partial) || pattern.split("/").some((segment) => segment.startsWith("."))) {
+			return { kind: "unresolved", why: `glob ${word.text} could match the whole project or a .git` };
+		}
+		if (isSensitivePath(relative(root, join(base, partial)))) return { kind: "unresolved", why: `glob ${word.text} looks sensitive` };
+		return { kind: "allow", why: `glob confined to the project (${word.text})` };
+	}
 	const child = tmpChild(join(base, "x"), facts);
 	if (child === undefined) return { kind: "unresolved", why: `glob ${word.text} is outside the temp directories` };
 	const atRoot = facts.tmpRoots.includes(base);
@@ -156,11 +201,10 @@ async function globVerdict(word: Word, cwd: string, facts: Facts): Promise<Verdi
 
 export async function deletionVerdict(invocation: Invocation, cwd: string, facts: Facts, repoRoot?: string): Promise<Verdict> {
 	if (invocation.stdinArgs) return { kind: "unresolved", why: "deletion targets come from stdin" };
-	if (invocation.name === "shred") return { kind: "unresolved", why: "shred overwrites data irrecoverably", confirmOnly: true };
+	if (invocation.name === "shred") return { kind: "unresolved", why: "shred overwrites data irrecoverably" };
 	const targets = operands(invocation.args);
 	const reasons: string[] = [];
 	const unresolved: string[] = [];
-	let confirmOnly = false;
 	for (const target of targets) {
 		if (target.glob) {
 			const verdict = await globVerdict(target, cwd, facts);
@@ -171,19 +215,50 @@ export async function deletionVerdict(invocation: Invocation, cwd: string, facts
 		const path = await operandPath(target.text, cwd, facts.home);
 		if (repoRoot && (path === repoRoot || path === join(repoRoot, ".git") || isWithin(join(repoRoot, ".git"), path))) {
 			unresolved.push(`${target.text} is the repository root or its .git`);
-			confirmOnly = true;
 			continue;
 		}
-		const child = tmpChild(path, facts);
-		if (child !== undefined && !HARNESS_TMP_PREFIXES.test(child)) reasons.push(`${target.text} is inside a temp directory`);
-		else if (facts.sessionFiles.has(path)) reasons.push(`${target.text} was created by this session`);
-		else if (inWorkerWorktree(path, facts)) reasons.push(`${target.text} is inside this worker's orchestrator worktree`);
-		else unresolved.push(`${target.text} is neither temporary nor created by this session`);
+		const scope = scopeOf(path, facts);
+		if (scope) reasons.push(`${target.text} is ${scope}`);
+		else unresolved.push(`${target.text} is outside the project and neither temporary nor created by this session`);
 	}
 	if (unresolved.length) {
-		return { kind: "unresolved", why: unresolved.join("; "), confirmOnly, facts: { targets: targets.map((t) => t.text) } };
+		return { kind: "unresolved", why: unresolved.join("; ") };
 	}
 	return { kind: "allow", why: reasons.join("; ") || "no operands" };
+}
+
+function scopeOf(path: string, facts: Facts): string | undefined {
+	const child = tmpChild(path, facts);
+	if (child !== undefined && !HARNESS_TMP_PREFIXES.test(child)) return "inside a temp directory";
+	if (facts.sessionFiles.has(path)) return "created by this session";
+	if (inWorkerWorktree(path, facts)) return "inside this worker's orchestrator worktree";
+	if (inProject(path, facts)) return "inside the project";
+	return undefined;
+}
+
+const SCOPED_VALUE_OPTIONS: Record<string, ReadonlySet<string>> = {
+	truncate: new Set(["-s", "--size", "-r", "--reference"]),
+	cp: new Set(["-S", "--suffix"]),
+	mv: new Set(["-S", "--suffix"]),
+};
+
+// truncate, forced cp/mv, and recursive chmod/chown/chgrp pass when every operand is in
+// scope. A mode or owner word is checked as a path under cwd too, which only errs toward asking.
+export async function scopedVerdict(invocation: Invocation, cwd: string, facts: Facts): Promise<Verdict> {
+	if (invocation.stdinArgs) return { kind: "unresolved", why: "targets come from stdin" };
+	if (invocation.args.some((arg) => /^(?:-t.|--target-directory=)/.test(arg.text))) {
+		return { kind: "unresolved", why: "target directory is given inline" };
+	}
+	const targets = operands(invocation.args, SCOPED_VALUE_OPTIONS[invocation.name]);
+	const outside: string[] = [];
+	for (const target of targets) {
+		if (target.glob) {
+			const verdict = await globVerdict(target, cwd, facts);
+			if (verdict.kind !== "allow") outside.push(verdict.why);
+		} else if (!scopeOf(await operandPath(target.text, cwd, facts.home), facts)) outside.push(`${target.text} is outside the project`);
+	}
+	if (outside.length) return { kind: "unresolved", why: outside.join("; ") };
+	return { kind: "allow", why: `${invocation.name} confined to the project or temp directories` };
 }
 
 const SIGNAL_OPTIONS = new Set(["-s", "-n", "--signal"]);
@@ -256,7 +331,7 @@ export async function processView(exec: Exec): Promise<ProcessView | undefined> 
 	return { self, descendants, table };
 }
 
-export async function terminationVerdict(invocation: Invocation, exec: Exec, facts: Facts): Promise<Verdict> {
+export async function terminationVerdict(invocation: Invocation, exec: Exec): Promise<Verdict> {
 	if (invocation.stdinArgs) return { kind: "unresolved", why: "process targets come from stdin" };
 	if (invocation.name === "kill" && operands(invocation.args, SIGNAL_OPTIONS).some((arg) => /^-\d+$/.test(arg.text))) {
 		return { kind: "self", why: "kill of a whole process group" };
@@ -270,18 +345,5 @@ export async function terminationVerdict(invocation: Invocation, exec: Exec, fac
 	}
 	const foreign = pids.filter((pid) => !view.descendants.has(pid));
 	if (!foreign.length) return { kind: "allow", why: pids.length ? `only processes this session started (${pids.join(", ")})` : "matches no process" };
-	return {
-		kind: "unresolved",
-		why: `targets processes this session did not start (${foreign.join(", ")})`,
-		facts: {
-			processes: foreign.map((pid) => {
-				const entry = view.table.get(pid);
-				return {
-					pid,
-					command: entry?.command.slice(0, 200) ?? "(gone)",
-					started_during_session: entry ? entry.startedAt >= facts.sessionStartedAt : false,
-				};
-			}),
-		},
-	};
+	return { kind: "unresolved", why: `targets processes this session did not start (${foreign.join(", ")})` };
 }
