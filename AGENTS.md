@@ -186,7 +186,8 @@ SWARM.md                     swarm mode: decisions, usage, architecture, sbx set
   small per-harness modules under `features/cli/agents/`; Pi is a standalone feature because it
   owns model settings and Nix-packaged extensions. Claude's global `settings.json` is a writable
   runtime file: activation refreshes Nix-owned top-level keys while preserving tool-injected keys
-  such as hooks. Cua Driver gives Pi, Claude Code, and Codex computer use: its notarized
+  such as hooks. Codex's `config.toml` is writable the same way (Codex saves project trust there),
+  merged per leaf so hand-added MCP servers survive beside Nix's. Cua Driver gives Pi, Claude Code, and Codex computer use: its notarized
   `CuaDriver.app` is pinned in Nix but copied to `/Applications` on activation, because macOS
   permission grants, LaunchServices, and the CLI's relaunch check key on that path. Its skill is
   pinned to the same release tag; OmO filters it out because its native `computer` tool covers

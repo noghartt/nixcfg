@@ -22,6 +22,10 @@ whenever it feels like a checkpoint.
 - **home/noghartt/pi**: destructive-guard no longer asks for approval when editing or deleting files in
   a Herdr worktree (`~/.herdr/worktrees/...`) of the session's repository. Every worktree that
   `git worktree list` reports now counts as part of the project; each worktree's root and its `.git` still ask.
+- **home/noghartt/cli**: Codex can trust folders again. Cua's docs MCP server made Home
+  Manager link `~/.codex/config.toml` into the read-only Nix store, where Codex also keeps
+  project trust, plugins, and hook state. Activation now writes a regular file instead, replacing
+  only the Nix-owned leaves (tracked in `$XDG_STATE_HOME/nixcfg/codex-config-baseline.json`).
 - **home/noghartt/omo**: new OmO sessions start at `high` again instead of `xhigh`. OmO 5.1.x
   keeps per-model thinking memory in `state.json`, where it outranks `defaultThinkingLevel`, and
   the launcher was still resetting the old `settings.json` key, so one Opus switch to `xhigh`
