@@ -45,6 +45,10 @@ whenever it feels like a checkpoint.
 
 ### Changed
 
+- **home/noghartt/herdr**: Herdr 0.9.3 -> 0.9.5: `herdr plugin update`, agent sessions survive a
+  Mac restart, the server outlives the shell that started it, Ctrl shortcuts on non-Latin
+  layouts, lower CPU on big sessions; 0.9.5 fixes prefix keys sent as text (input methods,
+  Ghostty `text:` binds) and stops installing Codex turn hooks.
 - **home/noghartt/pi**: destructive-guard no longer asks Jev to clear gray-zone actions. What
   its deterministic checks (self-harm blocks, temp-dir and session-owned files and processes,
   worker worktrees) cannot clear now always asks you, or is refused without a UI or during an

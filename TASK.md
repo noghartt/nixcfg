@@ -142,6 +142,7 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [x] Allow direct-checkout work in this repository and ignore `.worktrees/`
 - [x] Pin Codex 0.156.1 and Herdr 0.9.1 (2026-09-23)
 - [x] Herdr 0.9.3, Codex 0.162.0, Claude Code 2.1.295 (2026-10-09)
+- [x] Herdr 0.9.5; Codex from its complete release package for the app-server daemon (2026-10-26)
 - [x] Retain Mellon's committed hardware pin while recording the userspace updates
 - [x] Flake checks: nixfmt + statix + deadnix formatting check and builds for every discovered NixOS host
 - [x] CI: run all flake checks on main/v2 pushes and pull requests
