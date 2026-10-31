@@ -49,6 +49,12 @@ whenever it feels like a checkpoint.
 
 ### Changed
 
+- **flake**: every input updated, Mellon's hardware stack included. Linux 7.1 reached end of life
+  and left `nixpkgs-hardware`, so Mellon moves to 7.2, and its NVIDIA pin moves from 595.84 to
+  595.112.07 because 595.84's open module calls `strncpy`, which 7.2 removed. Lanzaboote 1.2 keeps PCR4 in the Measured Boot policy across bootloader updates,
+  which caps the ESP at 4 generations (was 8). NixOS dropped the scripted initrd, so `boot.nix`
+  no longer sets `boot.initrd.systemd.enable`. Zotero's Firefox ESR 140 runtime reached end of
+  life and is permitted by exact version on Mellon until nixpkgs moves Zotero off it.
 - **mellon/desktop**: Niri replaces Hyprland as the only compositor; greetd starts
   `niri-session` directly. `features/desktop/niri.nix` keeps the Noctalia shell, i3 keys, the
   Adwaita cursor and the polkit agent, adds a flat mouse profile and the ultrawide's 75 Hz
