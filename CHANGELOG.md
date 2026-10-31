@@ -10,6 +10,10 @@ whenever it feels like a checkpoint.
 
 ### Added
 
+- **mellon/audio**: guitar setup. Guitarix and the qpwgraph patchbay join pavucontrol, and a
+  PipeWire JACK rule gives Guitarix a 128-frame quantum (~2.7 ms) while it runs. The user joins
+  `audio`, which gets an unlimited memlock limit so Guitarix's `mlockall` succeeds. Guitarix is
+  wrapped onto PipeWire's libjack, so it no longer depends on the session's `LD_LIBRARY_PATH`.
 - **hosts/common**: the Claude desktop app (`claude` cask) on both MacBooks.
 - **home/noghartt/exebox**: exe.dev sandboxes next to agentbox, opt-in on Palantir and Mithril.
   `exebox` gives exe.dev VMs agentbox's command contract (seed and collect as git bundles,

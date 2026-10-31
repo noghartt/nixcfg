@@ -15,6 +15,7 @@
     ./boot.nix
     ./nvidia.nix
     ./desktop.nix
+    ./audio.nix
     ./gaming.nix
     ./networking.nix
     ./ssh.nix
@@ -34,6 +35,7 @@
     (users.noghartt.overrideAttrs (old: {
       extraGroups = old.extraGroups ++ [
         "agentbox"
+        "audio"
         "docker"
         "wireshark"
       ];

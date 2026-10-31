@@ -2,6 +2,7 @@
 {
   config,
   lib,
+  osConfig,
   pkgs,
   ...
 }:
@@ -21,6 +22,22 @@
     wl-clipboard
     # Per-app volume and device routing for the PipeWire stack.
     pavucontrol
+    # Guitar amp/effects (JACK client on PipeWire; low latency in hosts/mellon/audio.nix),
+    # and a patchbay to wire the interface's input through it to the outputs.
+    # NixOS reaches PipeWire's libjack through the session's LD_LIBRARY_PATH, which
+    # a launcher holding a capability (Hyprland's CAP_SYS_NICE did) makes glibc drop;
+    # Guitarix then fell back to JACK2's libjack with no server. Pin PipeWire's directly.
+    (symlinkJoin {
+      name = "guitarix-pipewire";
+      paths = [ guitarix ];
+      nativeBuildInputs = [ makeWrapper ];
+      postBuild = ''
+        rm $out/bin/guitarix
+        makeWrapper ${guitarix}/bin/guitarix $out/bin/guitarix \
+          --prefix LD_LIBRARY_PATH : ${osConfig.services.pipewire.package.jack}/lib
+      '';
+    })
+    qpwgraph
     calibre
     todoist-electron
   ];
