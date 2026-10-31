@@ -10,6 +10,7 @@ whenever it feels like a checkpoint.
 
 ### Added
 
+- **home/noghartt**: Prism Launcher (Minecraft) on Mellon, with nixpkgs' bundled Java runtimes.
 - **mellon/mouse**: the Logitech mouse (Logi Bolt receiver) runs at 3200 DPI. Solaar's user
   daemon runs in the session. Before it starts, `solaar-set-dpi` writes the DPI to the mouse and
   saves it in Solaar's config, and the daemon re-applies it whenever the mouse reconnects or wakes.

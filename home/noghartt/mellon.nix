@@ -40,6 +40,7 @@
     qpwgraph
     calibre
     todoist-electron
+    prismlauncher
   ];
 
   programs.ghostty = {
