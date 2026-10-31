@@ -23,7 +23,9 @@
     extraConfig = ''
       hl.monitor({
         output = "",
-        mode = "preferred",
+        -- "preferred" picked 60 Hz on the ultrawide, which also offers 75 Hz;
+        -- "highrr" chose 1024x768, whose 75.03 Hz beats the native 74.99 Hz.
+        mode = "2560x1080@74.99",
         position = "auto",
         scale = 1,
       })
@@ -32,6 +34,9 @@
         input = {
           kb_layout = "us",
           kb_variant = "intl",
+          -- libinput's default adaptive profile scales the pointer with hand
+          -- speed, which reads as drift; flat maps motion 1:1.
+          accel_profile = "flat",
         },
       })
 

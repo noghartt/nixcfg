@@ -10,9 +10,9 @@
   imports = [
     ./features/cli/ssh-server.nix
     ./features/desktop
-    ./features/desktop/hyprland.nix
-    ./features/desktop/hyprsunset.nix
+    ./features/desktop/niri.nix
     ./features/desktop/noctalia.nix
+    ./features/desktop/wlsunset.nix
     ./features/omo
     ./features/swarm
   ];

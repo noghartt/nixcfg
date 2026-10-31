@@ -49,6 +49,12 @@ whenever it feels like a checkpoint.
 
 ### Changed
 
+- **mellon/desktop**: Niri replaces Hyprland as the only compositor; greetd starts
+  `niri-session` directly. `features/desktop/niri.nix` keeps the Noctalia shell, i3 keys, the
+  Adwaita cursor and the polkit agent, adds a flat mouse profile and the ultrawide's 75 Hz
+  mode, and xwayland-satellite gives it X11 apps. wlsunset takes over the night light from
+  hyprsunset, which only works on Hyprland. Hyprland's tree controls, resize submap,
+  monocle toggle, and Obsidian/Todoist workspace rules have no Niri counterpart here.
 - **home/noghartt/herdr**: Herdr 0.9.3 -> 0.9.5: `herdr plugin update`, agent sessions survive a
   Mac restart, the server outlives the shell that started it, Ctrl shortcuts on non-Latin
   layouts, lower CPU on big sessions; 0.9.5 fixes prefix keys sent as text (input methods,

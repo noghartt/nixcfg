@@ -584,7 +584,7 @@ lsmod | grep '^nvidia'
 docker run --rm --gpus all nvidia/cuda:13.0.0-base-ubuntu24.04 nvidia-smi
 ```
 
-Verify greetd login, Hyprland, Noctalia, screen locking, idle screen-off,
+Verify greetd login, Niri, Noctalia, screen locking, idle screen-off,
 audio, and Firefox hardware acceleration. `systemctl suspend` must be refused:
 Mellon stays up 24/7.
 

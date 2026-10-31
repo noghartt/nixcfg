@@ -1,4 +1,4 @@
-# On Wayland, screenshots go through the portal wired by Hyprland.
+# On Wayland, screenshots go through the GNOME portal wired by programs.niri.
 {
   services.flameshot = {
     enable = true;

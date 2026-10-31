@@ -1,10 +1,10 @@
-# Wayland desktop stack: Hyprland + greetd + keyring + pipewire + bluetooth.
+# Wayland desktop stack: Niri + greetd + keyring + pipewire + bluetooth.
 { pkgs, ... }:
 {
-  programs.hyprland = {
-    enable = true;
-    xwayland.enable = true;
-  };
+  # Niri has no built-in XWayland; it starts xwayland-satellite on demand
+  # when it is on PATH.
+  programs.niri.enable = true;
+  environment.systemPackages = [ pkgs.xwayland-satellite ];
 
   security = {
     polkit.enable = true;
@@ -16,11 +16,11 @@
   programs.seahorse.enable = true;
 
   services = {
-    # Minimal greeter straight into the Hyprland session.
+    # Minimal greeter straight into the Niri session.
     greetd = {
       enable = true;
       settings.default_session = {
-        command = "${pkgs.tuigreet}/bin/tuigreet --time --remember --cmd start-hyprland";
+        command = "${pkgs.tuigreet}/bin/tuigreet --time --remember --cmd niri-session";
         user = "greeter";
       };
     };
@@ -62,7 +62,7 @@
   # Chromium/Electron apps go Wayland-native.
   environment.sessionVariables = {
     NIXOS_OZONE_WL = "1";
-    # GTK4 (Ghostty) otherwise routes keys through Hyprland's text-input-v3,
+    # GTK4 (Ghostty) otherwise routes keys through the compositor's text-input-v3,
     # which with no input method running swallows us-intl dead keys entirely.
     GTK_IM_MODULE = "simple";
   };

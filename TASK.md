@@ -18,7 +18,7 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [x] disko: shares the NVMe with Windows; formats only the labelled Linux partitions (2G ESP + LUKS -> LVM: root 500G, agents 300G at /agent, home remainder), btrfs subvolumes @ @nix @var_log @snapshots + @agent + @home; zram swap
 - [x] Hardware stack: independently locked Linux 7.1.4 + firmware/microcode 20260622; NVIDIA 595.84 pinned in `nvidia.nix`
 - [x] Boot: Lanzaboote Secure Boot + systemd initrd + encrypted LVM
-- [x] Desktop: Hyprland (Wayland) + greetd + pipewire + bluetooth
+- [x] Desktop: Niri (Wayland) + greetd + pipewire + bluetooth (replaced Hyprland)
 - [x] `time.timeZone` (America/Sao_Paulo)
 - [ ] Install day: follow `INSTALL.md` exactly (Windows prep, Linux partitions beside Windows, Disko format, temporary LUKS secret, hardware config, Lanzaboote keys, login password)
 - [ ] Install day: after passphrase and Secure Boot validation, enroll TPM2 LUKS unlock with a PIN and test passphrase fallback
@@ -127,7 +127,7 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [ ] Cua Driver first run: grant Accessibility and Screen Recording (`cua-driver permissions grant`), then check `cua-driver doctor`
 - [x] Disable Claude's Bash/subagent sandbox after it proved unreliable with automatic permission mode
 - [x] Writable Claude runtime settings with Nix-owned baseline keys and preserved injected hooks
-- [x] Desktop shell: Noctalia (launcher, session, control center) + Polkit agent + lock/idle behavior + Hyprsunset night light
+- [x] Desktop shell: Noctalia (launcher, session, control center) + Polkit agent + lock/idle behavior + wlsunset night light
 - [x] Migrate i3 workflow: workspaces, focus/move/resize, audio, launcher, session controls
 - [x] Desktop apps: Todoist, Calibre, Zotero, Slack, Discord, Spotify
 - [x] Jujutsu

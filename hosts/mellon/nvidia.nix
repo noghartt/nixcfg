@@ -1,6 +1,6 @@
 # mellon's GPU: NVIDIA RTX 5070 Ti (Blackwell). The nixos-hardware
 # architecture module selects the required open kernel module. Modesetting
-# remains host policy because Hyprland requires it. The old env-var workarounds
+# remains host policy because Niri requires it. The old env-var workarounds
 # are obsolete with the open kernel module and deliberately absent.
 # Adapted from github:fersilva16/nix-config (modules/linux/nvidia.nix).
 {
