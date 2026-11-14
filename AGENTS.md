@@ -36,6 +36,7 @@ home/<user>/features/omo/    standalone OmO Native (`omo`) feature: own agent di
 home/<user>/features/vscode/ standalone VS Code feature: marketplace extensions + live settings.json
 home/<user>/features/cua/    standalone Cua Driver feature: pinned app + daemon, skill and docs MCP for harnesses (palantir, mithril)
 home/<user>/features/darwin/  shared Mac composition (apps, agent stack, Ghostty+Herdr) imported by palantir.nix and mithril.nix
+home/<user>/features/hashcards/ standalone hashcards (spaced repetition) CLI, built from source; bump package.nix (all hosts)
 home/<user>/features/leverage/ standalone Leverage Computer CLI: hash-pinned `stable` build, self-updater off; bump package.nix (palantir)
 home/<user>/features/exebox/ standalone `exebox` CLI: agentbox's sandbox contract on exe.dev VMs, contract tests at build, hourly reaper (palantir, mithril)
 home/<user>/features/agent-evals/ standalone eval pipeline: `aeval` ingest/label/classify/report/export/replay over session transcripts (both hosts)

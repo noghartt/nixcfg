@@ -6,6 +6,7 @@
     ../../config/neovim
     ./features/agent-evals
     ./features/cli
+    ./features/hashcards
     ./features/herdr
     ./features/pi
   ];

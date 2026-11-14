@@ -33,6 +33,9 @@ whenever it feels like a checkpoint.
   harnesses so it gets the `gh` shim. nixpkgs lists the package for Linux only, so the module
   adds aarch64-darwin, where the same recipe builds and runs. The official desktop app comes
   from the `deepseek-harness` cask, on Palantir only (it updates itself).
+- **home/noghartt**: hashcards 0.5.0, the plain-text spaced repetition CLI, on Mellon, Palantir,
+  and Mithril. It is not in nixpkgs, so `features/hashcards/package.nix` builds it from the
+  release tag; to upgrade, bump the version and both hashes there.
 - **lib**: `hosts/common/local.nix`, empty `nixos` and `darwin` modules every host imports. Marked
   `git update-index --skip-worktree` on one machine, it holds that machine's private additions:
   git keeps seeing the empty stub while a plain `--flake .#<host>` rebuild reads the edits.
