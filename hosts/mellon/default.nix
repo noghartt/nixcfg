@@ -18,6 +18,7 @@
     ./mouse.nix
     ./audio.nix
     ./gaming.nix
+    ./envfs.nix
     ./networking.nix
     ./ssh.nix
     ./power.nix
