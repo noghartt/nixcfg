@@ -33,6 +33,9 @@ whenever it feels like a checkpoint.
   harnesses so it gets the `gh` shim. nixpkgs lists the package for Linux only, so the module
   adds aarch64-darwin, where the same recipe builds and runs. The official desktop app comes
   from the `deepseek-harness` cask, on Palantir only (it updates itself).
+- **lib**: `hosts/common/local.nix`, empty `nixos` and `darwin` modules every host imports. Marked
+  `git update-index --skip-worktree` on one machine, it holds that machine's private additions:
+  git keeps seeing the empty stub while a plain `--flake .#<host>` rebuild reads the edits.
 - **home/noghartt**: Prism Launcher (Minecraft) on Mellon, with nixpkgs' bundled Java runtimes.
 - **mellon/mouse**: the Logitech mouse (Logi Bolt receiver) runs at 3200 DPI. Solaar's user
   daemon runs in the session. Before it starts, `solaar-set-dpi` writes the DPI to the mouse and

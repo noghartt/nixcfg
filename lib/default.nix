@@ -64,6 +64,7 @@ in
       modules = [
         { networking.hostName = lib.mkDefault hostName; }
         (resolveHostModule hostFile)
+        (import ../hosts/common/local.nix).nixos
       ]
       # Option-only custom modules available to every host.
       ++ builtins.attrValues self.outputs.nixosModules;
@@ -89,6 +90,7 @@ in
           system.configurationRevision = self.rev or (self.dirtyRev or "dirty");
         }
         (resolveHostModule hostFile)
+        (import ../hosts/common/local.nix).darwin
       ]
       # The system-side device option is platform-neutral despite the standard
       # flake output name, and is mirrored into Home Manager by user factories.

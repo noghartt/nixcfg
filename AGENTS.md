@@ -24,6 +24,7 @@ overlays/                    shared nixpkgs overlays applied to every host
 hosts/common/global/         imported by every NixOS host (nix settings, HM wiring)
 hosts/common/darwin/         imported by every Darwin host (nix settings, HM wiring)
 hosts/common/optional/       opt-in system modules shared by 2+ hosts (macbook.nix: casks, defaults for both Macs)
+hosts/common/local.nix       per-machine private additions, imported by every host; committed empty, edited only under git skip-worktree
 hosts/<host>/                host specs, routed to mkNixOSConfig or mkDarwinConfig
 home/<user>/user.nix         cross-platform user factory (functor + overrideAttrs)
 home/<user>/home.nix         portable HM baseline imported on every host
@@ -72,6 +73,13 @@ docs/                        per-feature design notes (read the matching doc bef
   `Nix/mellon-github` SSH Key item, GitHub's host key is pinned), so unattended runs can push;
   every other SSH connection still signs through the desktop 1Password agent, which asks on
   screen for each new client and locks after an idle hour.
+- `hosts/common/local.nix` is committed as `{ nixos = { }; darwin = { }; }` (lib imports the half
+  matching each host's platform) and must stay that empty stub in git. A machine
+  that needs private, uncommitted additions runs `git update-index --skip-worktree` on it and
+  edits it in place: git keeps reporting the stub (no diff, never staged), while Nix reads the
+  working tree, so a plain `--flake .#<host>` rebuild applies the edits. Never stage, commit, or
+  describe its local contents; it cannot add flake inputs, so it pins any external flake with
+  `builtins.getFlake` on a locked URL (with `narHash`).
 - Hardware-specific modules live in the host dir (e.g. mellon's `nvidia.nix`); promote to
   `hosts/common/optional/` only when a second host needs them.
 - Package overrides shared by Linux and Darwin live in `overlays/` and are applied by both
