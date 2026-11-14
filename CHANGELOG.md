@@ -39,6 +39,9 @@ whenever it feels like a checkpoint.
 - **lib**: `hosts/common/local.nix`, empty `nixos` and `darwin` modules every host imports. Marked
   `git update-index --skip-worktree` on one machine, it holds that machine's private additions:
   git keeps seeing the empty stub while a plain `--flake .#<host>` rebuild reads the edits.
+- **overlays**: Cursor's Grok Bot desktop agent (`grok-bot`, 0.78.1) on Mellon, repackaged from
+  the vendor's .deb (the only Linux build). It uses native Wayland when `NIXOS_OZONE_WL` is set.
+  To upgrade, change the version, the release commit, and the hash in `overlays/grok-bot.nix`.
 - **mellon**: Bluetooth settings for AirPods. Blueman and upower show headset battery levels,
   reconnecting after the Mac had the AirPods is quicker, and re-pairing after another system
   replaced the pairing key no longer asks for confirmation.

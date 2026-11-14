@@ -108,6 +108,7 @@
       overlays.pi = import ./overlays/pi.nix;
       overlays.ghostty = import ./overlays/ghostty.nix;
       overlays.opencode = import ./overlays/opencode.nix;
+      overlays.grok-bot = import ./overlays/grok-bot.nix;
 
       # Custom option-only modules, auto-imported everywhere.
       nixosModules = import ./modules/nixos;

@@ -91,6 +91,8 @@ docs/                        per-feature design notes (read the matching doc bef
   locked `nixpkgs-darwin` and steps aside once the lock reaches that version.
   `overlays/opencode.nix` (Darwin only) replaces opencode 2.2.5's stale `node_modules` hash
   (NixOS/nixpkgs#582673) and steps aside once nixpkgs changes it.
+  `overlays/grok-bot.nix` (NixOS only) repackages Cursor's Grok Bot Electron app from the
+  vendor's .deb (autoPatchelf + Wayland wrapper); Mellon installs it through Home Manager.
 - HM features are import-based (`home/<user>/features/<area>/`), not enable-flag-based.
   Portable baseline areas are imported by `home.nix`; platform features are composed by the
   user host entrypoint. Do not nest a substantial feature under `cli/` merely because its

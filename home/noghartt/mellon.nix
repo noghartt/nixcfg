@@ -39,6 +39,8 @@
     qpwgraph
     calibre
     todoist-electron
+    # Cursor's Grok Bot desktop agent (overlays/grok-bot.nix).
+    grok-bot
     # LWJGL 3.4's bundled SDL3 drops to XWayland on compositors without fifo-v1
     # (niri), and lwjgl3ify then gets EGL there, where NVIDIA cannot create a
     # window surface ("Could not create GLES window surface"; GTNH crashed).
