@@ -1,10 +1,16 @@
 # Wayland desktop stack: Niri + greetd + keyring + pipewire + bluetooth.
-{ pkgs, ... }:
+{ config, pkgs, ... }:
 {
   # Niri has no built-in XWayland; it starts xwayland-satellite on demand
   # when it is on PATH.
   programs.niri.enable = true;
-  environment.systemPackages = [ pkgs.xwayland-satellite ];
+  environment.systemPackages = [
+    pkgs.xwayland-satellite
+    # Claude Desktop opens links with xdg-open under a PATH narrowed to system
+    # dirs, and xdg-mime skips a default whose Exec is not on PATH, so the
+    # per-user Firefox lost to Chrome's absolute Exec. Same store path as HM's.
+    config.home-manager.users.noghartt.programs.firefox.finalPackage
+  ];
 
   # nixpkgs still builds Zotero (features/desktop/applications.nix) on Firefox
   # ESR 140, end-of-life since 2026-10-13. Zotero only browses its own pages.

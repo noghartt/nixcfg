@@ -93,6 +93,9 @@ docs/                        per-feature design notes (read the matching doc bef
   (NixOS/nixpkgs#582673) and steps aside once nixpkgs changes it.
   `overlays/grok-bot.nix` (NixOS only) repackages Cursor's Grok Bot Electron app from the
   vendor's .deb (autoPatchelf + Wayland wrapper); Mellon installs it through Home Manager.
+  `overlays/claude-desktop.nix` (NixOS only) does the same for Anthropic's Claude Desktop
+  Linux beta from its apt repository's .deb (the Macs use the `claude` cask); it never
+  self-updates on Linux, so bump its version and hash by hand. Cowork's QEMU/KVM is not wired.
 - HM features are import-based (`home/<user>/features/<area>/`), not enable-flag-based.
   Portable baseline areas are imported by `home.nix`; platform features are composed by the
   user host entrypoint. Do not nest a substantial feature under `cli/` merely because its

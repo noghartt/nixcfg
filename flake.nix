@@ -109,6 +109,7 @@
       overlays.ghostty = import ./overlays/ghostty.nix;
       overlays.opencode = import ./overlays/opencode.nix;
       overlays.grok-bot = import ./overlays/grok-bot.nix;
+      overlays.claude-desktop = import ./overlays/claude-desktop.nix;
 
       # Custom option-only modules, auto-imported everywhere.
       nixosModules = import ./modules/nixos;

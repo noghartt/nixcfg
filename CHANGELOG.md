@@ -39,6 +39,10 @@ whenever it feels like a checkpoint.
 - **lib**: `hosts/common/local.nix`, empty `nixos` and `darwin` modules every host imports. Marked
   `git update-index --skip-worktree` on one machine, it holds that machine's private additions:
   git keeps seeing the empty stub while a plain `--flake .#<host>` rebuild reads the edits.
+- **overlays**: Claude Desktop (`claude-desktop`, 5.11492.2, Anthropic's Linux beta) on Mellon,
+  repackaged from the official .deb in Anthropic's apt repository; the Macs keep the cask. It
+  does not update itself on Linux: bump the version and hash in `overlays/claude-desktop.nix`.
+  Cowork (QEMU/KVM VMs) is not wired up.
 - **overlays**: Cursor's Grok Bot desktop agent (`grok-bot`, 0.78.1) on Mellon, repackaged from
   the vendor's .deb (the only Linux build). It uses native Wayland when `NIXOS_OZONE_WL` is set.
   To upgrade, change the version, the release commit, and the hash in `overlays/grok-bot.nix`.
