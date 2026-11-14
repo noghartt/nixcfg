@@ -39,7 +39,21 @@
     qpwgraph
     calibre
     todoist-electron
-    prismlauncher
+    # LWJGL 3.4's bundled SDL3 drops to XWayland on compositors without fifo-v1
+    # (niri), and lwjgl3ify then gets EGL there, where NVIDIA cannot create a
+    # window surface ("Could not create GLES window surface"; GTNH crashed).
+    # Native Wayland EGL works; GLFW-based instances ignore this variable.
+    (symlinkJoin {
+      name = "prismlauncher-sdl-wayland";
+      paths = [ prismlauncher ];
+      nativeBuildInputs = [ makeWrapper ];
+      postBuild = ''
+        rm $out/bin/prismlauncher
+        makeWrapper ${prismlauncher}/bin/prismlauncher $out/bin/prismlauncher \
+          --set SDL_VIDEO_DRIVER wayland
+      '';
+    })
+    unzip
   ];
 
   programs.ghostty = {
