@@ -6,6 +6,13 @@
     viAlias = true;
     vimAlias = true;
     initLua = builtins.readFile ./init.lua;
+    # Mason builds eslint-lsp and typescript-language-server with npm, gopls
+    # with go, and basedpyright in a python3 venv; scoped to Neovim's PATH.
+    extraPackages = with pkgs; [
+      nodejs
+      go
+      python3
+    ];
   };
 
   # Lazy builds native plugins and Treesitter parsers at runtime.

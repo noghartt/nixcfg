@@ -90,6 +90,9 @@ whenever it feels like a checkpoint.
   measured on aarch64-darwin until nixpkgs changes it.
 - **home/noghartt/agent-evals**: the replay test gets a 60 s timeout. It takes about 0.5 s on an
   idle machine, but went past bun's 5 s default while building beside a loaded `darwin-rebuild`.
+- **home/noghartt/neovim**: Mason can install eslint, ts_ls, gopls and basedpyright again.
+  Node.js, Go and Python 3 are now on Neovim's own PATH, because Mason builds those servers with
+  npm, go and a Python venv.
 - **home/noghartt/pi**: destructive-guard no longer asks for approval when editing or deleting files in
   a Herdr worktree (`~/.herdr/worktrees/...`) of the session's repository. Every worktree that
   `git worktree list` reports now counts as part of the project; each worktree's root and its `.git` still ask.
