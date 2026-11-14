@@ -62,6 +62,14 @@
   hardware.bluetooth = {
     enable = true;
     powerOnBoot = true;
+    settings.General = {
+      # Exposes headset battery levels (AirPods) to blueman/upower.
+      Experimental = true;
+      # Quicker reconnects when switching AirPods over from the Mac; costs some idle power.
+      FastConnectable = true;
+      # AirPods re-pair after a Windows/Mac pairing replaced the key; accept without a prompt.
+      JustWorksRepairing = "always";
+    };
   };
 
   # Chromium/Electron apps go Wayland-native.

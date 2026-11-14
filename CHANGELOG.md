@@ -36,6 +36,9 @@ whenever it feels like a checkpoint.
 - **lib**: `hosts/common/local.nix`, empty `nixos` and `darwin` modules every host imports. Marked
   `git update-index --skip-worktree` on one machine, it holds that machine's private additions:
   git keeps seeing the empty stub while a plain `--flake .#<host>` rebuild reads the edits.
+- **mellon**: Bluetooth settings for AirPods. Blueman and upower show headset battery levels,
+  reconnecting after the Mac had the AirPods is quicker, and re-pairing after another system
+  replaced the pairing key no longer asks for confirmation.
 - **mellon**: downloaded scripts with hardcoded interpreters (`#!/bin/bash`) now run, because
   envfs serves `/bin` and `/usr/bin` from the caller's `PATH`. A Java 21 JDK is installed
   system-wide for GT: New Horizons servers started from a shell.
