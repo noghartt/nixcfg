@@ -33,6 +33,8 @@ whenever it feels like a checkpoint.
 
 ### Fixed
 
+- **home/noghartt/leverage**: bumped to 0.2.293. Upstream's moving `stable` download changed,
+  so the pinned hash no longer matched and Palantir's rebuild failed.
 - **overlays**: opencode 2.2.5 builds on the Macs again. Its `node_modules` hash in nixpkgs went
   stale when bun moved to 1.4.4 (NixOS/nixpkgs#582673); `overlays/opencode.nix` pins the hash
   measured on aarch64-darwin until nixpkgs changes it.

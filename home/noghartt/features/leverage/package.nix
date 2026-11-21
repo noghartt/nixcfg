@@ -5,7 +5,7 @@
 }:
 stdenvNoCC.mkDerivation {
   pname = "leverage";
-  version = "0.2.108";
+  version = "0.2.293";
 
   # Upstream only serves a moving `stable` channel (a redirect to a presigned
   # R2 URL), so this hash pins whatever build was current at the last bump.
@@ -13,7 +13,7 @@ stdenvNoCC.mkDerivation {
   src = fetchurl {
     name = "leverage-darwin-arm64";
     url = "https://app.leverage.computer/api/cli/download?os=darwin&arch=arm64";
-    hash = "sha256-QJ6QowORndzfd5KZhotez8qJlzMWH0Ig9CnqSfPz9ek=";
+    hash = "sha256-DC15yuLJTca/hfPe/wcTkCJ4BsAQXHbfrJ0I9kgnTk4=";
   };
 
   nativeBuildInputs = [ makeBinaryWrapper ];
