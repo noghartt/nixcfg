@@ -15,6 +15,10 @@ whenever it feels like a checkpoint.
   to Herdr, so they show in its agent list and sidebar. OmO shows as `omo`. Before this, OmO
   panes were missing, or showed as `claude` while a Claude subscription child was in the
   foreground. The extension is Herdr's own Pi integration, built from the pinned Herdr source.
+- **home/noghartt/cli**: DeepSeek Harness (`dsh`) on Palantir, wrapped like the other agent
+  harnesses so it gets the `gh` shim. nixpkgs lists the package for Linux only, so the module
+  adds aarch64-darwin, where the same recipe builds and runs. The official desktop app comes
+  from the `deepseek-harness` cask, on Palantir only (it updates itself).
 - **home/noghartt**: Prism Launcher (Minecraft) on Mellon, with nixpkgs' bundled Java runtimes.
 - **mellon/mouse**: the Logitech mouse (Logi Bolt receiver) runs at 3200 DPI. Solaar's user
   daemon runs in the session. Before it starts, `solaar-set-dpi` writes the DPI to the mouse and
