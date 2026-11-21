@@ -2,6 +2,7 @@
   "name": "omo-ui-chrome",
   "version": "1.0.0",
   "private": true,
+  "omoVerified": "5.1.60",
   "keywords": [
     "pi-package"
   ],

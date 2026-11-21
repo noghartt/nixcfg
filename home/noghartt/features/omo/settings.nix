@@ -1,4 +1,4 @@
-{ startupModel }:
+{ startupModel, version }:
 {
   config,
   lib,
@@ -15,10 +15,23 @@ let
   # (model picks, thinking levels, changelog state) because it rewrites it.
   baseline = jsonFormat.generate "omo-settings-baseline.json" {
     # pi-workflows registers a `workflow` tool that collides with omo.js's own,
-    # so it fails to load under OmO.
+    # so it fails to load under OmO. The palette, session tree, orchestrator and
+    # forum client stay Pi-only by choice.
     packages =
-      builtins.filter (p: lib.getName p != "pi-workflows") pi.settings.packages
-      ++ import ./extensions { inherit lib pkgs; };
+      builtins.filter (
+        p:
+        !builtins.elem (lib.getName p) [
+          "pi-workflows"
+          "pi-command-palette"
+          "pi-session-tree"
+          "pi-orchestrator"
+          "pi-agent-forum"
+        ]
+      ) pi.settings.packages
+      ++ import ./extensions {
+        inherit lib pkgs;
+        omoVersion = version;
+      };
     # The Cua Driver skill duplicates OmO's native `computer` tool; with both,
     # two computer-use skills would compete for the same requests.
     skills = builtins.filter (s: baseNameOf s != "cua-driver") pi.settings.skills;
@@ -30,25 +43,18 @@ let
       ;
     # OmO-only: the rotating startup and working-status tips.
     tips = false;
-    # Compaction fires past contextWindow - reserveTokens, so on the 1M Claude
-    # models the default reserve let sessions grow to ~770k without compacting
-    # once; every request re-read that and every cache miss rewrote it at 2x.
-    # This reserve compacts them at ~250k.
+    # Auto-compaction fires at a share of the model's window, not at
+    # window - reserve; the reserve only feeds the hard-limit check, so a
+    # reserve larger than a window makes every prompt hit that limit and fail
+    # with "Nothing to compact". Where Opus and Sonnet compact is set by the
+    # window cap in models.nix.
     compaction = {
       enabled = true;
       reserveTokens = 16384;
       keepRecentTokens = 20000;
-      modelOverrides =
-        lib.genAttrs
-          [
-            "anthropic-subscription/claude-opus-5-5"
-            "anthropic-subscription/claude-sonnet-5-5"
-          ]
-          (_: {
-            reserveTokens = 750000;
-          });
     };
-    # Keep the interactive picker on the five current Claude and ChatGPT models.
+    # Keep the interactive picker on the five current Claude and ChatGPT models,
+    # plus Refuseless GLM 5.3 Abliterated (models.nix).
     # Claude Haiku 4.5 is left out of the catalog: it is a generation behind.
     defaultProvider = startupModel.provider;
     defaultModel = startupModel.model;
@@ -59,6 +65,7 @@ let
       "anthropic-subscription/claude-fable-5-1"
       "chatgpt-subscription/gpt-6-astra"
       "chatgpt-subscription/gpt-6-sol"
+      "refuseless/glm-5.3-abliterated"
     ];
   };
 

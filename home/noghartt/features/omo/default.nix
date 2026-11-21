@@ -91,10 +91,15 @@ let
   # Claude Code writes the subscription cache with a 1h TTL (2x input price),
   # but session logs showed reads after 5+ idle minutes missing ~85% of the
   # time anyway; 5m writes cost 1.25x. Experiment: export =1h to compare.
+  # Claude Code loads the account's claude.ai connectors (fal, Docs, Drive,
+  # ...) into the SDK subprocess, and their tool schemas rode along on some
+  # turns: ~566k extra cache writes on a ~60k session, which OmO read as 209%
+  # of the 300k window and then refused with "Nothing to compact".
   omo = pkgs.writeShellScriptBin "omo" ''
     ${agentPath.prependPath}
     export PATH="${pkgs.bun}/bin:$PATH"
     export CLAUDE_CODE_PROMPT_CACHE_TTL="''${CLAUDE_CODE_PROMPT_CACHE_TTL:-5m}"
+    export ENABLE_CLAUDEAI_MCP_SERVERS="''${ENABLE_CLAUDEAI_MCP_SERVERS:-false}"
     export OMO_CODING_AGENT_DIR="''${OMO_CODING_AGENT_DIR:-$HOME/.omo/agent}"
     reset() {
       file="$1"; shift
@@ -126,7 +131,7 @@ let
 in
 {
   imports = [
-    (import ./settings.nix { inherit startupModel; })
+    (import ./settings.nix { inherit startupModel version; })
     (import ./config.nix { inherit version; })
     ./codemode.nix
     ./memwatch.nix

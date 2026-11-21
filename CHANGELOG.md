@@ -8,15 +8,27 @@ whenever it feels like a checkpoint.
 
 ## [Unreleased]
 
+### Removed
+
+- **home/noghartt/omo**: OmO no longer loads Pi's command palette, session tree, orchestrator
+  or agent-forum client; Pi keeps all four.
+
 ### Added
 
 - **palantir**: OpenVPN Connect, from the `openvpn-connect` cask.
+- **home/noghartt/omo**: Refuseless GLM 5.3 Abliterated (`refuseless/glm-5.3-abliterated`)
+  is a custom OmO provider and is in the model picker: 1M context, 131k output,
+  `low`/`high`/`max` thinking only. Its key, `REFUSELESS_API_KEY`, comes from the 1Password
+  item `op://Nix/REFUSELESS_API_KEY` (notes field) through `secrets-env.nix`.
 - **home/noghartt/omo**: OmO memory is off on every host (`memory.enabled = false` in
   `omo.jsonc`). It kept a memory repo per checkout, so each Herdr worktree created its own.
 - **home/noghartt/pi**: Pi and OmO sessions report their idle, working and blocked state
   to Herdr, so they show in its agent list and sidebar. OmO shows as `omo`. Before this, OmO
   panes were missing, or showed as `claude` while a Claude subscription child was in the
   foreground. The extension is Herdr's own Pi integration, built from the pinned Herdr source.
+- **home/noghartt/omo**: evaluation warns when the packaged OmO version differs from the one
+  `ui-chrome` and `ui-prompt` were checked against (`omoVerified` in their `package.json`), since
+  both reach into OmO internals that move between releases.
 - **home/noghartt/cli**: DeepSeek Harness (`dsh`) on Palantir, wrapped like the other agent
   harnesses so it gets the `gh` shim. nixpkgs lists the package for Linux only, so the module
   adds aarch64-darwin, where the same recipe builds and runs. The official desktop app comes
@@ -48,6 +60,18 @@ whenever it feels like a checkpoint.
   (the macOS Keychain), so `auth.json` holds no token the limits fetcher could use. Claude
   windows now come from OmO's own usage polling (`pi.getSubscriptionLimits()`), updated live,
   and account emails come from the profiles OmO records. Pi and ChatGPT keep the existing fetcher.
+- **home/noghartt/omo**: Opus 5.5 sessions no longer jump to ~209% context and fail with
+  "Nothing to compact" while their real context is ~60k. Claude Code loaded the account's
+  claude.ai connectors (fal, Docs, Drive, ...) into OmO's SDK subprocess, and their tool schemas
+  added ~566k cached tokens to alternating turns. The `omo` launcher now defaults
+  `ENABLE_CLAUDEAI_MCP_SERVERS=false`; export `true` to get the connectors back.
+- **home/noghartt/omo**: OmO no longer reports "Pre-prompt compaction failed: Nothing to
+  compact (session too small)" on young Opus 5.5 and Sonnet 5.5 sessions. The 750k
+  `compaction.modelOverrides` reserve left only 250k of the 1M window, so the pre-prompt
+  hard-limit check fired before there was anything to compact. The reserve is gone;
+  `models.json` instead caps both models' planning `contextWindow` at 300k, which still
+  compacts near ~210k while the account keeps 1M. Activation drops the stale key from the live
+  `settings.json`.
 - **home/noghartt/leverage**: bumped to 0.2.293. Upstream's moving `stable` download changed,
   so the pinned hash no longer matched and Palantir's rebuild failed.
 - **overlays**: opencode 2.2.5 builds on the Macs again. Its `node_modules` hash in nixpkgs went
