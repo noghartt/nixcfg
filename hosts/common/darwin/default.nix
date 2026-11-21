@@ -21,6 +21,7 @@
     flake.outputs.overlays.codex
     flake.outputs.overlays.pi
     flake.outputs.overlays.ghostty
+    flake.outputs.overlays.opencode
   ];
 
   home-manager = {

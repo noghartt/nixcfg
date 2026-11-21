@@ -33,6 +33,9 @@ whenever it feels like a checkpoint.
 
 ### Fixed
 
+- **overlays**: opencode 2.2.5 builds on the Macs again. Its `node_modules` hash in nixpkgs went
+  stale when bun moved to 1.4.4 (NixOS/nixpkgs#582673); `overlays/opencode.nix` pins the hash
+  measured on aarch64-darwin until nixpkgs changes it.
 - **home/noghartt/pi**: destructive-guard no longer asks for approval when editing or deleting files in
   a Herdr worktree (`~/.herdr/worktrees/...`) of the session's repository. Every worktree that
   `git worktree list` reports now counts as part of the project; each worktree's root and its `.git` still ask.
