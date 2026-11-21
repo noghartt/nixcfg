@@ -6,10 +6,13 @@ import { join, resolve } from "node:path";
 import {
 	accountIdentities,
 	type AccountIdentity,
+	claudeFromHost,
 	createLimitsPoller,
+	type HostLimitRecord,
 	LIMITS_REREAD_MS,
 	type LimitsCache,
 	type LimitWindow,
+	type ProviderLimits,
 } from "./limits.ts";
 
 // OmO's native-badge republishes "(OmO Native by Q Kim)" under this key on every
@@ -65,6 +68,11 @@ type OrchestratorState = {
 	id: string;
 	strategy: string;
 	workers: { name: string; state: string; model: string }[];
+};
+// OmO's subscription-limits API; Pi lacks it, so both members are optional.
+type HostLimitsApi = {
+	getSubscriptionLimits?: () => readonly HostLimitRecord[];
+	onSubscriptionLimits?: (listener: () => void) => () => void;
 };
 // Only the fullscreen (alt-screen) TUI has a layout root; regular mode writes to scrollback,
 // where a fixed column cannot exist.
@@ -279,6 +287,8 @@ export default function statusline(pi: ExtensionAPI) {
 	let limits: LimitsCache | undefined;
 	let identities: AccountIdentity[] = [];
 	let limitsTimer: ReturnType<typeof setInterval> | undefined;
+	let hostClaude: ProviderLimits | undefined;
+	let stopHostLimits: (() => void) | undefined;
 	let todos: TodoPhase[] = [];
 	let todoOwed: TodoOwed | undefined;
 	let announcedSidebar: boolean | undefined;
@@ -305,8 +315,22 @@ export default function statusline(pi: ExtensionAPI) {
 		});
 	});
 	// Only processes with a mounted TUI poll; headless and RPC workers never render the result.
+	// OmO's Claude accounts sign in through the Claude CLI, whose tokens the poller cannot
+	// read, so their limits come from OmO's own polling instead.
+	const readHostLimits = () => {
+		const host = pi as unknown as HostLimitsApi;
+		hostClaude = host.getSubscriptionLimits ? claudeFromHost(host.getSubscriptionLimits.call(pi)) : undefined;
+	};
 	const startLimits = () => {
 		if (limitsTimer) return;
+		const host = pi as unknown as HostLimitsApi;
+		if (host.onSubscriptionLimits) {
+			stopHostLimits = host.onSubscriptionLimits.call(pi, () => {
+				readHostLimits();
+				render();
+			});
+			readHostLimits();
+		}
 		void limitsPoller.tick();
 		limitsTimer = setInterval(() => void limitsPoller.tick(), LIMITS_REREAD_MS);
 		limitsTimer.unref?.();
@@ -315,6 +339,13 @@ export default function statusline(pi: ExtensionAPI) {
 		if (limitsTimer) clearInterval(limitsTimer);
 		limitsTimer = undefined;
 		limitsPoller.stop();
+		stopHostLimits?.();
+		stopHostLimits = undefined;
+	};
+	// A host reading replaces the poller's Claude entry, which only legacy auth.json tokens feed.
+	const limitProviders = (): ProviderLimits[] => {
+		const polled = limits?.providers ?? [];
+		return hostClaude ? [hostClaude, ...polled.filter((provider) => provider.id !== "claude")] : polled;
 	};
 	const sidebarShown = () =>
 		sidebarEnabled && layout !== undefined && layout.tui.terminal.columns >= SIDEBAR_MIN_COLUMNS;
@@ -517,7 +548,7 @@ export default function statusline(pi: ExtensionAPI) {
 		}
 		// Without the sidebar, each provider shows only its tightest window.
 		const now = Date.now();
-		for (const provider of limits?.providers ?? []) {
+		for (const provider of limitProviders()) {
 			const tightest = [...provider.windows].sort((a, b) => b.percent - a.percent)[0];
 			if (!tightest) continue;
 			const color = provider.error ? "dim" : paceColor(tightest.percent, paceOf(tightest, now));
@@ -656,7 +687,7 @@ export default function statusline(pi: ExtensionAPI) {
 		}
 
 		private limitLines(inner: number): string[] {
-			const providers = limits?.providers ?? [];
+			const providers = limitProviders();
 			if (providers.length === 0) return [];
 			const th = this.theme;
 			const now = Date.now();

@@ -33,6 +33,11 @@ whenever it feels like a checkpoint.
 
 ### Fixed
 
+- **home/noghartt/pi**: the statusline shows Claude limits again under OmO. OmO now signs
+  Claude accounts in through the bundled Claude CLI, which keeps their tokens in its own store
+  (the macOS Keychain), so `auth.json` holds no token the limits fetcher could use. Claude
+  windows now come from OmO's own usage polling (`pi.getSubscriptionLimits()`), updated live,
+  and account emails come from the profiles OmO records. Pi and ChatGPT keep the existing fetcher.
 - **home/noghartt/leverage**: bumped to 0.2.293. Upstream's moving `stable` download changed,
   so the pinned hash no longer matched and Palantir's rebuild failed.
 - **overlays**: opencode 2.2.5 builds on the Macs again. Its `node_modules` hash in nixpkgs went

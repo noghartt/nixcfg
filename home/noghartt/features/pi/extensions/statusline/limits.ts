@@ -91,13 +91,9 @@ function oauthSlots(credential: unknown): Slot[] {
 	});
 }
 
-// Tokens are only read: Pi, OmO, and Codex each rotate their own refresh tokens, and a
-// refresh from here would invalidate the copy the owning harness holds. Expired tokens are
-// skipped until their owner refreshes them. Every harness's store is read, whichever one
-// runs this, so the shared cache holds the same account set for all processes.
-export function discoverAccounts(now = Date.now()): Account[] {
+function agentDirs(): Set<string> {
 	const home = homedir();
-	const agentDirs = new Set(
+	return new Set(
 		[
 			process.env.PI_CODING_AGENT_DIR,
 			process.env.OMO_CODING_AGENT_DIR,
@@ -106,6 +102,14 @@ export function discoverAccounts(now = Date.now()): Account[] {
 			join(home, ".omo", "agent"),
 		].filter((dir): dir is string => Boolean(dir)),
 	);
+}
+
+// Tokens are only read: Pi, OmO, and Codex each rotate their own refresh tokens, and a
+// refresh from here would invalidate the copy the owning harness holds. Expired tokens are
+// skipped until their owner refreshes them. Every harness's store is read, whichever one
+// runs this, so the shared cache holds the same account set for all processes.
+export function discoverAccounts(now = Date.now()): Account[] {
+	const home = homedir();
 	const claude: Account[] = [];
 	const chatgpt = new Map<string, Account>();
 	const live = (expires: number | undefined) => expires === undefined || expires > now;
@@ -117,7 +121,7 @@ export function discoverAccounts(now = Date.now()): Account[] {
 		);
 		if (!duplicate) claude.push({ provider: "claude", access: slot.access, refresh: slot.refresh });
 	};
-	for (const dir of agentDirs) {
+	for (const dir of agentDirs()) {
 		const auth = readJson(join(dir, "auth.json")) as Record<string, unknown> | undefined;
 		if (!auth || typeof auth !== "object") continue;
 		for (const provider of ["anthropic", "anthropic-subscription"]) {
@@ -247,6 +251,66 @@ async function fetchAccount(account: Account): Promise<AccountReading> {
 	return account.provider === "claude" ? parseClaude(body as RawClaudeUsage) : parseChatgpt(body as RawChatgptUsage, now);
 }
 
+// What OmO's pi.getSubscriptionLimits() returns per account (Pi has no such API). OmO polls
+// every subscription account itself, including Claude accounts signed in through the bundled
+// Claude CLI, whose tokens live in the CLI's own store and never reach auth.json.
+export type HostLimitRecord = {
+	provider: string;
+	account: string;
+	windows: { id: string; label: string; windowMinutes?: number; usedPercent: number; resetsAt?: string }[];
+	reportedAt: string;
+	plan?: string;
+	error?: string;
+};
+// The providers OmO's own side panel counts as Claude.
+const HOST_CLAUDE_PROVIDERS = new Set(["anthropic-subscription", "claude-sdk-oauth"]);
+
+export function claudeFromHost(records: readonly HostLimitRecord[]): ProviderLimits | undefined {
+	const mine = records.filter((record) => HOST_CLAUDE_PROVIDERS.has(record.provider));
+	if (mine.length === 0) return undefined;
+	const healthy = mine.filter((record) => !record.error);
+	// As with the fetcher, failed accounts' last windows only show when every account failed.
+	const readings = (healthy.length ? healthy : mine).map(
+		(record): AccountReading => ({
+			windows: record.windows.map((window) => ({
+				label: window.label,
+				percent: window.usedPercent,
+				resetsAt: parseTime(window.resetsAt),
+				windowMs: window.windowMinutes
+					? window.windowMinutes * 60_000
+					: window.label === "5h"
+						? FIVE_HOURS_MS
+						: window.label.startsWith("7d")
+							? SEVEN_DAYS_MS
+							: undefined,
+			})),
+			plan: record.plan,
+		}),
+	);
+	return {
+		id: "claude",
+		title: "Claude",
+		accounts: mine.length,
+		ok: healthy.length,
+		...pool(readings),
+		...(healthy.length ? {} : { error: mine[0]!.error }),
+	};
+}
+
+// OmO records each Claude CLI account's profile next to its sentinel slot, so those emails
+// need no profile request.
+function claudeCliEmails(): string[] {
+	return [...agentDirs()].flatMap((dir) => {
+		const auth = readJson(join(dir, "auth.json")) as { "anthropic-subscription"?: { accounts?: unknown } } | undefined;
+		const accounts = auth?.["anthropic-subscription"]?.accounts;
+		if (!Array.isArray(accounts)) return [];
+		return accounts.flatMap((account) => {
+			const email = text((account as { profile?: { email?: unknown } } | null)?.profile?.email);
+			return email ? [email] : [];
+		});
+	});
+}
+
 // Keyed by access token, so a rotated token re-resolves once and no process asks twice.
 const claudeEmails = new Map<string, Promise<string | undefined>>();
 
@@ -280,10 +344,11 @@ export async function accountIdentities(): Promise<AccountIdentity[]> {
 	const emails = await Promise.all(
 		accounts.map((account) => (account.provider === "claude" ? claudeEmail(account.access) : Promise.resolve(account.email))),
 	);
-	return accounts.flatMap((account, index) => {
+	const fromTokens = accounts.flatMap((account, index): AccountIdentity[] => {
 		const email = emails[index];
 		return email ? [{ provider: account.provider, email }] : [];
 	});
+	return [...fromTokens, ...claudeCliEmails().map((email): AccountIdentity => ({ provider: "claude", email }))];
 }
 
 const average = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / values.length;
