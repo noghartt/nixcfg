@@ -38,6 +38,8 @@ whenever it feels like a checkpoint.
 - **overlays**: opencode 2.2.5 builds on the Macs again. Its `node_modules` hash in nixpkgs went
   stale when bun moved to 1.4.4 (NixOS/nixpkgs#582673); `overlays/opencode.nix` pins the hash
   measured on aarch64-darwin until nixpkgs changes it.
+- **home/noghartt/agent-evals**: the replay test gets a 60 s timeout. It takes about 0.5 s on an
+  idle machine, but went past bun's 5 s default while building beside a loaded `darwin-rebuild`.
 - **home/noghartt/pi**: destructive-guard no longer asks for approval when editing or deleting files in
   a Herdr worktree (`~/.herdr/worktrees/...`) of the session's repository. Every worktree that
   `git worktree list` reports now counts as part of the project; each worktree's root and its `.git` still ask.

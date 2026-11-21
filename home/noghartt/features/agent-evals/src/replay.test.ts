@@ -67,7 +67,9 @@ describe("replay", () => {
 			process.env.PATH = oldPath;
 		}
 		expect({ head: git(repo, "rev-parse", "HEAD"), status: git(repo, "status", "--porcelain"), worktrees: git(repo, "worktree", "list"), branches: git(repo, "branch", "-a") }).toEqual(before);
-	});
+		// Spawns a dozen git and harness processes: ~0.5s idle, but past bun's 5s default
+		// when the build runs beside a loaded darwin-rebuild.
+	}, 60_000);
 
 	test("sandbox mode needs OmO, and a missing repository is an error", () => {
 		const { db } = fixtureDb();
