@@ -1,6 +1,7 @@
-# Pi ahead of the locked nixpkgs (0.85.1 on Darwin; master is at 1.0.0), and the
-# experimental Pi Durable agent built from the same source. Drop the
-# pi-coding-agent override once the locked nixpkgs reaches this version.
+# Pi itself comes from nixpkgs. This builds Pi Durable, the experimental durable agent, which
+# upstream ran only from TypeScript source (coding-agent's experimental/durable/main.ts). That
+# entry point is gone after 1.0.x: Durable became the @earendil-works/pi-durable SDK library with
+# no CLI, so this stays on the last release that ships the agent.
 final: prev:
 let
   version = "1.0.1";
@@ -12,8 +13,6 @@ let
     hash = "sha256-3llZpAi9YPNS9oRFpkSj/fcNfhvU9E61NY81tTNSizc=";
   };
 
-  # buildNpmPackage binds npmDeps from its arguments, not from finalAttrs, so a
-  # new npmDepsHash alone would keep fetching the old lock's dependencies.
   npmDeps = prev.fetchNpmDeps {
     name = "pi-${version}-npm-deps";
     inherit src;
@@ -26,66 +25,22 @@ let
     url = "https://registry.npmjs.org/@earendil-works/pi-ai/-/pi-ai-${version}.tgz";
     hash = "sha256-ip5psTCc+TQF2Hcp+hI8ixHGvnxkaxbzT4vve3kvkTg=";
   };
-
-  # Foreign Linux binaries make audit-tmpdir try to patchelf them on Darwin.
-  removeSeccomp =
-    nm:
-    prev.lib.optionalString prev.stdenv.hostPlatform.isDarwin ''
-      rm -rf \
-        "${nm}/@anthropic-ai/sandbox-runtime/dist/vendor/seccomp" \
-        "${nm}/@anthropic-ai/sandbox-runtime/vendor/seccomp"
-    '';
 in
 {
-  # 1.0 added the codemode and mcp workspaces and an offline build script; the
-  # build and runtime-workspace copy follow nixpkgs master's 1.0.0 derivation.
-  pi-coding-agent = prev.pi-coding-agent.overrideAttrs {
-    inherit
-      version
-      src
-      npmDeps
-      modelData
-      ;
-
-    buildPhase = ''
-      runHook preBuild
-      npm run build:offline
-      runHook postBuild
-    '';
-
-    postInstall = ''
-      local nm="$out/lib/node_modules/pi-monorepo/node_modules"
-
-      for ws in @earendil-works/chord:packages/chord \
-                @earendil-works/pi-ai:packages/ai \
-                @earendil-works/pi-agent-core:packages/agent \
-                @earendil-works/pi-client:packages/client \
-                @earendil-works/pi-codemode:packages/codemode \
-                @earendil-works/pi-mcp:packages/mcp \
-                @earendil-works/pi-protocol:packages/protocol \
-                @earendil-works/pi-telemetry:packages/telemetry \
-                @earendil-works/pi-tui:packages/tui; do
-        IFS=: read -r pkg src <<< "$ws"
-        rm "$nm/$pkg"
-        cp -r "$src" "$nm/$pkg"
-      done
-
-      find "$nm" -type l -lname '*/packages/*' -delete
-      find "$nm/.bin" -xtype l -delete
-    ''
-    + removeSeccomp "$nm";
-  };
-
-  # Upstream excludes the durable agent from every build and runs it from
-  # TypeScript source through a resolver that maps workspace imports onto
-  # packages/*/src, so this ships the pruned source tree and a Node 24 wrapper
-  # (native type stripping and module hooks). It shares Pi's auth and settings.
+  # Ships the pruned source tree and a Node 24 wrapper (native type stripping and
+  # module hooks) around upstream's resolver, which maps workspace imports onto
+  # packages/*/src. It shares Pi's auth and settings.
   pi-durable = prev.buildNpmPackage {
     pname = "pi-durable";
     inherit version src npmDeps;
 
-    # Restores the same model catalog as the coding agent build.
-    inherit (final.pi-coding-agent) preConfigure;
+    preConfigure = ''
+      mkdir -p packages/ai/src/providers/data
+      tar --extract --gzip --file=${modelData} \
+        --directory=packages/ai/src/providers/data \
+        --strip-components=4 \
+        package/dist/providers/data
+    '';
 
     npmRebuildFlags = [ "--ignore-scripts" ];
     dontNpmBuild = true;
@@ -97,7 +52,12 @@ in
       npm prune --omit=dev --no-save --ignore-scripts
       mkdir -p "$out/lib" "$out/bin"
       cp -r . "$out/lib/pi"
-      ${removeSeccomp "$out/lib/pi/node_modules"}
+      ${prev.lib.optionalString prev.stdenv.hostPlatform.isDarwin ''
+        # Foreign Linux binaries make audit-tmpdir try to patchelf them on Darwin.
+        rm -rf \
+          "$out/lib/pi/node_modules/@anthropic-ai/sandbox-runtime/dist/vendor/seccomp" \
+          "$out/lib/pi/node_modules/@anthropic-ai/sandbox-runtime/vendor/seccomp"
+      ''}
 
       local experimental="$out/lib/pi/packages/coding-agent/src/experimental"
       makeWrapper ${prev.lib.getExe final.nodejs_24} "$out/bin/pi-durable" \

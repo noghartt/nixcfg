@@ -66,6 +66,11 @@ whenever it feels like a checkpoint.
 
 ### Changed
 
+- **home/noghartt/cli**: Codex 0.162.0 -> 0.166.0 and Claude Code 2.1.295 -> 2.1.318.
+- **home/noghartt/omo**: OmO 5.1.33 -> 5.1.60, on the host and in swarm pods (Claude subscription
+  accounts now sign in through Claude Code; sign in again after switching).
+- **overlays**: Pi follows nixpkgs again (1.5.0 on the Macs, 1.4.0 on Mellon); `overlays/pi.nix`
+  builds only `pi-durable`, pinned at 1.0.1.
 - **flake**: every input updated, Mellon's hardware stack included. Linux 7.1 reached end of life
   and left `nixpkgs-hardware`, so Mellon moves to 7.2, and its NVIDIA pin moves from 595.84 to
   595.112.07 because 595.84's open module calls `strncpy`, which 7.2 removed. Lanzaboote 1.2 keeps PCR4 in the Measured Boot policy across bootloader updates,
@@ -103,6 +108,11 @@ whenever it feels like a checkpoint.
   longer Jev picks or escalation steps: the leader assigns them to specific nodes through
   `orch_spawn`'s new `model` field. The leader stays on Opus 5.5 at `xhigh` and plain OmO
   sessions on Opus 5.5 at `high`.
+- **home/noghartt/omo**: OmO 5.1.33 -> 5.1.60, on the host and in swarm pods.
+- **home/noghartt/cli**: Claude Code 2.1.295 -> 2.1.318.
+- **overlays**: Codex 0.162.0 -> 0.166.0. `overlays/pi.nix` no longer overrides Pi, which now
+  follows nixpkgs (1.5.0 on the Macs, 1.4.0 on Mellon); it only builds `pi-durable`, kept at
+  1.0.1, the last release with its CLI entry point.
 - **home/noghartt/omo**: OmO 5.1.28 -> 5.1.33, on the host and in swarm pods. 5.1.28 refused
   every MCP call in a running session after any config reload (a Home Manager switch or another
   non-routine `settings.json` write) with "MCP session or server configuration was replaced",

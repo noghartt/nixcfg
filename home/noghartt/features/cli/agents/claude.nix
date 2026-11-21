@@ -8,22 +8,22 @@
 let
   jsonFormat = pkgs.formats.json { };
 
-  claudeCodeVersion = "2.1.295";
+  claudeCodeVersion = "2.1.318";
   # nixpkgs' claude-code now fetches the zstd-compressed binary and
   # decompresses it in installPhase, so the pinned src must stay .zst.
   claudeCodeRelease =
     {
       aarch64-darwin = {
         platform = "darwin-arm64";
-        hash = "sha256-N5NENLPM1IxPzM+2owoBRf/8yrqMjpNejjvf8KNQJKk=";
+        hash = "sha256-9JuZAlSAQTHwvg9gJg2ptKVeyfpzrwJSgW5CPLDheNw=";
       };
       aarch64-linux = {
         platform = "linux-arm64";
-        hash = "sha256-mzK0fsSz+luIThK34TDpQzjneH1dsDGt9I4bIOOok+4=";
+        hash = "sha256-V5JZllwXA08xcrDDHbP2kizekuXxg/FFQdFhVgdGHSE=";
       };
       x86_64-linux = {
         platform = "linux-x64";
-        hash = "sha256-cRZMhfnSJpKN7HrNobrwAPGZHrFPzsEGU22EvZFAMvg=";
+        hash = "sha256-dgqsqGXGijFeSdEpYUpfXcnKuZ9951iZJX+u1o9VPzs=";
       };
     }
     .${pkgs.stdenv.hostPlatform.system};
