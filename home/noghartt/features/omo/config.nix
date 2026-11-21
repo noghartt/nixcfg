@@ -28,11 +28,17 @@ in
     # OmO defaults it to {}, but the published schema lists it as required.
     profiles = { };
 
+    # Off on every host: OmO keyed a memory repo to each checkout, so every
+    # Herdr worktree grew its own (345 of them, most named after a branch).
+    memory.enabled = false;
+
     # Route tasks among the five models in the interactive picker. Keep
     # cross-provider rungs so a provider-wide outage (429/5xx/529) can fall
     # back to the other login. Claude Haiku 4.5 is never used. No rung goes above
     # `high`: xhigh is reserved for the orchestrator leader, and the builtin
-    # plan-consultant/plan-reviewer chains run at max/xhigh.
+    # plan-consultant/plan-reviewer chains run at max/xhigh. Routine lanes
+    # (quick, writing, deep-low, unspecified-low/high, visual-engineering)
+    # start on Sonnet so delegated work spares the Opus limit.
     # Recheck the builtin chains in omo-task.js when bumping OmO.
     "[native]" = {
       agents = {
@@ -58,8 +64,7 @@ in
 
       categories = {
         visual-engineering.models = [
-          (rung (claude "claude-fable-5-1") "high")
-          (rung (claude "claude-opus-5-5") "high")
+          (rung (claude "claude-sonnet-5-5") "high")
           (rung (gpt "gpt-6-astra") "high")
         ];
         architect.models = [
@@ -72,9 +77,8 @@ in
           (rung (claude "claude-fable-5-1") "high")
         ];
         deep-low.models = [
-          (rung (gpt "gpt-6-sol") "medium")
-          (rung (claude "claude-opus-5-5") "medium")
           (rung (claude "claude-sonnet-5-5") "medium")
+          (rung (gpt "gpt-6-sol") "medium")
         ];
         deep-high.models = [
           (rung (gpt "gpt-6-astra") "high")
@@ -90,12 +94,15 @@ in
           (rung (claude "claude-sonnet-5-5") "low")
           (rung (gpt "gpt-6-sol") "low")
         ];
-        unspecified-high.models = [
-          (rung (claude "claude-opus-5-5") "medium")
+        unspecified-low.models = [
+          (rung (claude "claude-sonnet-5-5") "medium")
           (rung (gpt "gpt-6-sol") "medium")
         ];
+        unspecified-high.models = [
+          (rung (claude "claude-sonnet-5-5") "high")
+          (rung (gpt "gpt-6-sol") "high")
+        ];
         writing.models = [
-          (rung (claude "claude-opus-5-5") "low")
           (rung (claude "claude-sonnet-5-5") "low")
           (rung (gpt "gpt-6-sol") "low")
         ];

@@ -11,6 +11,8 @@ whenever it feels like a checkpoint.
 ### Added
 
 - **palantir**: OpenVPN Connect, from the `openvpn-connect` cask.
+- **home/noghartt/omo**: OmO memory is off on every host (`memory.enabled = false` in
+  `omo.jsonc`). It kept a memory repo per checkout, so each Herdr worktree created its own.
 - **home/noghartt/pi**: Pi and OmO sessions report their idle, working and blocked state
   to Herdr, so they show in its agent list and sidebar. OmO shows as `omo`. Before this, OmO
   panes were missing, or showed as `claude` while a Claude subscription child was in the
@@ -79,6 +81,9 @@ whenever it feels like a checkpoint.
 
 ### Changed
 
+- **home/noghartt/omo**: category subagent spawns are routed by `omo.jsonc` category chains
+  (routine lanes on Sonnet 5.5, the rest on Opus 5.5, capped at `high`) instead of the
+  `session-model` extension rewriting every `task` call.
 - **home/noghartt/pi**: the orchestrator leader judges settled workers itself. Work nodes settle
   as `done_ungated` with the collected evidence attached, reviews decide by their `VERDICT` line,
   and worker models come from the pool default or the leader's explicit pick; placement uses
