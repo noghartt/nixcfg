@@ -8,38 +8,18 @@ import { basename, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Type } from "typebox";
 import { type ConsultantConfig, consult, pickConsultant } from "./consult.ts";
-import {
-	decideModel,
-	decidePlacement,
-	decideStrategy,
-	type GateEvidence,
-	type GateVerdict,
-	gateResult,
-	MAX_CRITERIA,
-	type JevConfig,
-	jevApiKey,
-	type ModelDecision,
-	type PoolEntry,
-	type Strategy,
-	type StrategyDecision,
-} from "./jev.ts";
 import { limitPressure, limitsId, spill } from "./limits.ts";
 import { appendOutcome, type OutcomeVerdict, outcomeRecord } from "./outcomes.ts";
 import {
 	defaultPlacement,
-	guardPlacement,
-	NETS,
 	onPath,
 	type PlacementChoice,
 	type PlacementInput,
 	type PlacementMode,
-	placementMenu,
 	resolveMode,
-	SIZES,
 	splitVars,
 	type WorkersConfig,
 } from "./placement.ts";
-import { readPriors, summarizePriors } from "./priors.ts";
 import { type Exec, fetchBundle, publishRef } from "./publish.ts";
 import { harnessInvocation, harnessName, RpcChild, type RpcEvent } from "./rpc.ts";
 import {
@@ -56,22 +36,36 @@ import {
 	workerEnv,
 } from "./sandbox.ts";
 
+interface PoolEntry {
+	key: string;
+	models: string[];
+	thinking: string;
+	tier: number;
+	use: string;
+}
+
+// Facts the orchestrator collects itself, shown to the leader beside the worker's report.
+interface GateEvidence {
+	changed_files: string;
+	diff_stat: string;
+	commits_since_start: string;
+	tool_calls: string;
+}
+
+const MAX_CRITERIA = 8;
+
 interface Config {
 	// The first model with credentials wins.
 	leader: { models: string[]; thinking: string };
-	jev: JevConfig;
 	fallbackWorker: string;
-	maxAttempts: number;
 	maxWorkers: number;
 	maxFixRounds: number;
 	// Limit percent (any window) at which a pick spills to its entry's other-provider models.
 	spillAt: number;
-	// onRequest entries are never Jev's pick nor an escalation step; the leader assigns them per node.
+	// onRequest entries run only on nodes the leader assigns them to.
 	pool: (PoolEntry & { spill?: string[]; onRequest?: boolean })[];
 	workers: WorkersConfig;
 	consultant: ConsultantConfig;
-	// A plan of at least this many nodes gets an auditor's opinion before its first node starts.
-	audit: { minNodes: number };
 }
 
 const config = JSON.parse(readFileSync(new URL("./config.json", import.meta.url), "utf8")) as Config;
@@ -158,7 +152,7 @@ interface NodeSpec {
 	fixes?: string;
 	// Another repository (absolute path; on the cloud host in cloud mode) instead of the leader's.
 	repo?: string;
-	// An onRequest pool key the leader chose instead of Jev's pick.
+	// An onRequest pool key the leader assigned to this node.
 	model?: string;
 }
 // A graph node that has no process yet: waiting on dependencies or capacity, or never started.
@@ -193,10 +187,6 @@ function splitRef(ref: string): { provider: string; id: string } {
 function clipReport(text: string): string {
 	const clipped = truncateHead(text, { maxBytes: REPORT_BYTES, maxLines: 120 });
 	return clipped.truncated ? `${clipped.content}\n[report truncated]` : clipped.content;
-}
-
-function pct(value: number): string {
-	return value.toFixed(2);
 }
 
 async function appendBoard(runDir: string, author: string, text: string): Promise<void> {
@@ -284,7 +274,6 @@ function lastAssistantText(ctx: ExtensionContext): string {
 function registerWorker(pi: ExtensionAPI) {
 	const runDir = process.env.ORCH_RUN_DIR!;
 	const self = process.env.ORCH_AGENT!;
-	const mesh = process.env.ORCH_MESH === "1";
 	let ctx: ExtensionContext | undefined;
 	let inMeshWait = false;
 
@@ -338,11 +327,9 @@ function registerWorker(pi: ExtensionAPI) {
 		description: "List the other agents in this orchestrated run, with their task, state, and model.",
 		parameters: Type.Object({}),
 		async execute() {
-			const peers = mesh ? await readPeers() : [];
+			const peers = await readPeers();
 			const lines = peers.map((peer) => `- ${peer.name} [${peer.state}, ${peer.model}]: ${peer.task.slice(0, 200)}`);
-			const header = mesh
-				? `You are ${self}. Peers:`
-				: `You are ${self}. This run is fan-out: only "leader" is reachable.`;
+			const header = `You are ${self}. Peers:`;
 			return { content: [{ type: "text", text: [header, ...lines].join("\n") }], details: undefined };
 		},
 	});
@@ -358,7 +345,6 @@ function registerWorker(pi: ExtensionAPI) {
 		}),
 		async execute(_id, params) {
 			if (params.to !== "leader") {
-				if (!mesh) throw new Error('This run is fan-out: only "leader" is reachable.');
 				const names = (await readPeers()).map((peer) => peer.name);
 				if (params.to !== "*" && !names.includes(params.to)) {
 					throw new Error(`Unknown peer "${params.to}". Known: leader, *, ${names.join(", ")}`);
@@ -497,8 +483,6 @@ interface Worker {
 	// HEAD and the `git status` lines at spawn with a size:mtime fingerprint of each file, so
 	// evidence shows only this worker's changes, including further edits to already-dirty files.
 	start: { head?: string; root?: string; dirty: Map<string, string> };
-	// Clear Jev misses since the last (re)open; a repeat miss escalates the model.
-	misses: number;
 	cwd: string;
 	branch?: string;
 	worktree?: string;
@@ -521,7 +505,6 @@ interface Worker {
 	collected?: string;
 	current: Resolved;
 	modelNote: string;
-	history: string[];
 	attempts: number;
 	state: WorkerState;
 	// Hidden RPC child outside Herdr; inside Herdr the worker runs in `pane` instead.
@@ -529,7 +512,7 @@ interface Worker {
 	pane?: string;
 	pid?: number;
 	report: string;
-	verdict?: GateVerdict;
+	evidence?: GateEvidence;
 	gateNote?: string;
 	mailbox: string[];
 	kind: NodeKind;
@@ -546,9 +529,6 @@ interface Run {
 	id: string;
 	dir: string;
 	goal?: string;
-	planAudited: boolean;
-	strategy: Strategy;
-	strategyNote: string;
 	workers: Map<string, Worker>;
 	nodes: Map<string, PendingNode>;
 	pool: Resolved[];
@@ -559,13 +539,11 @@ interface Run {
 
 function workerPrompt(
 	name: string,
-	run: Run,
 	spec: NodeSpec,
 	isolated: boolean,
 	sandboxBranch?: string,
 	ownSandbox = false,
 ): string {
-	const mesh = run.strategy === "mesh";
 	const { acceptance } = spec;
 	const repo = spec.repo
 		? `Your checkout is the repository at ${spec.repo}, not the leader's: work there, and branch from its own HEAD.`
@@ -596,33 +574,13 @@ function workerPrompt(
 		checkout,
 		...(repo ? [repo] : []),
 		...review,
-		mesh
-			? "Peers work in parallel on related subtasks. Use mesh_peers to see them, mesh_send to agree on shared interfaces or files, and mesh_note/mesh_board for decisions everyone needs."
-			: 'Your subtask is independent. Use mesh_send to "leader" only if you need a decision.',
+		"Peers work in parallel on related subtasks. Use mesh_peers to see them, mesh_send to agree on shared interfaces or files, and mesh_note/mesh_board for decisions everyone needs.",
 		"Messages from peers or the leader arrive as user messages starting with [orchestrator] [mesh from <name>], or as mesh_wait results starting with [mesh from <name>].",
 		"Ending your turn submits your final report. If you need a reply first, call mesh_wait.",
 		`Acceptance criteria:\n${acceptance}`,
 		"End with a final report: what you did, changed files, how you validated it, and anything blocking.",
-		"Your turn is judged one criterion at a time against the checkout's actual changes and the commands you ran. For each criterion, state the evidence that shows it holds, and say plainly what is not done.",
+		"The leader reviews your report against the checkout's actual changes and the commands you ran. For each criterion, state the evidence that shows it holds, and say plainly what is not done.",
 	].join("\n");
-}
-
-// What the plan auditor sees: the goal and the whole graph, as the leader wrote it.
-function planContext(run: Run, specs: NodeSpec[]): string {
-	const nodes = specs.map((spec) =>
-		[
-			`## ${spec.name} (${spec.kind ?? "work"}${spec.isolation === "current" ? ", shared checkout" : ""})`,
-			spec.after?.length ? `After: ${spec.after.join(", ")}` : undefined,
-			spec.workdir ? `Works in the checkout of: ${spec.workdir}` : undefined,
-			spec.fixes ? `Sends FAIL findings to: ${spec.fixes}` : undefined,
-			spec.repo ? `Repository: ${spec.repo}` : undefined,
-			`Task: ${spec.task}`,
-			`Acceptance:\n${spec.acceptance}`,
-		]
-			.filter((line): line is string => line !== undefined)
-			.join("\n"),
-	);
-	return [`Goal:\n${run.goal ?? "(not recorded)"}`, `Strategy: ${run.strategy}. ${run.strategyNote}`, ...nodes].join("\n\n");
 }
 
 function registerLeader(pi: ExtensionAPI) {
@@ -638,7 +596,6 @@ function registerLeader(pi: ExtensionAPI) {
 		void writePeers();
 		pi.events.emit("orchestrator:state", {
 			id: run.id,
-			strategy: run.strategy,
 			workers: [
 				...[...run.workers.values()].map((worker) => ({
 					name: worker.name,
@@ -702,26 +659,15 @@ function registerLeader(pi: ExtensionAPI) {
 		};
 	};
 
-	const escalation = (current: Resolved, pool: Resolved[]): Resolved => {
-		const provider = splitRef(current.ref).provider;
-		const higher = pool.filter((option) => !option.entry.onRequest && option.entry.tier > current.entry.tier);
-		const minTier = Math.min(...higher.map((option) => option.entry.tier));
-		const next = higher.filter((option) => option.entry.tier === minTier);
-		return next.find((option) => splitRef(option.ref).provider === provider) ?? next[0] ?? current;
-	};
-
-	const startRun = async (strategy: Strategy, strategyNote: string, goal?: string): Promise<Run> => {
+	const startRun = async (goal?: string): Promise<Run> => {
 		const id = randomUUID().slice(0, 8);
 		const dir = join(tmpdir(), "pi-orch", id);
 		for (const sub of ["mail", "ctl", "events", "launch"]) await mkdir(join(dir, sub), { recursive: true });
-		await writeFile(join(dir, "board.md"), `# Orchestration ${id}\n\nStrategy: ${strategy}. ${strategyNote}\n`);
+		await writeFile(join(dir, "board.md"), `# Orchestration ${id}\n`);
 		run = {
 			id,
 			dir,
 			goal,
-			planAudited: false,
-			strategy,
-			strategyNote,
 			workers: new Map(),
 			nodes: new Map(),
 			pool: [],
@@ -744,7 +690,6 @@ function registerLeader(pi: ExtensionAPI) {
 		verdict: OutcomeVerdict,
 		attempt: number,
 		startedAt: number,
-		scores?: { criterion: string; p: number }[],
 	) => {
 		if (!run) return;
 		const record = outcomeRecord({
@@ -772,8 +717,6 @@ function registerLeader(pi: ExtensionAPI) {
 			pickNote: worker.modelNote,
 			attempt,
 			verdict,
-			scores,
-			acceptThreshold: config.jev.acceptThreshold,
 			startedAt,
 			workerSession: worker.session,
 			leaderSession: lastCtx?.sessionManager.getSessionFile(),
@@ -835,55 +778,12 @@ function registerLeader(pi: ExtensionAPI) {
 			worker.session = event.session;
 		}
 		else if (event.type === "mesh_send") route(worker.name, event.to, event.message);
-		else if (event.type === "settled") void onSettled(worker, run!.pool, event.text, event.tools ?? []);
+		else if (event.type === "settled") void onSettled(worker, event.text, event.tools ?? []);
 		else markExited(worker, "Worker process exited.");
 	};
 
-	const decideRunStrategy = async (goal: string, ctx: ExtensionContext, signal?: AbortSignal) => {
-		if (!jevApiKey()) {
-			return {
-				strategy: "mesh" as Strategy,
-				note: "Jev unavailable (TYPESAFE_API_KEY unset): defaulted to mesh, unrestricted.",
-				decision: undefined,
-			};
-		}
-		let decision: StrategyDecision;
-		try {
-			decision = await decideStrategy(config.jev, goal, signal);
-		} catch (error) {
-			return {
-				strategy: "mesh" as Strategy,
-				note: `Jev failed (${(error as Error).message}): defaulted to mesh, unrestricted.`,
-				decision: undefined,
-			};
-		}
-		let strategy = decision.strategy;
-		let note = `Jev chose ${strategy} (confidence ${pct(decision.confidence)}; p=${JSON.stringify(decision.probabilities)}).`;
-		if (decision.confidence < config.jev.strategyConfidence && ctx.hasUI && process.env.OMO_UNSUPERVISED !== "1") {
-			const options = ["solo", "fan_out", "mesh"];
-			const picked = await ctx.ui.select(
-				`Jev is unsure (confidence ${pct(decision.confidence)}, leaning ${strategy}). How should the team run?`,
-				options,
-			);
-			if (picked && picked !== strategy) {
-				strategy = picked as Strategy;
-				note += ` The user overrode it to ${strategy}.`;
-			}
-		} else if (decision.confidence < config.jev.strategyConfidence) {
-			note += " Low confidence and no UI to confirm; kept Jev's top choice.";
-		}
-		return { strategy, note, decision };
-	};
-
-	// Workers run on the fallback entry unless Jev confidently rates the node as needing another
-	// automatic entry; onRequest entries run only where the leader names them.
-	const pickModel = async (
-		task: string,
-		acceptance: string,
-		pool: Resolved[],
-		requested?: string,
-		signal?: AbortSignal,
-	): Promise<{ choice: Resolved; note: string }> => {
+	// Workers run on the fallback entry; onRequest entries run only where the leader names them.
+	const pickModel = (pool: Resolved[], requested?: string): { choice: Resolved; note: string } => {
 		const assigned = requested ? pool.find((option) => option.entry.key === requested) : undefined;
 		if (assigned) {
 			const spilled = spillOver(assigned);
@@ -891,74 +791,23 @@ function registerLeader(pi: ExtensionAPI) {
 		}
 		const auto = pool.filter((option) => !option.entry.onRequest);
 		const fallback = auto.find((option) => option.entry.key === config.fallbackWorker) ?? auto[0] ?? pool[0];
-		if (!jevApiKey()) {
-			const spilled = spillOver(fallback);
-			return { choice: spilled.choice, note: `Jev unavailable (TYPESAFE_API_KEY unset); fallback model.${spilled.note}` };
-		}
-		let decision: ModelDecision;
-		try {
-			const priors = await readPriors();
-			decision = await decideModel(
-				config.jev,
-				auto.map((option) => option.entry),
-				{ task, acceptance, strategy: run!.strategy },
-				signal,
-				priors && summarizePriors(priors, auto.map((option) => option.entry.key)),
-			);
-		} catch (error) {
-			const spilled = spillOver(fallback);
-			return { choice: spilled.choice, note: `Jev failed (${(error as Error).message}); fallback model.${spilled.note}` };
-		}
-		// An unsure Jev means the default, not decideModel's higher-tier tiebreak (which the swarm keeps).
-		const confident = decision.confidence >= config.jev.modelConfidence;
-		const picked = (confident ? auto.find((option) => option.entry.key === decision.key) : undefined) ?? fallback;
-		const { choice, note: spillNote } = spillOver(picked);
-		const verdict = confident
-			? `Jev chose ${choice.entry.key} (confidence ${pct(decision.confidence)}).`
-			: `Jev was unsure (confidence ${pct(decision.confidence)}), so the default ${choice.entry.key} runs it.`;
-		return { choice, note: `${verdict}${spillNote}` };
+		const spilled = spillOver(fallback);
+		return { choice: spilled.choice, note: `Default worker model.${spilled.note}` };
 	};
 
 	// Catalog variables a worker's sandbox may get: in cloud mode the leader's own opt-ins,
-	// otherwise the configured list. Neither Jev nor the defaults go beyond it.
+	// otherwise the configured list. The defaults never go beyond it.
 	const allowedEnv = (): string[] =>
 		leaderCloud() ? splitVars(process.env.OMO_CLOUD_ENV) : Object.keys(config.workers.envAllowed);
 
-	const pickPlacement = async (
-		spec: NodeSpec,
-		input: PlacementInput,
-		signal?: AbortSignal,
-	): Promise<PlacementChoice & { note: string }> => {
-		const allowed = allowedEnv();
-		const menu = placementMenu(input);
-		const fallback = defaultPlacement(input, config.workers, allowed);
-		// Net, size, and env only matter for a new sandbox; without one there is nothing to ask.
-		if (!menu.includes("sandbox")) return { ...fallback, note: "" };
-		if (!jevApiKey()) return { ...fallback, note: "Default placement (Jev unavailable)." };
-		try {
-			const decision = await decidePlacement(
-				config.jev,
-				{
-					modes: menu,
-					nets: NETS.filter((net) => net !== "open" || config.workers.allowOpenNet),
-					sizes: [...SIZES],
-					env: Object.fromEntries(allowed.map((key) => [key, config.workers.envAllowed[key] ?? `the sandbox catalog variable ${key}`])),
-				},
-				{ task: spec.task, acceptance: spec.acceptance, kind: spec.kind ?? "work" },
-				signal,
-			);
-			const { overridden, ...choice } = guardPlacement(decision, input, config.workers, allowed);
-			const refused = overridden.length ? ` Guardrails refused ${overridden.join("; ")}.` : "";
-			return { ...choice, note: `Placement by Jev.${refused}` };
-		} catch (error) {
-			return { ...fallback, note: `Jev placement failed (${(error as Error).message}); default placement.` };
-		}
-	};
+	const pickPlacement = (input: PlacementInput): PlacementChoice & { note: string } => ({
+		...defaultPlacement(input, config.workers, allowedEnv()),
+		note: "",
+	});
 
 	const reopen = (target: Worker, text: string) => {
 		target.state = "running";
 		target.attempts = 1;
-		target.misses = 0;
 		target.attemptStart = Date.now();
 		changed();
 		control(target, { type: "prompt", message: text }).catch((error: Error) => markExited(target, error.message));
@@ -1056,13 +905,12 @@ function registerLeader(pi: ExtensionAPI) {
 
 	// Turns the user starts by typing into a finished worker's pane settle outside "running"
 	// and are not gated.
-	const onSettled = async (worker: Worker, pool: Resolved[], text: string, tools: string[]) => {
+	const onSettled = async (worker: Worker, text: string, tools: string[]) => {
 		if (worker.state !== "running" || !run) return;
 		worker.state = "gating";
 		changed();
 		const attempt = worker.attempts;
 		const startedAt = worker.attemptStart;
-		let evidence: GateEvidence | undefined;
 		worker.report = text;
 		worker.reports++;
 		await writeFile(join(run.dir, `${worker.name}.report-${worker.reports}.md`), worker.report);
@@ -1080,7 +928,6 @@ function registerLeader(pi: ExtensionAPI) {
 			await schedule();
 			if (worker.state === "needs_leader") {
 				toInbox(`${worker.name} needs a decision. ${worker.gateNote}`);
-				auditDecision(worker, evidence);
 			} else if (!anyActive(r)) notifyLeader("All workers have finished. Call orch_wait to collect their results.");
 		};
 
@@ -1113,8 +960,7 @@ function registerLeader(pi: ExtensionAPI) {
 			return;
 		}
 
-		// Jev would grade a fix round against the node's original acceptance; the reviewer that
-		// asked for the fixes re-reviews instead.
+		// The reviewer that asked for these fixes re-reviews them, so the round itself counts as accepted.
 		if (worker.fixingFor) {
 			worker.state = "accepted";
 			worker.gateNote = `Fix round submitted; ${worker.fixingFor} re-reviews it.`;
@@ -1124,78 +970,20 @@ function registerLeader(pi: ExtensionAPI) {
 			return;
 		}
 
-		let verdict: GateVerdict | undefined;
-		if (!jevApiKey()) {
-			worker.gateNote = "Jev unavailable (TYPESAFE_API_KEY unset); result not gated.";
-		} else {
-			try {
-				evidence = await collectEvidence(worker, tools);
-				verdict = await gateResult(config.jev, worker, worker.report, evidence);
-			} catch (error) {
-				worker.gateNote = `Jev gate failed (${(error as Error).message}); result not gated.`;
-			}
+		// Work nodes finish ungated, so dependents start; the leader reviews the report and evidence
+		// and rejects with orch_verdict or reopens with orch_send.
+		try {
+			worker.evidence = await collectEvidence(worker, tools);
+			worker.gateNote = "Review the report and evidence; reject it with orch_verdict or reopen it with orch_send.";
+		} catch (error) {
+			worker.gateNote = `Collecting evidence failed (${(error as Error).message}); check the checkout before relying on the report.`;
 		}
-		worker.verdict = verdict;
-
-		// A clear miss (some criterion under borderlineFloor) is retried with the failing criteria,
-		// on the same model first and a stronger one on a repeat miss. Borderline results get one
-		// retry, then go to the leader instead of being rejected, so dependents wait.
-		const failing = verdict?.criteria.filter((criterion) => criterion.p < config.jev.acceptThreshold) ?? [];
-		const clearMiss = failing.some((criterion) => criterion.p < config.jev.borderlineFloor);
-		const failingText = failing.map((criterion) => `- ${criterion.criterion} (p=${pct(criterion.p)})`).join("\n");
-		const warning =
-			verdict && verdict.unrelatedChanges >= 0.5
-				? ` Warning: changed files may be unrelated to the task (p=${pct(verdict.unrelatedChanges)}).`
-				: "";
-		if (!verdict) {
-			worker.state = "done_ungated";
-		} else if (verdict.blocked >= config.jev.blockedThreshold) {
-			worker.state = "needs_leader";
-			worker.gateNote = `Jev: blocked (p=${pct(verdict.blocked)}). Answer with orch_send to resume it, or decide with orch_verdict.${warning}`;
-		} else if (failing.length === 0) {
-			worker.state = "accepted";
-			worker.gateNote = `Jev: all ${verdict.criteria.length} criteria met.${warning}`;
-		} else if (!clearMiss && worker.attempts >= 2) {
-			worker.state = "needs_leader";
-			worker.gateNote = `Jev is unsure about:\n${failingText}\nDecide with orch_verdict, or reopen it with orch_send.${warning}`;
-		} else if (worker.attempts < config.maxAttempts) {
-			const next = clearMiss && worker.misses > 0 ? escalation(worker.current, pool) : worker.current;
-			if (clearMiss) worker.misses++;
-			try {
-				if (next.ref !== worker.current.ref) {
-					const { provider, id } = splitRef(next.ref);
-					await control(worker, { type: "set_model", provider, modelId: id, thinking: next.entry.thinking });
-					worker.history.push(`${worker.current.entry.key} -> ${next.entry.key}`);
-					worker.current = next;
-				}
-				worker.attempts++;
-				worker.state = "running";
-				worker.gateNote = `Jev: ${failing.length} criteria not shown; retry ${worker.attempts} on ${next.entry.key}.${warning}`;
-				const feedback = [
-					"These acceptance criteria are not yet shown to hold:",
-					failingText,
-					"Finish what is missing, validate it, and give a new final report with the evidence for each criterion.",
-					...worker.mailbox.splice(0),
-				].join("\n");
-				changed();
-				await control(worker, { type: "prompt", message: feedback });
-				recordOutcome(worker, "retry", attempt, startedAt, verdict.criteria);
-				worker.attemptStart = Date.now();
-				return;
-			} catch (error) {
-				worker.state = "failed";
-				worker.gateNote = `Retry failed: ${(error as Error).message}`;
-			}
-		} else {
-			worker.state = "rejected";
-			worker.gateNote = `Jev: still not met after ${worker.attempts} attempts:\n${failingText}\norch_verdict can overrule this.${warning}`;
-		}
-
-		recordOutcome(worker, worker.state as OutcomeVerdict, attempt, startedAt, verdict?.criteria);
+		worker.state = "done_ungated";
+		recordOutcome(worker, "done_ungated", attempt, startedAt);
 		await finish();
 	};
 
-	// The auditor: a consultant whose opinion lands in front of the leader and is never acted on.
+	// orch_consult's consultant: an opinion for the leader, never acted on.
 	const consultations = new Set<AbortController>();
 	const askConsultant = async (
 		question: string,
@@ -1230,32 +1018,6 @@ function registerLeader(pi: ExtensionAPI) {
 			consultations.delete(controller);
 			signal?.removeEventListener("abort", abort);
 		}
-	};
-
-	const auditDecision = (worker: Worker, evidence: GateEvidence | undefined) => {
-		const ctx = lastCtx;
-		if (!ctx) return;
-		const context = [
-			`Node "${worker.name}" (${worker.kind}) of an orchestrated run. Its task:\n${worker.task}`,
-			`Acceptance criteria:\n${worker.acceptance}`,
-			`Gate result: ${worker.gateNote ?? "(none)"}`,
-			worker.verdict
-				? `Jev's per-criterion probabilities (pass at ${config.jev.acceptThreshold}):\n${worker.verdict.criteria.map((c) => `- ${pct(c.p)} ${c.criterion}`).join("\n")}`
-				: undefined,
-			evidence
-				? `Evidence the orchestrator collected:\nChanged files:\n${evidence.changed_files}\nDiff stat:\n${evidence.diff_stat}\nCommits:\n${evidence.commits_since_start}\nTool calls:\n${evidence.tool_calls}`
-				: undefined,
-			`Checkout: ${worker.box ? `sandbox ${worker.box}, branch ${worker.branch}` : worker.worktree ?? worker.cwd}`,
-			`Worker's final report:\n${clipReport(worker.report)}`,
-		]
-			.filter((part): part is string => part !== undefined)
-			.join("\n\n");
-		const question =
-			"The gate could not decide this worker's result, so the leader must. Should the leader accept it, reopen it with specific instructions (say which), or reject it? Judge each criterion against the evidence, not the report's claims.";
-		askConsultant(question, context, ctx).then(
-			(answer) => toInbox(`Auditor on ${worker.name} (${answer.ref}; advisory, nothing was changed):${answer.note ? ` ${answer.note}` : ""}\n${answer.text}`),
-			(error: Error) => toInbox(`Auditor on ${worker.name} unavailable: ${error.message}`),
-		);
 	};
 
 	// Starts every pending node whose dependencies all finished, skips nodes behind a failed
@@ -1345,10 +1107,8 @@ function registerLeader(pi: ExtensionAPI) {
 			leaderCloud: leader !== undefined,
 			mode: placementMode.mode,
 		};
-		const [{ choice, note }, placed] = await Promise.all([
-			pickModel(spec.task, spec.acceptance, pool, spec.model, signal),
-			pickPlacement(spec, input, signal),
-		]);
+		const { choice, note } = pickModel(pool, spec.model);
+		const placed = pickPlacement(input);
 
 		// A sandbox lives on the leader's cloud host when the leader runs in cloud mode, else on
 		// this machine, seeded from the repository itself. Either way the worker process stays
@@ -1453,7 +1213,7 @@ function registerLeader(pi: ExtensionAPI) {
 		// Taken before launch, so nothing the worker does can land in its own baseline.
 		const start = await snapshot({ cwd, box, cloud });
 		const { provider, id } = splitRef(choice.ref);
-		const env: Record<string, string> = { ORCH_ROLE: "worker", ORCH_AGENT: name, ORCH_RUN_DIR: r.dir, ORCH_MESH: r.strategy === "mesh" ? "1" : "0" };
+		const env: Record<string, string> = { ORCH_ROLE: "worker", ORCH_AGENT: name, ORCH_RUN_DIR: r.dir };
 		// destructive-guard treats this run-owned checkout as the worker's scratch space.
 		if (worktree) env.ORCH_WORKTREE = worktree;
 		// Started from a `/unsupervised` run (destructive-guard sets it): nobody answers this worker either.
@@ -1476,7 +1236,7 @@ function registerLeader(pi: ExtensionAPI) {
 			"worktree_agents",
 		];
 		const prompt = [
-			workerPrompt(name, r, spec, isolated, cloud && isolated ? branch : undefined, placed.mode === "sandbox"),
+			workerPrompt(name, spec, isolated, cloud && isolated ? branch : undefined, placed.mode === "sandbox"),
 			unsupervised
 				? 'The user is away for this run and nobody answers dialogs or questions. Take the option you would recommend and note it in your report; only the leader (mesh_send "leader") can decide for you. A command the destructive guard refuses was not run: skip that step and report it.'
 				: undefined,
@@ -1519,7 +1279,6 @@ function registerLeader(pi: ExtensionAPI) {
 			acceptance: spec.acceptance,
 			criteria: spec.criteria,
 			start,
-			misses: 0,
 			cwd,
 			branch,
 			worktree,
@@ -1533,7 +1292,6 @@ function registerLeader(pi: ExtensionAPI) {
 			attemptStart: Date.now(),
 			current: choice,
 			modelNote: note,
-			history: [],
 			attempts: 1,
 			state: "running",
 			child,
@@ -1569,12 +1327,10 @@ function registerLeader(pi: ExtensionAPI) {
 	const describe = (worker: Worker, withReport: boolean): string => {
 		const lines = [
 			`### ${worker.name} — ${worker.state}`,
-			`Model: ${worker.current.ref} (${worker.modelNote}${worker.history.length ? ` Escalated: ${worker.history.join(", ")}.` : ""})`,
+			`Model: ${worker.current.ref} (${worker.modelNote})`,
 			`Attempts: ${worker.attempts}. ${worker.gateNote ?? ""}`,
-			worker.verdict
-				? `Jev criteria: ${worker.verdict.criteria
-						.map((criterion, index) => `${criterion.p >= config.jev.acceptThreshold ? "pass" : "fail"} #${index + 1} (${pct(criterion.p)})`)
-						.join(", ")}`
+			worker.evidence
+				? `Changed files:\n${worker.evidence.changed_files}\nDiff stat:\n${worker.evidence.diff_stat}\nCommits since start:\n${worker.evidence.commits_since_start}`
 				: undefined,
 			worker.box && worker.isolated
 				? `Sandbox: ${worker.box} on ${worker.cloud?.dest}${worker.net || worker.size ? ` (net ${worker.net ?? "?"}, size ${worker.size ?? "?"}, env ${worker.env?.join(", ") || "none"})` : ""}\nBranch: ${worker.branch}${worker.collected ? `\nCollected into your repo: ${worker.collected.split("\n").join(", ")}` : ""}`
@@ -1652,36 +1408,29 @@ function registerLeader(pi: ExtensionAPI) {
 
 	const activateLeaderTools = () => pi.setActiveTools([...new Set([...pi.getActiveTools(), ...LEADER_TOOLS])]);
 
-	const PLANS: Record<Strategy, string> = {
-		solo: "Do the work yourself; orch_spawn is disabled for this run.",
-		fan_out:
-			"Split the goal into independent subtasks and spawn one worker per subtask. Workers cannot talk to each other, only to you.",
-		mesh: "Split the goal into parallel subtasks that may share interfaces or files. Workers coordinate directly through mesh messages and the shared board.",
-	};
 	const SPECIALISTS = config.pool
 		.filter((entry) => entry.onRequest)
 		.map((entry) => `"${entry.key}" (${entry.use})`)
 		.join("; ");
 	const LEAD_GUIDE = [
 		"How to lead:",
-		"- Give each worker a self-contained task and a list of concrete, checkable acceptance criteria. Jev picks each worker's model and judges every criterion separately against the checkout's real changes and the commands the worker ran.",
-		`- Workers run on ${config.fallbackWorker} unless Jev confidently rates the node complex enough for a stronger model. For a specific part that needs a specialist, set that node's \`model\` so it works alongside the rest: ${SPECIALISTS}.`,
-		"- A clear miss is retried with the failing criteria (same model first, a stronger one on a repeat miss). A borderline result after a retry, or a blocked worker, becomes needs_leader and its dependents wait: decide it with orch_verdict, or reopen it with orch_send. orch_verdict also overrules a Jev rejection.",
+		"- Give each worker a self-contained task and a list of concrete, checkable acceptance criteria; its final report states the evidence for each one.",
+		`- Workers run on ${config.fallbackWorker}. For a specific part that needs a specialist, set that node's \`model\` so it works alongside the rest: ${SPECIALISTS}.`,
+		"- A finished work node counts as done, so its dependents start. Check its report and the evidence orch_status and orch_wait show (changed files, diff stat, commits): reject it with orch_verdict (its pending dependents are skipped) or reopen it with orch_send. Put a review node in between when dependents must wait for a check. A blocked worker or a review without a VERDICT line becomes needs_leader and its dependents wait: decide it with orch_verdict, or reopen it with orch_send.",
 		"- Record shared decisions with mesh_note before spawning, so workers start aligned.",
 		"- Call orch_wait to block until workers finish or one of them messages you; answer with orch_send. orch_send to a finished worker reopens it with new instructions.",
 		"- Plan the work as a graph, not a flat list: orch_spawn accepts the whole graph at once. `after` makes a node wait until the named nodes are accepted, and the orchestrator starts it then (dependents of a failed node are skipped). `workdir` runs a node in an upstream node's worktree so it builds on those uncommitted changes.",
 		'- Add `kind: "review"` nodes for verification and code review, with `workdir` and `after` set to the node under review. With `fixes` naming that node, a `VERDICT: FAIL` sends the findings back to it and the reviewer re-checks once it settles, up to ' +
 			`${config.maxFixRounds} rounds. Make later nodes depend on the reviewer, not the reviewed node, so they start only on a passing review.`,
-		`- Placement: ${placementMode.note} In cloud mode isolated workers get sandboxes on your cloud host. Jev picks each sandbox's network (none, dev, or open only when allowed), size, and catalog variables from a fixed menu, and may put a node in a host worktree instead; review nodes always share the checkout they review.`,
+		`- Placement: ${placementMode.note} In cloud mode isolated workers get sandboxes on your cloud host. A new sandbox gets the default network and size and every allowed catalog variable; review nodes always share the checkout they review.`,
 		"- A sandbox worker is branched from your last commit (commit first: uncommitted changes do not reach it). It commits there, and when it finishes its branches are fetched into your repo as `sandbox/<sandbox>/<branch>` (orch_status shows them); merge from those. Worktree workers do not commit: review and integrate their worktrees yourself, then validate the integrated result.",
-		`- orch_consult asks a stronger reasoning model (Fable, or GPT-6 Astra when Claude's limits run hot) one question with the context you give it; use it for hard design calls and when you doubt a plan or result. An auditor also reviews any plan of ${config.audit.minNodes} or more nodes before its first node starts, and every needs_leader result. Its opinions are advice: weigh them, you decide.`,
+		"- orch_consult asks a stronger reasoning model (Fable, or GPT-6 Astra when Claude's limits run hot) one question with the context you give it; use it for hard design calls and when you doubt a plan or result. Its opinions are advice: weigh them, you decide.",
 		"- orch_publish pushes an accepted node's branch to origin under a name you pick by the repository's conventions (never the default branch, never forced) and can open a draft PR. Publish only when the goal asks for a push or PR.",
 	];
 	// The /orchestrate brief without a goal: in leader mode the user's next requests are the goal.
 	const LEADER_MODE_PROMPT = [
 		"Orchestrator mode: you are the leader of an orchestrated agent team. Treat each user request as a goal for the team: plan it and dispatch it with orch_spawn instead of implementing it yourself. Answer plain questions and status checks directly.",
-		"The first orch_spawn or mesh_note after a new request starts a new run, and Jev picks its execution strategy from the request:",
-		...Object.entries(PLANS).map(([strategy, plan]) => `- ${strategy}: ${plan}`),
+		"The first orch_spawn or mesh_note after a new request starts a new run. Split the work into parallel subtasks that coordinate through mesh mail and the board; when one session would be faster (a small or tightly coupled change), do it yourself instead.",
 		"If the request is ambiguous, ask the user what is unclear before spawning workers.",
 		"",
 		...LEAD_GUIDE,
@@ -1695,12 +1444,11 @@ function registerLeader(pi: ExtensionAPI) {
 
 	// A new request in leader mode starts a new run, as /orchestrate does for its goal; a run whose
 	// workers are still active is kept so the request extends it.
-	const ensureRun = async (ctx: ExtensionContext, signal?: AbortSignal, fallbackGoal?: string): Promise<Run> => {
+	const ensureRun = async (fallbackGoal?: string): Promise<Run> => {
 		const goal = nextGoal ?? (run ? undefined : fallbackGoal);
 		nextGoal = undefined;
 		if (goal === undefined || (run && anyActive(run))) return requireRun();
-		const { strategy, note } = await decideRunStrategy(goal, ctx, signal);
-		return startRun(strategy, note, goal);
+		return startRun(goal);
 	};
 
 	const restoreModel = async (ctx: ExtensionContext, saved: ModelState) => {
@@ -1822,7 +1570,7 @@ function registerLeader(pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("orchestrate", {
-		description: "Run a goal with a Jev-directed leader and worker mesh",
+		description: "Run a goal with a leader and a worker mesh",
 		handler: async (args, ctx) => {
 			lastCtx = ctx;
 			const goal = args.trim();
@@ -1838,19 +1586,14 @@ function registerLeader(pi: ExtensionAPI) {
 			await applyLeaderModel(ctx);
 			// This goal owns the new run; requests typed earlier in leader mode must not replace it.
 			nextGoal = undefined;
-			const { strategy, note, decision } = await decideRunStrategy(goal, ctx);
-			const started = await startRun(strategy, note, goal);
+			const started = await startRun(goal);
 			activateLeaderTools();
 
 			const brief = [
 				"You are the leader of an orchestrated agent team.",
 				`Goal: ${goal}`,
 				"",
-				`Execution strategy: ${strategy}. ${note}`,
-				decision && decision.needsClarification >= 0.5
-					? `Jev rates the goal as ambiguous (p=${pct(decision.needsClarification)}): ask the user what is unclear before spawning workers.`
-					: undefined,
-				PLANS[strategy],
+				"Split the goal into parallel subtasks that coordinate through mesh mail and the board; do small or tightly coupled work yourself. If the goal is ambiguous, ask the user what is unclear before spawning workers.",
 				"",
 				...LEAD_GUIDE,
 				`Run directory: ${started.dir}`,
@@ -1865,8 +1608,8 @@ function registerLeader(pi: ExtensionAPI) {
 		name: "orch_spawn",
 		label: "Orchestrator: Spawn Workers",
 		description:
-			"Add a graph of worker nodes to the current orchestration. Nodes without unmet `after` dependencies start now (up to the concurrency limit); the rest start as their dependencies are accepted. Jev picks each node's model (unless `model` names a specialist) and gates work nodes; review nodes decide by their VERDICT line. Returns immediately; use orch_wait for results.",
-		promptSnippet: "Spawn a dependency graph of Jev-routed worker and review nodes",
+			"Add a graph of worker nodes to the current orchestration. Nodes without unmet `after` dependencies start now (up to the concurrency limit); the rest start as their dependencies are accepted. Work nodes run on the default worker model unless `model` names a specialist, and count as done when they finish; review nodes decide by their VERDICT line. Returns immediately; use orch_wait for results.",
+		promptSnippet: "Spawn a dependency graph of worker and review nodes",
 		defaultActive: false,
 		parameters: Type.Object({
 			workers: Type.Array(
@@ -1874,12 +1617,12 @@ function registerLeader(pi: ExtensionAPI) {
 					name: Type.String({ description: "Short unique node name" }),
 					task: Type.String({ description: "Self-contained subtask" }),
 					acceptance: Type.Union([Type.Array(Type.String(), { minItems: 1, maxItems: MAX_CRITERIA }), Type.String()], {
-						description: `Concrete, checkable acceptance criteria, ideally a list (at most ${MAX_CRITERIA}); Jev judges each one separately`,
+						description: `Concrete, checkable acceptance criteria, ideally a list (at most ${MAX_CRITERIA})`,
 					}),
 					isolation: Type.Optional(
 						StringEnum(["worktree", "current"] as const, {
 							description:
-								'Default "worktree": its own checkout, an agentbox sandbox where sandboxes are available (Jev may choose a host worktree instead), else a Git worktree. "current" shares the caller checkout; such nodes run one at a time.',
+								'Default "worktree": its own checkout, an agentbox sandbox where sandboxes are available, else a Git worktree. "current" shares the caller checkout; such nodes run one at a time.',
 						}),
 					),
 					after: Type.Optional(
@@ -1904,7 +1647,7 @@ function registerLeader(pi: ExtensionAPI) {
 					),
 					model: Type.Optional(
 						Type.String({
-							description: `A specialist for this node instead of Jev's pick, only where its strength is needed: ${SPECIALISTS}`,
+							description: `A specialist for this node instead of the default worker model, only where its strength is needed: ${SPECIALISTS}`,
 						}),
 					),
 				}),
@@ -1913,10 +1656,7 @@ function registerLeader(pi: ExtensionAPI) {
 		}),
 		async execute(_id, params, signal, _onUpdate, ctx) {
 			lastCtx = ctx;
-			const r = await ensureRun(ctx, signal, params.workers.map((worker) => `- ${worker.task}`).join("\n"));
-			if (r.strategy === "solo") {
-				throw new Error(`${r.strategyNote} Do the work yourself, or start a new /orchestrate run if the plan changed.`);
-			}
+			const r = await ensureRun(params.workers.map((worker) => `- ${worker.task}`).join("\n"));
 			const specs: NodeSpec[] = params.workers.map((worker) => {
 				if (worker.repo && (!worker.repo.startsWith("/") || worker.workdir)) {
 					throw new Error(`${worker.name}: \`repo\` must be an absolute path and cannot be combined with \`workdir\`.`);
@@ -1976,45 +1716,13 @@ function registerLeader(pi: ExtensionAPI) {
 			const misassigned = specs.find((spec) => spec.model !== undefined && !specialists.includes(spec.model));
 			if (misassigned) {
 				throw new Error(
-					`${misassigned.name}: model "${misassigned.model}" is not a specialist with credentials (${specialists.join(", ") || "none available"}); omit it to let Jev pick.`,
+					`${misassigned.name}: model "${misassigned.model}" is not a specialist with credentials (${specialists.join(", ") || "none available"}); omit it for the default worker model.`,
 				);
-			}
-
-			// A large plan is audited once, before anything starts, so the leader can still change it.
-			let auditNote: string | undefined;
-			if (!r.planAudited && r.workers.size + r.nodes.size === 0 && specs.length >= config.audit.minNodes) {
-				r.planAudited = true;
-				try {
-					const answer = await askConsultant(
-						"Audit this plan before any worker starts. Look for missing or wrong dependencies, nodes that will collide on the same files, acceptance criteria that cannot be checked, missing review or validation nodes, and work beyond the goal. Be concrete, and say plainly if the plan is sound.",
-						planContext(r, specs),
-						ctx,
-						signal,
-					);
-					return {
-						content: [
-							{
-								type: "text",
-								text: [
-									`Plan audit by ${answer.ref} (advisory).${answer.note ? ` ${answer.note}` : ""}`,
-									answer.text,
-									"No node was started. Weigh the audit, revise the graph where it is right, then call orch_spawn again; the plan audit runs once per run.",
-								].join("\n\n"),
-							},
-						],
-						details: undefined,
-					};
-				} catch (error) {
-					if (signal?.aborted) throw error;
-					auditNote = `Plan audit unavailable (${(error as Error).message}); the graph started unaudited.`;
-				}
 			}
 
 			for (const spec of specs) r.nodes.set(spec.name, { spec, state: "pending" });
 			await schedule();
 			const text = [
-				`Strategy: ${r.strategy}. ${r.strategyNote}`,
-				...(auditNote ? [auditNote] : []),
 				`Run directory: ${r.dir}`,
 				"",
 				...names.map((name) => describeName(r, name, false)),
@@ -2096,14 +1804,14 @@ function registerLeader(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "orch_status",
 		label: "Orchestrator: Status",
-		description: "Show the run's strategy, workers, unread messages, and shared board without waiting.",
+		description: "Show the run's workers, unread messages, and shared board without waiting.",
 		defaultActive: false,
 		parameters: Type.Object({}),
 		async execute(_id, _params, _signal, _onUpdate, ctx) {
 			lastCtx = ctx;
 			const r = requireRun();
 			const text = [
-				`Run ${r.id}: ${r.strategy}. ${r.strategyNote}`,
+				`Run ${r.id}`,
 				`Directory: ${r.dir}`,
 				r.inbox.length ? `Unread messages (orch_wait returns them):\n${r.inbox.map((line) => `- ${line}`).join("\n")}` : undefined,
 				...[...r.workers.values()].map((worker) => describe(worker, false)),
@@ -2120,7 +1828,7 @@ function registerLeader(pi: ExtensionAPI) {
 		name: "orch_verdict",
 		label: "Orchestrator: Verdict",
 		description:
-			"Overrule Jev on a finished node. accept marks it accepted, so nodes waiting on it start and nodes skipped because of it are reconsidered; reject marks it rejected, so its dependents are skipped. Use it for needs_leader nodes or a wrong Jev verdict.",
+			"Accept or reject a finished node. accept marks it accepted, so nodes waiting on it start and nodes skipped because of it are reconsidered; reject marks it rejected, so its pending dependents are skipped. Use it for needs_leader nodes or to reject a finished node's work.",
 		defaultActive: false,
 		parameters: Type.Object({
 			name: Type.String(),
@@ -2291,9 +1999,9 @@ function registerLeader(pi: ExtensionAPI) {
 		description: "Append a decision, interface, or finding to the shared blackboard every worker can read.",
 		defaultActive: false,
 		parameters: BoardNote,
-		async execute(_id, params, signal, _onUpdate, ctx) {
+		async execute(_id, params, _signal, _onUpdate, ctx) {
 			lastCtx = ctx;
-			await appendBoard((await ensureRun(ctx, signal)).dir, "leader", params.text);
+			await appendBoard((await ensureRun()).dir, "leader", params.text);
 			return { content: [{ type: "text", text: "Noted on the board." }], details: undefined };
 		},
 	});

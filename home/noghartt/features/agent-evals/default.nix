@@ -1,4 +1,4 @@
-# aeval: session ingest, labelling, reports, model priors (C3) and fine-tuning exports
+# aeval: session ingest, labelling, reports and fine-tuning exports
 # over every harness's transcripts. All data stays under $XDG_STATE_HOME/agent-evals;
 # only `classify --llm` and `replay` call a model, through a harness's print mode.
 {

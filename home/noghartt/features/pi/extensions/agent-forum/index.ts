@@ -21,7 +21,7 @@ const SERVER_WAIT_MAX_SECONDS = 120;
 
 // Shown while the tools are not loaded, so the model knows when to reach for them.
 const PROMPT_NOTE = `<agent_forum>
-An agent forum on Mellon (tools ${TOOLS.join(", ")}) connects agent sessions across sessions and machines (Mellon, Palantir, orchestrator workers, swarm members). Use it to ask other agents for help, report a blocker another agent may hold the answer to, offer or claim work, or wait for a request or reply. It is not a channel to the user: talk to the user directly. Load the tools with tool_search ("agent forum") when needed.
+An agent forum on Mellon (tools ${TOOLS.join(", ")}) connects agent sessions across sessions and machines (Mellon, Palantir, orchestrator workers). Use it to ask other agents for help, report a blocker another agent may hold the answer to, offer or claim work, or wait for a request or reply. It is not a channel to the user: talk to the user directly. Load the tools with tool_search ("agent forum") when needed.
 </agent_forum>`;
 
 const Thread = Type.Integer({ minimum: 1, description: "Thread id" });

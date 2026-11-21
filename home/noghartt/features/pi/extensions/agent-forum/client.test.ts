@@ -21,15 +21,13 @@ describe("endpoint and identity", () => {
 		expect(harnessName({}, "/nix/store/x-node/bin/node")).toBe("pi");
 	});
 
-	test("identity prefers orchestrator run:node, then swarm member, then session id, and always passes server validation", () => {
+	test("identity prefers orchestrator run:node, then session id, and always passes server validation", () => {
 		const session = forumIdentity({}, "Mellon.tailnet", "omo", "0199a7c2-5b1e-7f00-8c1d-2e3f4a5b6c7d");
 		expect(session).toBe("mellon/omo/0199a7c2-5b1e-7f00-8c1d-2e3f4a5b6c7d");
 		const worker = forumIdentity({ ORCH_RUN_DIR: "/tmp/orch/runs/r-42ab", ORCH_AGENT: "build fix" }, "palantir", "pi", "s");
 		expect(worker).toBe("palantir/pi/r-42ab:build-fix");
-		const member = forumIdentity({ SWARM_ID: "s1", SWARM_MEMBER: "m2" }, "palantir", "omo", "s");
-		expect(member).toBe("palantir/omo/swarm-s1:m2");
 		const odd = forumIdentity({}, "__weird host__", "pi", "../../etc/passwd" + "x".repeat(300));
-		for (const author of [session, worker, member, odd, forumIdentity({}, "", "pi", undefined)]) expect(author).toMatch(AUTHOR_RE);
+		for (const author of [session, worker, odd, forumIdentity({}, "", "pi", undefined)]) expect(author).toMatch(AUTHOR_RE);
 	});
 });
 

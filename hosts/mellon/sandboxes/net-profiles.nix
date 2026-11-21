@@ -41,12 +41,11 @@
       # Docker Hub (registry, auth, blob CDN).
       "docker.io"
       "docker.com"
-      # Model APIs the harnesses inside a sandbox call, and Jev (TypeSafe).
+      # Model APIs the harnesses inside a sandbox call.
       "anthropic.com"
       "claude.ai"
       "openai.com"
       "chatgpt.com"
-      "typesafe.ai"
     ];
 
     open.any = true;

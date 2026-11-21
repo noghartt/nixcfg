@@ -1,5 +1,4 @@
-// Where a worker runs and what its sandbox may reach. Jev proposes from a fixed menu; the
-// guardrails here decide, so a confident Jev can never widen what the config allows.
+// Where a worker runs and what its sandbox may reach: the config's defaults, never wider.
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
@@ -81,48 +80,6 @@ export function defaultPlacement(input: PlacementInput, workers: WorkersConfig, 
 		size: workers.size,
 		env: [...allowedEnv],
 	};
-}
-
-export interface Proposal {
-	mode?: string;
-	net?: string;
-	size?: string;
-	env?: string[];
-}
-
-// Applies Jev's proposal where the guardrails allow it; `overridden` names each refused part.
-export function guardPlacement(
-	proposal: Proposal,
-	input: PlacementInput,
-	workers: WorkersConfig,
-	allowedEnv: string[],
-): PlacementChoice & { overridden: string[] } {
-	const base = defaultPlacement(input, workers, allowedEnv);
-	const overridden: string[] = [];
-	const menu = placementMenu(input);
-	let mode = base.mode;
-	if (proposal.mode !== undefined) {
-		if (menu.includes(proposal.mode as PlacementMode)) mode = proposal.mode as PlacementMode;
-		else overridden.push(`placement ${proposal.mode} (allowed: ${menu.join(", ")})`);
-	}
-	let net = base.net;
-	if (proposal.net !== undefined) {
-		if (!NETS.includes(proposal.net as Net)) overridden.push(`net ${proposal.net}`);
-		else if (proposal.net === "open" && !workers.allowOpenNet) overridden.push("net open (workers.allowOpenNet is off)");
-		else net = proposal.net as Net;
-	}
-	let size = base.size;
-	if (proposal.size !== undefined) {
-		if (SIZES.includes(proposal.size as Size)) size = proposal.size as Size;
-		else overridden.push(`size ${proposal.size}`);
-	}
-	let env = base.env;
-	if (proposal.env !== undefined) {
-		const refused = proposal.env.filter((key) => !allowedEnv.includes(key));
-		if (refused.length) overridden.push(`env ${refused.join(", ")} (not in the allowed list)`);
-		env = [...new Set(proposal.env.filter((key) => allowedEnv.includes(key)))];
-	}
-	return { mode, net, size, env, overridden };
 }
 
 export function splitVars(value: string | undefined): string[] {

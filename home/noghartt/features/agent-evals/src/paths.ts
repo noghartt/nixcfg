@@ -11,7 +11,7 @@ export function stateDir(): string {
 	return process.env.AEVAL_STATE_DIR || join(base, "agent-evals");
 }
 
-/** C2/C3 require a private directory: transcripts and labels can quote anything. */
+/** C2 requires a private directory: transcripts and labels can quote anything. */
 export function ensureStateDir(dir = stateDir()): string {
 	if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
 	chmodSync(dir, 0o700);
@@ -20,7 +20,6 @@ export function ensureStateDir(dir = stateDir()): string {
 
 export const dbPath = (dir = stateDir()) => join(dir, "aeval.sqlite");
 export const outcomesPath = (dir = stateDir()) => join(dir, "outcomes.jsonl");
-export const priorsPath = (dir = stateDir()) => join(dir, "priors.json");
 
 export interface SourceRoots {
 	omo: string;

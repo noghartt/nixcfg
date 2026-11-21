@@ -34,8 +34,7 @@
 
     # Pinned brew itself, overriding nix-homebrew's own pin: cask definitions
     # come live from the formulae.brew.sh API, so a lagging brew breaks on new
-    # cask DSL ("unknown install step: run" needed >= 6.0.13; docker/tap/sbx's
-    # `symlink ..., overwrite:` step needs >= 7.0.0). Drop the override once
+    # cask DSL ("unknown install step: run" needed >= 6.0.13). Drop the override once
     # nix-homebrew's pin catches up.
     brew-src = {
       url = "github:Homebrew/brew/7.0.8";

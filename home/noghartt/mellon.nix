@@ -14,7 +14,6 @@
     ./features/desktop/noctalia.nix
     ./features/desktop/wlsunset.nix
     ./features/omo
-    ./features/swarm
   ];
 
   home.packages = with pkgs; [

@@ -1,7 +1,7 @@
 // Outcome log (contract C2): one line per settled node attempt, read by agent-evals.
 import { appendFile, chmod, mkdir } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { evalsDir } from "./priors.ts";
 
 export type OutcomeVerdict = "accepted" | "rejected" | "retry" | "needs_leader" | "failed" | "done_ungated" | "stopped";
 
@@ -42,9 +42,6 @@ export interface OutcomeInput {
 	pickNote: string;
 	attempt: number;
 	verdict: OutcomeVerdict;
-	// Jev's per-criterion probabilities; absent for review nodes and ungated results.
-	scores?: { criterion: string; p: number }[];
-	acceptThreshold: number;
 	startedAt: number;
 	workerSession?: string;
 	leaderSession?: string;
@@ -72,15 +69,16 @@ export function outcomeRecord(input: OutcomeInput): OutcomeRecord {
 		pickNote: input.pickNote.trim(),
 		attempt: input.attempt,
 		verdict: input.verdict,
-		criteriaScores: (input.scores ?? []).map((score) => ({
-			criterion: score.criterion,
-			pass: score.p >= input.acceptThreshold,
-			confidence: score.p,
-		})),
+		// Kept for agent-evals readers; nothing scores criteria any more.
+		criteriaScores: [],
 		durationMs: Math.max(0, input.now - input.startedAt),
 		workerSession: input.workerSession ?? null,
 		leaderSession: input.leaderSession ?? null,
 	};
+}
+
+export function evalsDir(env: NodeJS.ProcessEnv = process.env, home = homedir()): string {
+	return join(env.XDG_STATE_HOME || join(home, ".local", "state"), "agent-evals");
 }
 
 export const outcomesPath = (dir = evalsDir()): string => join(dir, "outcomes.jsonl");

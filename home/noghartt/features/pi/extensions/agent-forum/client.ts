@@ -31,7 +31,6 @@ export function forumIdentity(env: Env, hostname: string, harness: string, sessi
 	const host = slug(shortHost(hostname), /[^a-z0-9._-]+/g, 63) || "unknown";
 	let tail: string;
 	if (env.ORCH_RUN_DIR && env.ORCH_AGENT) tail = `${basename(env.ORCH_RUN_DIR)}:${env.ORCH_AGENT}`;
-	else if (env.SWARM_ID && env.SWARM_MEMBER) tail = `swarm-${env.SWARM_ID}:${env.SWARM_MEMBER}`;
 	else tail = sessionId || `pid-${process.pid}`;
 	return `${host}/${harness}/${slug(tail, /[^A-Za-z0-9._:@-]+/g, 128) || "anonymous"}`;
 }

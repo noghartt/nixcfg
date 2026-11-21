@@ -72,10 +72,6 @@ const PALETTE_ACTIONS: PaletteCommand[] = [
 // so the completion list is the one engine-agnostic place to read them from.
 let engineAutocomplete: AutocompleteProvider | undefined;
 
-// Extension commands stay out of slash autocomplete, except the swarm pair: `/leader`
-// needs a typed goal, which a palette pick cannot supply, and `/swarms` sits beside it.
-const SLASH_EXTENSION_COMMANDS = new Set(["leader", "swarms"]);
-
 async function builtinCommands(registered: Set<string>): Promise<PaletteCommand[]> {
 	if (!engineAutocomplete) return [];
 	const suggestions = await engineAutocomplete.getSuggestions(["/"], 0, 1, { signal: new AbortController().signal });
@@ -354,7 +350,7 @@ export default function commandPalette(pi: ExtensionAPI) {
 					const extensionCommands = new Set(
 						pi
 							.getCommands()
-							.filter((command) => command.source === "extension" && !SLASH_EXTENSION_COMMANDS.has(command.name))
+							.filter((command) => command.source === "extension")
 							.map((command) => command.name),
 					);
 					const items = suggestions.items.filter((item) => !extensionCommands.has(item.value.split(/\s/, 1)[0]!));

@@ -79,6 +79,10 @@ whenever it feels like a checkpoint.
 
 ### Changed
 
+- **home/noghartt/pi**: the orchestrator leader judges settled workers itself. Work nodes settle
+  as `done_ungated` with the collected evidence attached, reviews decide by their `VERDICT` line,
+  and worker models come from the pool default or the leader's explicit pick; placement uses
+  the config defaults. Removes a model hop per settled node.
 - **home/noghartt/cli**: Codex 0.162.0 -> 0.166.0 and Claude Code 2.1.295 -> 2.1.318.
 - **home/noghartt/omo**: OmO 5.1.33 -> 5.1.60, on the host and in swarm pods (Claude subscription
   accounts now sign in through Claude Code; sign in again after switching).
@@ -638,6 +642,9 @@ whenever it feels like a checkpoint.
 
 ### Removed
 
+- **home/noghartt**: Jev (TypeSafe) gating, strategy, placement, and model picks; the swarm
+  feature (`swarm` CLI/daemon, `/leader`, `/swarms`, sbx kit, `SWARM.md`); `aeval priors` and the
+  orchestrator's priors input; the plan/needs_leader consultant audits.
 - **mellon**: hibernation (resume device, the pending `resume_offset` step) and NVIDIA
   suspend VRAM preservation; system sleep is now refused so Mellon runs 24/7.
 - **home/noghartt/herdr**: drop the reviewr plugin in favor of the lazygit popup on

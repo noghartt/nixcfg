@@ -3,8 +3,7 @@ import { classifyHeuristic, classifyLlm, unlabeledItems } from "./classify.ts";
 import { openDb } from "./db.ts";
 import { exportDataset } from "./export.ts";
 import { ingest } from "./ingest.ts";
-import { dbPath, priorsPath, stateDir } from "./paths.ts";
-import { computePriors, writePriors } from "./priors.ts";
+import { dbPath, stateDir } from "./paths.ts";
 import { replay, resolveTask } from "./replay.ts";
 import { report } from "./report.ts";
 import type { Dim } from "./stats.ts";
@@ -12,7 +11,7 @@ import { parseSince } from "./stats.ts";
 import { runLabelUi, type View } from "./tui.ts";
 import type { Source } from "./types.ts";
 
-const USAGE = `aeval - evaluate agent sessions: ingest, label, classify, report, priors, export, replay
+const USAGE = `aeval - evaluate agent sessions: ingest, label, classify, report, export, replay
 
   aeval ingest [--force] [--source omo,pi,claude,codex] [--include-sdk] [--quiet]
       import new or changed transcripts and the orchestrator outcome log
@@ -21,8 +20,6 @@ const USAGE = `aeval - evaluate agent sessions: ingest, label, classify, report,
   aeval classify [--all] [--llm [--harness omo|pi] [--model provider/id] [--batch N] [--limit N]]
       heuristic task-class suggestions; --llm adds a print-mode model pass (cheapest pool tier by default)
   aeval report [--by model,pool,class,pool-class] [--since 30d] [--source omo] [--format md|json]
-  aeval priors [--since 90d] [--min-n N] [--stdout]
-      write priors.json (contract C3) from outcomes and labels
   aeval export --format sft|preference --provider openai|anthropic [--out DIR] [--include-good-sessions]
                [--system summarize|strip] [--max-example-bytes N] [--max-total-bytes N] [--max-tool-chars N] [--limit N]
   aeval replay (--node RUN/NODE | --session ID) --models m1[:thinking],m2 [--harness omo|pi]
@@ -80,7 +77,7 @@ async function main(argv: string[]): Promise<number> {
 		return 0;
 	}
 	if (cmd === "paths") {
-		console.log(JSON.stringify({ state: stateDir(), db: dbPath(), priors: priorsPath() }, null, 2));
+		console.log(JSON.stringify({ state: stateDir(), db: dbPath() }, null, 2));
 		return 0;
 	}
 	const db = openDb();
@@ -131,12 +128,6 @@ async function main(argv: string[]): Promise<number> {
 						format: oneOf(flag(flags, "format"), ["md", "json"] as const, "format") ?? "md",
 					}),
 				);
-				return 0;
-			}
-			case "priors": {
-				const priors = computePriors(db, { since: parseSince(flag(flags, "since")), minN: intFlag(flags, "min-n") });
-				if (flags.stdout) console.log(JSON.stringify(priors, null, 2));
-				else console.log(`wrote ${writePriors(priors)} (${priors.models.length} entries)`);
 				return 0;
 			}
 			case "export": {

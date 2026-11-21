@@ -7,7 +7,6 @@ import { openDb } from "./db.ts";
 import { ingest } from "./ingest.ts";
 import { effectiveClass, setLabel, turnTarget } from "./labels.ts";
 import { ingestOutcomes, parseOutcome } from "./outcomes.ts";
-import { computePriors, writePriors } from "./priors.ts";
 import { report } from "./report.ts";
 import { FIXTURES, fixtureDb } from "./testutil.ts";
 
@@ -111,32 +110,7 @@ describe("classify", () => {
 	});
 });
 
-describe("report and priors (C3)", () => {
-	test("priors follow the outcome log, user overrides and rated sessions", () => {
-		const { db, dir } = fixtureDb();
-		classifyHeuristic(db, unlabeledItems(db));
-		let p = computePriors(db);
-		const find = (key: string, cls: string) => p.models.find((m) => m.key === key && m.taskClass === cls);
-		expect(find("sonnet", "bugfix")).toEqual({ key: "sonnet", taskClass: "bugfix", n: 2, acceptRate: 0.5, meanAttempts: 2 });
-		expect(find("opus", "feature")).toEqual({ key: "opus", taskClass: "feature", n: 1, acceptRate: 1, meanAttempts: 1 });
-		expect(find("fable", "review")?.n).toBe(1);
-		expect(p.models.some((m) => m.taskClass === "docs")).toBe(false);
-
-		setLabel(db, "session", "omo:omo-sess-1", { rating: "bad" });
-		setLabel(db, "node", "r1/new-cmd", { rating: "bad" });
-		p = computePriors(db);
-		expect(find("sonnet", "bugfix")).toEqual({ key: "sonnet", taskClass: "bugfix", n: 3, acceptRate: 0.3333, meanAttempts: 1.5 });
-		expect(find("opus", "feature")?.acceptRate).toBe(0);
-		expect(find("sonnet", "*")?.n).toBe(3);
-
-		const path = writePriors(p, join(dir, "priors.json"));
-		const written = JSON.parse(readFileSync(path, "utf8"));
-		expect(written.v).toBe(1);
-		expect(typeof written.updatedAt).toBe("string");
-		for (const m of written.models) expect(Object.keys(m).sort()).toEqual(["acceptRate", "key", "meanAttempts", "n", "taskClass"]);
-		expect(statSync(path).mode & 0o777).toBe(0o600);
-	});
-
+describe("report", () => {
 	test("report aggregates per model, pool and class in markdown and json", () => {
 		const { db } = fixtureDb();
 		classifyHeuristic(db, unlabeledItems(db));

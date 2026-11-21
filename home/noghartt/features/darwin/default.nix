@@ -14,7 +14,6 @@
     ../desktop/ghostty.nix
     ../desktop/obsidian.nix
     ../omo
-    ../swarm
     ../vscode
   ];
 
@@ -40,9 +39,6 @@
     sessionPath = [
       "$HOME/Library/Application Support/com.superlogical.rex/RexServer/Versions/Current/Rex Server.app/Contents/MacOS"
     ];
-
-    # sbx reports every CLI invocation; swarms call it constantly.
-    sessionVariables.SBX_NO_TELEMETRY = 1;
   };
 
   programs.ghostty = {

@@ -66,7 +66,6 @@ type TodoPhase = { name: string; tasks: TodoTask[] };
 type TodoOwed = { chainCount?: number; openTasks?: number; reason?: string };
 type OrchestratorState = {
 	id: string;
-	strategy: string;
 	workers: { name: string; state: string; model: string }[];
 };
 // OmO's subscription-limits API; Pi lacks it, so both members are optional.
@@ -594,7 +593,7 @@ export default function statusline(pi: ExtensionAPI) {
 			if (all.length > shown.length) lines.push(th.fg("dim", `  +${all.length - shown.length} earlier`));
 
 			if (orchestrator && orchestrator.workers.length > 0) {
-				lines.push("", `${th.bold("Orchestrator")} ${th.fg("dim", `${orchestrator.strategy} · ${orchestrator.id}`)}`);
+				lines.push("", `${th.bold("Orchestrator")} ${th.fg("dim", orchestrator.id)}`);
 				const workers = orchestrator.workers;
 				workers.forEach((worker, index) => {
 					const last = index === workers.length - 1;

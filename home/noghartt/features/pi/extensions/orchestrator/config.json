@@ -3,19 +3,7 @@
     "models": ["anthropic-subscription/claude-opus-5-5", "anthropic/claude-opus-5-5"],
     "thinking": "xhigh"
   },
-  "jev": {
-    "model": "jev-latest",
-    "baseUrl": "https://api.typesafe.ai",
-    "strategyConfidence": 0.5,
-    "modelConfidence": 0.5,
-    "placementConfidence": 0.5,
-    "envThreshold": 0.6,
-    "acceptThreshold": 0.7,
-    "blockedThreshold": 0.5,
-    "borderlineFloor": 0.4
-  },
   "fallbackWorker": "sonnet",
-  "maxAttempts": 3,
   "maxWorkers": 6,
   "maxFixRounds": 2,
   "spillAt": 85,
@@ -34,7 +22,6 @@
     "timeoutSeconds": 900,
     "tools": ["read", "grep", "find", "ls"]
   },
-  "audit": { "minNodes": 4 },
   "pool": [
     {
       "key": "sonnet",

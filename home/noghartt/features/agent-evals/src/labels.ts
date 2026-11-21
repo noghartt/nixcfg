@@ -62,7 +62,7 @@ export function bestSuggestion(db: Database, type: TargetType, id: string): Sugg
 		.get(type, id) as Suggestion | null;
 }
 
-/** The class reports and priors use: a user label first, then the best suggestion. */
+/** The class reports use: a user label first, then the best suggestion. */
 export function effectiveClass(db: Database, type: TargetType, id: string): { cls: string; source: string } {
 	const label = getLabel(db, type, id);
 	if (label?.task_class) return { cls: label.task_class, source: "user" };
