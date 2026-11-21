@@ -112,6 +112,8 @@ whenever it feels like a checkpoint.
   as `done_ungated` with the collected evidence attached, reviews decide by their `VERDICT` line,
   and worker models come from the pool default or the leader's explicit pick; placement uses
   the config defaults. Removes a model hop per settled node.
+- **AGENTS.md**: feature write-ups moved to `docs/` (one file per feature); AGENTS.md keeps the
+  layout, conventions, a feature-docs index, commands, and rules.
 - **home/noghartt/cli**: Codex 0.162.0 -> 0.166.0 and Claude Code 2.1.295 -> 2.1.318.
 - **home/noghartt/omo**: OmO 5.1.33 -> 5.1.60, on the host and in swarm pods (Claude subscription
   accounts now sign in through Claude Code; sign in again after switching).
