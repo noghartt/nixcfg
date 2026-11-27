@@ -13,11 +13,16 @@ leaves the remote process running; file operations share a ControlMaster under
 resolve blocks every tool instead of falling back to local. The target persists as a
 `cloud-mode` session entry and reaches subagents and orchestrator workers through
 `OMO_CLOUD` (`host:/resolved/dir`), under which destructive-guard skips its local-disk
-`write`/`edit` checks. Subagents act in the same remote directory as their parent. Targets
-need bash, ripgrep, and coreutils `timeout`.
+`write`/`edit` checks. Only the top session writes `OMO_CLOUD`; task children (recognised by
+`ctx.sessionContext.role` or `OMO_SENPI_TASK_RPC_CHILD=1`) act in the same remote directory but keep
+their agent type's tool set (a read-only type gets no remote writers) and never get `publish`.
+Sessions left over from the removed sandbox support (an entry with a `sandbox` field, an inherited
+`OMO_CLOUD_SANDBOX`, or a `local`/`exe` target) are blocked rather than resumed against the host
+directory, until `/cloud <host[:path]>` or `/cloud off`. Targets need bash, ripgrep, and coreutils
+`timeout`.
 
-The `publish` tool (`cloud-mode/publish.ts`) is the write path to GitHub, since the remote host
-holds no write credentials: it bundles a branch out of the remote checkout, fetches it into the
+The top session's `publish` tool (`cloud-mode/publish.ts`) pushes with the local identity, whatever
+credentials the remote host may hold: it bundles a branch out of the remote checkout, fetches it into the
 local clone at the session's cwd as `cloud/<host>/<branch>`, pushes it over SSH with the local
 keys (an HTTPS GitHub origin is rewritten to SSH: Git never uses HTTPS here; a 1Password SSH
 approval may be needed), never forced and never to origin's default branch, under the name the

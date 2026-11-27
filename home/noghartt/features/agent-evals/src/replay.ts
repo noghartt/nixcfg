@@ -107,6 +107,21 @@ function lastAssistantText(sessionsDir: string): { text: string | null; path: st
 
 const NO_PUSH_HOOK = "#!/bin/sh\necho 'aeval replay: pushing from a replay checkout is disabled' >&2\nexit 1\n";
 
+// Sandbox replays went with agentbox; a silently ignored flag would run the candidate unsandboxed.
+const REMOVED_FLAGS = ["sandbox", "net", "size"];
+
+export function checkReplayFlags(flags: Record<string, unknown>): void {
+	const used = REMOVED_FLAGS.filter((name) => name in flags);
+	if (used.length) throw new Error(`replay no longer supports ${used.map((name) => `--${name}`).join(", ")}: candidates run in local scratch clones only`);
+}
+
+// An inherited cloud target would point the candidate's tools at a remote checkout instead of its clone.
+export function candidateEnv(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+	const out: Record<string, string> = {};
+	for (const [key, value] of Object.entries(env)) if (value !== undefined && !key.startsWith("OMO_CLOUD")) out[key] = value;
+	return { ...out, OMO_UNSUPERVISED: "1" };
+}
+
 export const REPLAY_PREAMBLE =
 	"[aeval replay] You are re-running a recorded task in a disposable checkout to compare models. Work only inside this checkout; do not push, publish, or open pull requests.\n\n";
 
@@ -164,7 +179,7 @@ export function replay(db: Database, task: ReplayTask, opts: ReplayOptions): str
 			cwd: checkout,
 			stdio: ["ignore", out, err],
 			timeout: opts.timeoutMs ?? 30 * 60 * 1000,
-			env: { ...process.env, OMO_UNSUPERVISED: "1" },
+			env: candidateEnv(),
 		});
 		closeSync(out);
 		closeSync(err);

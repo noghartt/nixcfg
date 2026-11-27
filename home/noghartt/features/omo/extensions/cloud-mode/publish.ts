@@ -1,7 +1,7 @@
-// The GitHub write path for cloud mode. Remote hosts hold no write
-// credentials, so pushing runs here: the branch travels back as a git bundle,
-// lands in the local clone as cloud/<host>/<branch>, and is pushed over SSH
-// with the local keys.
+// The GitHub write path for cloud mode: pushes go out with the local identity,
+// whatever the remote host holds. The branch travels back as a git bundle, lands
+// in the local clone as cloud/<host>/<branch>, and is pushed over SSH with the
+// local keys.
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

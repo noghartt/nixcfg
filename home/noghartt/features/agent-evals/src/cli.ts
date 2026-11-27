@@ -4,7 +4,7 @@ import { openDb } from "./db.ts";
 import { exportDataset } from "./export.ts";
 import { ingest } from "./ingest.ts";
 import { dbPath, stateDir } from "./paths.ts";
-import { replay, resolveTask } from "./replay.ts";
+import { checkReplayFlags, replay, resolveTask } from "./replay.ts";
 import { report } from "./report.ts";
 import type { Dim } from "./stats.ts";
 import { parseSince } from "./stats.ts";
@@ -149,6 +149,7 @@ async function main(argv: string[]): Promise<number> {
 				return 0;
 			}
 			case "replay": {
+				checkReplayFlags(flags);
 				const models = flag(flags, "models")
 					?.split(",")
 					.map((m) => m.trim())

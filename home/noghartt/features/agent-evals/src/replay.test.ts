@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { REPLAY_PREAMBLE, replay, resolveTask } from "./replay.ts";
+import { candidateEnv, checkReplayFlags, REPLAY_PREAMBLE, replay, resolveTask } from "./replay.ts";
 import { fixtureDb } from "./testutil.ts";
 
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8", env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" } }).trim();
@@ -76,5 +76,17 @@ describe("replay", () => {
 		const task = resolveTask(db, { session: "omo-sess-1" });
 		expect(task.sourceId).toBe("omo:omo-sess-1");
 		expect(() => replay(db, task, { models: ["m"], harness: "omo" })).toThrow(/repository not found/);
+	});
+});
+
+describe("replay options", () => {
+	test("the removed sandbox flags are rejected", () => {
+		expect(() => checkReplayFlags({ models: "m", sandbox: true })).toThrow(/--sandbox/);
+		expect(() => checkReplayFlags({ net: "dev", size: "small" })).toThrow(/--net, --size/);
+		expect(() => checkReplayFlags({ models: "m", "dry-run": true })).not.toThrow();
+	});
+	test("candidates never inherit a cloud-mode target", () => {
+		const env = candidateEnv({ PATH: "/bin", OMO_CLOUD: "mellon:/x", OMO_CLOUD_SANDBOX: "box" });
+		expect(env).toEqual({ PATH: "/bin", OMO_UNSUPERVISED: "1" });
 	});
 });

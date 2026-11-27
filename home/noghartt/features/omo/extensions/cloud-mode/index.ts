@@ -8,6 +8,7 @@ import { createEditTool, createGrepTool, createReadTool, createWriteTool } from 
 import { homedir } from "node:os";
 import { remoteGrep } from "./grep.ts";
 import { registerPublish } from "./publish.ts";
+import { activeTools, legacyTarget, type Role, roleOf } from "./session.ts";
 import { editOps, exec, ptyCommand, q, readOps, run, type Target, userBashOps, writeOps } from "./ssh.ts";
 
 const ENTRY = "cloud-mode";
@@ -46,12 +47,14 @@ async function resolveTarget(spec: string, localCwd: string): Promise<Resolved> 
 	return { target: { dest, home, cwd }, spec: `${dest}:${cwd}` };
 }
 
-function promptSection(target: Target): string {
+function promptSection(target: Target, role: Role): string {
 	return [
 		"## Cloud mode",
 		"",
 		`This session's environment is the remote host \`${target.dest}\`, working directory \`${target.cwd}\` (home \`${target.home}\`).`,
-		"To push a branch or open a draft PR, use the `publish` tool: it brings the branch back to the user's machine and pushes it over SSH with their keys (never a force push, never the default branch). Name branches by the repository's own conventions, and publish only when the task asks for a push or PR.",
+		role === "top"
+			? "To push a branch or open a draft PR, use the `publish` tool: it brings the branch back to the user's machine and pushes it over SSH with their keys (never a force push, never the default branch). Name branches by the repository's own conventions, and publish only when the task asks for a push or PR."
+			: "Pushing is the parent's job: do not try to push or open pull requests.",
 		"The `<cwd>` in environment_context is this session's local directory, not where you work.",
 		"read, write, edit, grep and bash (including bash_output/bash_input/kill_bash sessions, and `tool.*` calls inside eval) run on the remote host; relative paths resolve against the remote working directory, and servers you start listen there.",
 		"The eval kernels themselves (Python/JavaScript) run locally: inside eval, touch project files and run commands only through `tool.*` helpers, never through open(), subprocess, fs, or Bun.$.",
@@ -66,6 +69,8 @@ export default function cloudMode(pi: ExtensionAPI) {
 	let failure: string | undefined;
 	let toolsRegistered = false;
 	let savedActive: string[] | undefined;
+	// Settled at session start: a task child keeps its own tool restrictions and never publishes.
+	let role: Role = "top";
 
 	pi.registerFlag("cloud", { description: "Run this session's tools on a remote host: host or host:/path", type: "string" });
 
@@ -78,7 +83,7 @@ export default function cloudMode(pi: ExtensionAPI) {
 	function registerTools() {
 		if (toolsRegistered) return;
 		toolsRegistered = true;
-		registerPublish(pi, () => target);
+		if (role === "top") registerPublish(pi, () => target);
 		const local = process.cwd();
 		const factories = [
 			["read", createReadTool, (t: Target) => ({ operations: readOps(t) })],
@@ -108,8 +113,7 @@ export default function cloudMode(pi: ExtensionAPI) {
 	function applyActiveTools() {
 		const active = pi.getActiveTools();
 		savedActive ??= active;
-		const next = active.filter((name) => !LOCAL_ONLY.test(name));
-		for (const name of ["read", "write", "edit", "publish"]) if (!next.includes(name)) next.push(name);
+		const next = activeTools(active, role, LOCAL_ONLY);
 		if (next.length !== active.length || next.some((name, i) => name !== active[i])) pi.setActiveTools(next);
 	}
 
@@ -123,7 +127,12 @@ export default function cloudMode(pi: ExtensionAPI) {
 		const resolved = await resolveTarget(spec, ctx.cwd);
 		target = resolved.target;
 		failure = undefined;
-		process.env[ENV] = resolved.spec;
+		// Task children read the target from here (a task daemon hosts them in this process); only the
+		// top session writes it, so a child never changes its siblings' target.
+		if (role === "top") {
+			process.env[ENV] = resolved.spec;
+			delete process.env.OMO_CLOUD_SANDBOX;
+		}
 		registerTools();
 		applyActiveTools();
 		if (previous === null || previous?.spec !== resolved.spec) pi.appendEntry(ENTRY, { spec: resolved.spec } satisfies Entry);
@@ -133,7 +142,10 @@ export default function cloudMode(pi: ExtensionAPI) {
 	function disable(ctx: ExtensionContext) {
 		target = undefined;
 		failure = undefined;
-		delete process.env[ENV];
+		if (role === "top") {
+			delete process.env[ENV];
+			delete process.env.OMO_CLOUD_SANDBOX;
+		}
 		if (savedActive) pi.setActiveTools(savedActive);
 		savedActive = undefined;
 		pi.appendEntry(ENTRY, { spec: null } satisfies Entry);
@@ -145,9 +157,27 @@ export default function cloudMode(pi: ExtensionAPI) {
 		const entry = ctx.sessionManager
 			.getBranch()
 			.findLast((e) => e.type === "custom" && e.customType === ENTRY) as { data?: Entry } | undefined;
+		role = roleOf(ctx);
 		// The flag wins, then the inherited environment, then the resumed entry.
-		const spec = typeof flag === "string" && flag ? flag : process.env[ENV] || entry?.data?.spec || undefined;
+		let spec: string | undefined;
+		let legacy: string | undefined;
+		if (typeof flag === "string" && flag) {
+			spec = flag;
+			legacy = legacyTarget({ spec });
+		} else if (process.env[ENV] || process.env.OMO_CLOUD_SANDBOX) {
+			spec = process.env[ENV] || "(inherited)";
+			legacy = legacyTarget({ spec, env: process.env });
+		} else if (entry?.data?.spec) {
+			spec = entry.data.spec;
+			legacy = legacyTarget({ spec, entry: entry.data });
+		}
 		if (!spec) return;
+		if (legacy) {
+			failure = `cloud mode (${spec}) cannot start: ${legacy}, and sandbox support was removed.`;
+			if (ctx.hasUI) ctx.ui.notify(`${failure} Tools are blocked; pick a plain SSH target with /cloud <host[:path]>, or /cloud off.`, "error");
+			else console.error(`omo: ${failure}`);
+			return;
+		}
 		try {
 			await enable(spec, ctx, entry?.data);
 			if (target) ctx.ui.notify(`Cloud mode: ${describe(target)}`, "info");
@@ -172,6 +202,11 @@ export default function cloudMode(pi: ExtensionAPI) {
 				ctx.ui.notify("Cloud mode off: tools run locally again.", "info");
 				return;
 			}
+			const legacy = legacyTarget({ spec });
+			if (legacy) {
+				ctx.ui.notify(`Cloud mode failed: ${legacy}, and sandbox support was removed; use a plain SSH host.`, "error");
+				return;
+			}
 			try {
 				await enable(spec, ctx, null);
 				if (target) ctx.ui.notify(`Cloud mode: ${describe(target)}`, "info");
@@ -188,7 +223,7 @@ export default function cloudMode(pi: ExtensionAPI) {
 		}
 		if (!target) return;
 		applyActiveTools();
-		return { systemPrompt: `${event.systemPrompt}\n\n${promptSection(target)}` };
+		return { systemPrompt: `${event.systemPrompt}\n\n${promptSection(target, role)}` };
 	});
 
 	// Tool arguments are cloned before this hook, so the rewrite reaches execution
