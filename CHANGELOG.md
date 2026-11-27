@@ -208,6 +208,9 @@ whenever it feels like a checkpoint.
 
 ### Fixed
 
+- **home/noghartt/git-twig**: builds on x86_64-linux (mellon): two upstream tests that need what the
+  Linux build sandbox forbids (setgid directory bits, `/bin/cat`) are skipped there, which unblocks
+  pi-durable on mellon.
 - **home/noghartt/pi**: the statusline's limits fetcher also reads `~/.config/pi/agent/auth.json`
   (pi-next's and pi-durable's agent dir), so a fetch from any process sees that Claude login, not only
   one run with `PI_CODING_AGENT_DIR` set.

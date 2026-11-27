@@ -10,7 +10,8 @@ why it fell back (`stock Git: ...`). One fallback to avoid: twig uses stock Git 
 destination's parent directory does not exist, so every caller below creates it first.
 
 It is built from source at a release tag (`package.nix`). Five upstream tests are skipped
-because they call macOS-only tools that the sandbox's coreutils replace. The bundled skill
+because they call macOS-only tools that the sandbox's coreutils replace; two more are skipped on
+Linux, where the build sandbox refuses setgid bits and has no `/bin/cat`. The bundled skill
 (`git twig skill`) is linked into Claude Code, Codex and Pi's agent dir, which pi-durable shares.
 
 ## Who creates worktrees through it
