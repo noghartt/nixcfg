@@ -9,6 +9,7 @@
     ./features/hashcards
     ./features/herdr
     ./features/pi
+    ./features/sandbox
   ];
 
   home.sessionVariables.NIXCFG = "${config.home.homeDirectory}/www/nixcfg";
