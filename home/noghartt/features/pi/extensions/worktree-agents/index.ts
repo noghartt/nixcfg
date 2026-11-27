@@ -259,11 +259,17 @@ export default function worktreeAgents(pi: ExtensionAPI) {
 				const suffix = `${index + 1}-${slugify(name)}`;
 				const branch = `pi-worktree/${runId}-${suffix}`;
 				const worktree = join(worktreeBase, suffix);
-				const addResult = await pi.exec(
-					"git",
-					["worktree", "add", "-b", branch, worktree, "HEAD"],
-					{ cwd: repositoryRoot, signal },
-				);
+				// `git twig new` clones tracked files copy-on-write; a git without twig makes a plain worktree.
+				let addResult = await pi.exec("git", ["twig", "new", "-b", branch, worktree, "HEAD"], {
+					cwd: repositoryRoot,
+					signal,
+				});
+				if (addResult.code !== 0 && /is not a git command/.test(addResult.stderr)) {
+					addResult = await pi.exec("git", ["worktree", "add", "-b", branch, worktree, "HEAD"], {
+						cwd: repositoryRoot,
+						signal,
+					});
+				}
 				const taskCwd = resolve(worktree, relativeCwd);
 				prepared.push({
 					name,

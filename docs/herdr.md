@@ -22,7 +22,8 @@ binds `Alt+R` to a lazygit popup in the focused pane's cwd, so it follows worktr
 `close-worktrees/` plugin binds `Prefix Alt+D` (beside `close_workspace` on `Prefix Shift+D`)
 to a confirmation popup that closes every open linked-worktree workspace of the focused
 repo, either keeping the checkouts or removing them with `herdr worktree remove`, which
-refuses dirty ones; the primary workspace is never touched. Because Herdr owns
+refuses dirty ones; the primary workspace is never touched. Herdr creates worktrees with
+`git twig new` (a patch on the pinned source, `docs/git-twig.md`). Because Herdr owns
 `Alt+P`, Pi's command palette uses `Ctrl+P` (model cycling moves to `Shift+Ctrl+P`)
 the session tree view uses `Ctrl+T` (the thinking-block toggle moves into the palette),
 and `Ctrl+?` lists keybindings. In OmO, `ui-prompt` makes `Ctrl+X` a leader: `L` resume,

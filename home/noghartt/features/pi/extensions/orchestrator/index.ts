@@ -1087,8 +1087,14 @@ function registerLeader(pi: ExtensionAPI) {
 				pane = created.root_pane.pane_id;
 			} else {
 				worktree = join(homedir(), ".herdr", "worktrees", basename(repo), branch.replaceAll("/", "-"));
-				const added = await pi.exec("git", ["worktree", "add", "-b", branch, worktree, "HEAD"], { cwd: repo, signal });
-				if (added.code !== 0) throw new Error(added.stderr.trim() || "git worktree add failed");
+				// `git twig new` clones tracked files copy-on-write (it falls back to stock Git when the parent
+				// is missing, hence the mkdir); a git without twig makes a plain worktree.
+				await mkdir(dirname(worktree), { recursive: true });
+				let added = await pi.exec("git", ["twig", "new", "-b", branch, worktree, "HEAD"], { cwd: repo, signal });
+				if (added.code !== 0 && /is not a git command/.test(added.stderr)) {
+					added = await pi.exec("git", ["worktree", "add", "-b", branch, worktree, "HEAD"], { cwd: repo, signal });
+				}
+				if (added.code !== 0) throw new Error(added.stderr.trim() || "git twig new failed");
 			}
 			cwd = join(worktree, relative(repo, origin));
 		}

@@ -27,6 +27,28 @@ let
       };
     }
     .${pkgs.stdenv.hostPlatform.system};
+  # Claude's own worktrees (--worktree, subagent isolation, background
+  # sessions) go through git twig; see claude-worktree.sh.
+  worktreeHook = pkgs.writeShellApplication {
+    name = "claude-worktree";
+    runtimeInputs = [
+      pkgs.git
+      pkgs.jq
+      (pkgs.callPackage ../../git-twig/package.nix { })
+    ];
+    text = builtins.readFile ./claude-worktree.sh;
+  };
+  worktreeHookEntry = action: [
+    {
+      hooks = [
+        {
+          type = "command";
+          command = "${lib.getExe worktreeHook} ${action}";
+        }
+      ];
+    }
+  ];
+
   claudeCode = pkgs.claude-code.overrideAttrs (oldAttrs: {
     version = claudeCodeVersion;
     src = pkgs.fetchurl {
@@ -38,8 +60,9 @@ let
     };
   });
 
-  # These top-level keys remain Nix-owned. Claude and setup tools may add
-  # other keys (notably hooks) directly to the writable runtime file.
+  # These top-level keys remain Nix-owned, except `hooks`, where Nix owns only
+  # the events it sets: Claude and setup tools add other keys and hook events
+  # (SessionStart and the like) directly to the writable runtime file.
   settings = {
     env = {
       CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = "1";
@@ -57,6 +80,10 @@ let
 
     model = "claude-fable-5[1m]";
     worktree.baseRef = "fresh";
+    hooks = {
+      WorktreeCreate = worktreeHookEntry "create";
+      WorktreeRemove = worktreeHookEntry "remove";
+    };
 
     enabledPlugins = {
       "code-review@claude-plugins-official" = true;
@@ -150,7 +177,10 @@ in
     ${lib.getExe pkgs.jq} \
       --slurpfile old "$old_baseline" \
       --slurpfile baseline ${lib.escapeShellArg baseline} \
-      '(reduce ($old[0] | keys[]) as $key (.; del(.[$key]))) * $baseline[0]' \
+      '(reduce ($old[0] | to_entries[]) as $e (.;
+        if $e.key == "hooks" and (.hooks | type) == "object"
+        then reduce ($e.value | keys[]) as $event (.; del(.hooks[$event]))
+        else del(.[$e.key]) end)) * $baseline[0]' \
       "$current" > "$merged"
 
     if [ -L "$settings_path" ] || ! cmp -s "$merged" "$settings_path"; then

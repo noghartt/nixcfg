@@ -1,0 +1,26 @@
+Herdr's worktree creation goes through git twig (copy-on-write checkouts).
+Twig takes git worktree add's arguments; git-twig comes from home.packages.
+--- a/src/worktree.rs	2026-11-24 23:49:29.870599882 -0300
++++ b/src/worktree.rs	2026-11-24 23:49:29.891643302 -0300
+@@ -245,8 +245,8 @@
+ ) -> WorktreeCommand {
+     let mut args = repository_git_args(repo_root, trust_repository);
+     args.extend([
+-        "worktree".to_string(),
+-        "add".to_string(),
++        "twig".to_string(),
++        "new".to_string(),
+         "-b".to_string(),
+         branch.to_string(),
+         path.display().to_string(),
+@@ -266,8 +266,8 @@
+ ) -> WorktreeCommand {
+     let mut args = repository_git_args(repo_root, trust_repository);
+     args.extend([
+-        "worktree".to_string(),
+-        "add".to_string(),
++        "twig".to_string(),
++        "new".to_string(),
+         path.display().to_string(),
+         branch.to_string(),
+     ]);

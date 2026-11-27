@@ -9,7 +9,12 @@
 
   programs.herdr = {
     enable = true;
-    package = flake.inputs.herdr.packages.${pkgs.stdenv.hostPlatform.system}.default;
+    # Worktrees it creates go through `git twig new` (features/git-twig).
+    package =
+      flake.inputs.herdr.packages.${pkgs.stdenv.hostPlatform.system}.default.overrideAttrs
+        (old: {
+          patches = (old.patches or [ ]) ++ [ ./git-twig.patch ];
+        });
     settings = {
       # config.toml is a read-only store symlink, so Herdr can't persist
       # finishing onboarding itself; declaring it stops the first-run flow.
