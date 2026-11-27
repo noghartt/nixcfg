@@ -1,12 +1,15 @@
-// The smallest honest provider: sandboxes are local directories, commands run
-// in their own process group. It exists to keep tests/contract.ts provider-
-// agnostic, and as a template for writing a real provider.
+// Test support, exported for consumers' tests (pi-durable's run on it): the
+// smallest honest provider. Sandboxes are local directories, commands run in
+// their own process group, and the checkout metadata `create` gets is kept, so
+// core seeding and pulls work on it as on a real provider. It keeps
+// tests/contract.ts provider-agnostic, and is a template for a real provider.
 import { spawn } from "node:child_process";
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
 import type {
   Capabilities,
+  CheckoutMeta,
   CreateSpec,
   ExecOptions,
   ExecResult,
@@ -15,8 +18,9 @@ import type {
   SandboxInfo,
   SandboxProvider,
   SandboxStatus,
-} from "../src/provider.ts";
-import { NotFoundError, UnsupportedError } from "../src/provider.ts";
+} from "./provider.ts";
+import { NotFoundError, UnsupportedError } from "./provider.ts";
+import { workdir } from "./names.ts";
 
 const CAPABILITIES: Capabilities = {
   fork: true,
@@ -29,7 +33,9 @@ const CAPABILITIES: Capabilities = {
   templates: false,
 };
 
-export async function fakeProvider(): Promise<SandboxProvider & { cleanup(): Promise<void> }> {
+export type FakeProvider = SandboxProvider & { cleanup(): Promise<void> };
+
+export async function fakeProvider(): Promise<FakeProvider> {
   const root = await mkdtemp(join(tmpdir(), "fake-provider-"));
   const boxes = new Map<string, LocalSandbox>();
   let counter = 0;
@@ -42,19 +48,27 @@ export async function fakeProvider(): Promise<SandboxProvider & { cleanup(): Pro
     status: SandboxStatus = "running";
     readonly dir: string;
     readonly env: Record<string, string>;
+    readonly checkout?: CheckoutMeta;
     keep = false;
     created = new Date();
     lastUsed?: Date;
 
-    constructor(name: string, kind: string, dir: string, env: Record<string, string>) {
+    constructor(name: string, kind: string, dir: string, env: Record<string, string>, checkout?: CheckoutMeta) {
       this.id = `${name}-${++counter}`;
       this.name = name;
       this.kind = kind;
       this.dir = dir;
       this.env = env;
+      this.checkout = checkout;
     }
     get info(): SandboxInfo {
-      return { created: this.created, lastUsed: this.lastUsed, keep: this.keep };
+      const c = this.checkout;
+      return {
+        created: this.created,
+        lastUsed: this.lastUsed,
+        keep: this.keep,
+        ...(c ? { repo: c.repo, branch: c.branch, commit: c.commit, workdir: workdir(c.repo) } : {}),
+      };
     }
     #path(p: string) {
       if (this.status !== "running") throw new Error(`${this.name} is not running`);
@@ -157,7 +171,7 @@ export async function fakeProvider(): Promise<SandboxProvider & { cleanup(): Pro
       if (await find(name)) throw new Error(`a sandbox named ${name} already exists`);
       const dir = join(root, `${name}-${counter + 1}`);
       await mkdir(dir);
-      const box = new LocalSandbox(name, spec.kind.name, dir, { ...spec.kind.env });
+      const box = new LocalSandbox(name, spec.kind.name, dir, { ...spec.kind.env }, spec.checkout);
       if (spec.kind.setup) {
         const r = await box.exec(spec.kind.setup);
         if (r.exitCode !== 0) throw new Error(`setup failed: ${r.stderr}`);
@@ -175,7 +189,7 @@ export async function fakeProvider(): Promise<SandboxProvider & { cleanup(): Pro
       const name = spec.name ?? `${src.name}-fork`;
       const dir = join(root, `${name}-${counter + 1}`);
       await cp(src.dir, dir, { recursive: true });
-      const box = new LocalSandbox(name, src.kind, dir, { ...src.env });
+      const box = new LocalSandbox(name, src.kind, dir, { ...src.env }, src.checkout);
       boxes.set(box.id, box);
       return box;
     },

@@ -9,7 +9,7 @@ import { bundleArgs, githubIntegrationName, parseGithubRemote, pullFetchArgs, pu
 import type { KindSpec } from "../src/provider.ts";
 import { exeProvider, integrationUrl } from "../src/providers/exe.ts";
 import { fakeExe } from "./fake-exe-client.ts";
-import { fakeProvider } from "./fake-provider.ts";
+import { fakeProvider } from "../src/testing.ts";
 
 test("GitHub remotes are recognised in every URL form", () => {
   for (const url of [
@@ -119,6 +119,11 @@ describe("seeding sandboxes from a local checkout", () => {
     const provider = await fakeProvider();
     const box = await createSandbox(provider, { kind: { ...kind, provider: "fake", egress: "all" }, name: "plain", repo: { source: work } });
     assert.equal((await box.exec("git rev-parse HEAD; git remote", { cwd: "repo" })).stdout.trim(), c2);
+    // The fake keeps the checkout metadata, so consumers' tests can pull from it as from a real provider.
+    assert.deepEqual([box.info.workdir, box.info.commit], ["repo", c2]);
+    await box.exec("git checkout -q -b fake-work && git commit -q --allow-empty -m on-fake", { cwd: "repo" });
+    assert.equal((await pullBranches(box, work, ["fake-work"])).fetched, true);
+    assert.equal(git(work, "rev-parse", "refs/heads/sbx/plain/fake-work~1"), c2);
     await provider.cleanup();
   });
 

@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { ConfigError, loadConfig, parseConfig } from "../src/config.ts";
 import { UnsupportedError } from "../src/provider.ts";
 import { kindProblem, type ProviderFactory, Sbx } from "../src/registry.ts";
-import { fakeProvider } from "./fake-provider.ts";
+import { fakeProvider } from "../src/testing.ts";
 
 const raw = {
   defaultKind: "dev",
