@@ -21,7 +21,7 @@ GPT (shared with Windows: its ESP, MSR, C:, and recovery partitions stay as-is)
         │   ├── @var_log   -> /var/log
         │   └── @snapshots -> /.snapshots
         ├── agents: 300 GiB Btrfs
-        │   └── @agent     -> /agent (agent sandboxes)
+        │   └── @agent     -> /agent (agent workloads)
         └── home: remaining space, Btrfs
             └── @home      -> /home
 ```

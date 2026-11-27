@@ -8,7 +8,7 @@
 #     too small: measured boot keeps 8 signed kernel+initrd generations, and
 #     1G already gets tight with 7.x kernels.
 #   disk-main-lvm: LUKS -> LVM vg -> btrfs LVs: root 500G, agents 300G
-#     (sandboxes can never fill / or /home), home the rest.
+#     (agent workloads can never fill / or /home), home the rest.
 # Sizes and subvolumes follow the previous Arch install (@, @snapshots,
 # @var_log on root), plus @nix. No disk swap: Mellon never hibernates, and
 # zram covers memory pressure.
@@ -92,7 +92,7 @@ in
             };
           };
         };
-        # Agent sandboxes and their images live here, apart from the user's
+        # Agent workloads live here, apart from the user's
         # home and outside root's Snapper timeline. Grow it with lvextend +
         # `btrfs filesystem resize` after shrinking home.
         agents = {
@@ -124,7 +124,7 @@ in
   };
 
   # Compressed swap in RAM: absorbs bursts from many agent sessions without
-  # disk wear; per-sandbox cgroup limits do the real containment.
+  # disk wear.
   zramSwap.enable = true;
 
   # Runtime care for the layout above: monthly scrub catches bit-rot early.

@@ -23,7 +23,6 @@
     ./ssh.nix
     ./power.nix
     ./agents.nix
-    ./sandboxes
     ./agent-forum
     ./maintenance.nix
     ./1password.nix
@@ -36,7 +35,6 @@
   users = [
     (users.noghartt.overrideAttrs (old: {
       extraGroups = old.extraGroups ++ [
-        "agentbox"
         "audio"
         "docker"
         "wireshark"

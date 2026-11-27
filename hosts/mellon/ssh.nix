@@ -13,7 +13,6 @@
       PermitEmptyPasswords = false;
       PermitRootLogin = "no";
       HostbasedAuthentication = false;
-      # Agent sandboxes get their own users; none of them may log in.
       AllowUsers = [ "noghartt" ];
       # The 1Password agent offers every stored key in turn, so a vault with
       # more keys than this needs IdentitiesOnly on the client (INSTALL.md).

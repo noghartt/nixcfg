@@ -1,5 +1,4 @@
-# Mellon as the always-on host for coding agents (OmO sessions and, later,
-# their sandboxes; see TASK.md).
+# Mellon as the always-on host for coding agents (OmO sessions; see TASK.md).
 {
   # Prebuilt glibc binaries expect /lib64/ld-linux-x86-64.so.2, which NixOS
   # lacks: the OmO release binary, the runtime it unpacks, and whatever tools

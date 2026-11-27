@@ -33,7 +33,7 @@ in
   };
 
   # CUDA builds are unfree, so cache.nixos.org never has them; without this
-  # cache any CUDA package (agent sandboxes, ollama) compiles from source. Set
+  # cache any CUDA package (agent workloads, ollama) compiles from source. Set
   # on the host, not in flake nixConfig, which non-interactive sudo rebuilds
   # ignore. Key from wiki.nixos.org/wiki/CUDA; adapted from fersilva16.
   nix.settings = {
