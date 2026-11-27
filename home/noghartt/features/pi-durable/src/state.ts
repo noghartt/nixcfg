@@ -26,6 +26,11 @@ export type SandboxRef = {
 	purpose: "session" | "subagent";
 	/** Kept after its work is pulled back. */
 	keep?: boolean;
+	/**
+	 * A git worktree inside another conversation's sandbox (a subagent of a sandboxed session): the main checkout it
+	 * belongs to there. The sandbox is not this conversation's to remove; its branch stays in that checkout.
+	 */
+	worktreeOf?: string;
 };
 
 /**
@@ -39,6 +44,8 @@ export type IdentityState = {
 	parent?: number;
 	background?: boolean;
 	worktree?: WorktreeInfo;
+	/** Notes from making its workspace (uncommitted local changes left behind, a kind not honoured), for its result. */
+	warnings?: string[];
 	/** Its own sandbox (isolation `sandbox[:kind]`): its tools run there. */
 	sandbox?: SandboxRef;
 	/** A swarm member: it talks through the board, and its answers go nowhere. */
@@ -83,7 +90,15 @@ export const Background = defineDoc<BackgroundState>({
 });
 
 /** The whole session's sandbox (`--sandbox`, `/sandbox`): every conversation without its own runs its tools there. */
-export type SessionSandboxState = { ref?: SandboxRef };
+export type SessionSandboxState = {
+	ref?: SandboxRef;
+	/**
+	 * A sandbox being made or attached. While set (also after a crash cut it short) or after it `failed`, tools refuse to
+	 * run rather than run on this machine, and prompts are not sent.
+	 */
+	pending?: { name: string; kind?: string; since: number };
+	failed?: string;
+};
 
 export const SessionSandbox = defineDoc<SessionSandboxState>({
 	kind: "pi-durable.sandbox",

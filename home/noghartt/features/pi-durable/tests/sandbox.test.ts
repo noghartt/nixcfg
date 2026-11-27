@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
-import { createModels, fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
+import { createModels, fauxAssistantMessage, type FauxResponseStep, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
 import { createRegistry, defineExtension, Harness, ROOT_CONVERSATION_ID } from "@earendil-works/pi-durable";
 import { getOrThrow } from "@earendil-works/pi-durable/env";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
@@ -20,11 +20,22 @@ import { CodingTools } from "@earendil-works/pi-durable/tools";
 import { parseConfig, Sbx } from "#sbx/index.ts";
 import type { Sandbox } from "#sbx/provider.ts";
 import { type FakeProvider, fakeProvider } from "#sbx/testing.ts";
+import { Approvals } from "./approvals.ts";
 import { ExecutionEnvs } from "./harness-setup.ts";
 import type { Host } from "./host.ts";
 import type { AgentProfiles } from "./profiles.ts";
 import { SANDBOX_SECTION } from "./prompt.ts";
-import { parseIsolation, runInSandbox, Sandboxes, sandboxName, sandboxOf } from "./sandbox.ts";
+import {
+	artifactPaths,
+	markSessionSandboxPending,
+	parseIsolation,
+	runInSandbox,
+	Sandboxes,
+	sandboxName,
+	sandboxOf,
+	sandboxTarget,
+	setSessionSandbox,
+} from "./sandbox.ts";
 import { SandboxExecutionEnv } from "./sandbox-env.ts";
 import { createSandboxTools } from "./sandbox-tools.ts";
 import { SessionSandbox } from "./state.ts";
@@ -189,7 +200,7 @@ describe("sandbox lifecycle", () => {
 	test("names derive from the session and key", () => {
 		assert.equal(sandboxName("1795802865031-abc", "t12"), sandboxName("1795802865031-abc", "t12"));
 		assert.notEqual(sandboxName("1795802865031-abc", "t12"), sandboxName("1795802865031-abd", "t12"));
-		assert.match(sandboxName("x", "Session-Dev_1"), /^pd-[0-9a-f]{6}-session-dev-1$/u);
+		assert.match(sandboxName("x", "Session-Dev_1"), /^pd-[0-9a-f]{10}-session-dev-1$/u);
 		assert.deepEqual(parseIsolation("sandbox:agent"), { mode: "sandbox", kind: "agent" });
 		assert.deepEqual(parseIsolation("worktree"), { mode: "worktree" });
 		assert.throws(() => parseIsolation("sandbox:"), /isolation must be/u);
@@ -247,7 +258,7 @@ describe("sandbox lifecycle", () => {
 			name: "pd-test-half",
 			checkout: { repo: "repo", branch: "main", commit: git(work, "rev-parse", "HEAD") },
 		});
-		const { box, created } = await sandboxes.ensure({ name: "pd-test-half", repo: work, purpose: "subagent" });
+		const { box, created } = await sandboxes.ensure({ name: "pd-test-half", repo: work, purpose: "subagent", owned: true });
 		assert.equal(created, true);
 		assert.notEqual(box.id, half.id);
 		await sandboxes.remove({ name: "pd-test-half" });
@@ -330,124 +341,360 @@ describe("session sandbox", () => {
 	});
 });
 
-describe("sandbox-isolated subagent through a Harness", () => {
-	test("its tools run in the sandbox and its commits come back as a branch", async () => {
-		const provider = await fakeProvider();
-		const work = repository();
-		const sandboxes = setup(provider);
-		const faux = fauxProvider();
-		const models = createModels();
-		models.setProvider(faux.provider);
-		const profile = { name: "general", description: "", isolation: "none", runner: "pi", instructions: "", source: "built-in" };
-		const host: Host = {
-			sessionId: "1795802865031-test",
-			sessionDir: mkdtempSync(join(tmpdir(), "pi-durable-host-")),
-			cwd: work,
-			profiles: { get: () => profile, resolveModel: () => ({}), describe: () => "", all: [profile] } as unknown as AgentProfiles,
-			sandboxes,
-			harness: undefined,
-		};
-		const registry = createRegistry();
-		registry.install(CodingTools);
-		registry.install(defineExtension({ name: "sandbox-prompt", sections: [SANDBOX_SECTION] }));
-		const { orchestration, tasks } = createOrchestration(host);
-		registry.install(tasks);
-		registry.install(orchestration);
-		const envs = new ExecutionEnvs(work, sandboxes);
-		let childPrompt = "";
-		faux.setResponses([
-			fauxAssistantMessage(fauxToolCall("subagent", { task: "add made.txt", isolation: "sandbox:dev" }), { stopReason: "toolUse" }),
-			(input) => {
-				childPrompt = JSON.stringify(input.messages);
-				return fauxAssistantMessage(
-					fauxToolCall("bash", { command: "echo made > made.txt && git add made.txt && git commit -qm made && pwd" }),
-					{ stopReason: "toolUse" },
-				);
+describe("sandbox safety", () => {
+	let provider: FakeProvider;
+	let sandboxes: Sandboxes;
+	let work: string;
+	before(async () => {
+		provider = await fakeProvider();
+		sandboxes = setup(provider);
+		work = repository();
+	});
+	after(() => provider.cleanup());
+
+	test("a failure after creating a sandbox removes it", async () => {
+		const failing = {
+			...provider,
+			create: async (...args: Parameters<FakeProvider["create"]>) => {
+				const box = await provider.create(...args);
+				return new Proxy(box, {
+					get(target, key) {
+						if (key === "exec") {
+							return async (command: string, options?: object) => {
+								if (command.includes(".pi-durable/seeded")) throw new Error("connection dropped");
+								return target.exec(command, options);
+							};
+						}
+						const value = Reflect.get(target, key, target);
+						return typeof value === "function" ? value.bind(target) : value;
+					},
+				});
 			},
-			fauxAssistantMessage("done"),
-			fauxAssistantMessage("ok"),
-		]);
-		const harness = await Harness.open(await openNodeSqliteStorage(join(host.sessionDir, "s.sqlite")), { models, registry, env: envs.env }, context);
-		host.harness = harness;
+		};
+		const local = new Sandboxes(() => new Sbx(config, { factories: new Map([["fake", () => failing]]) }));
+		await assert.rejects(local.ensure({ name: "pd-safe-fail", repo: work, purpose: "subagent", owned: true }), /dropped/u);
+		assert.equal(await provider.get("pd-safe-fail"), undefined);
+	});
+
+	test("a sandbox not ours to replace is reused even without the seeded marker", async () => {
+		const bare = await provider.create({ kind: config.kinds.dev!, name: "pd-safe-bare" });
+		const { box, created } = await sandboxes.ensure({ name: "pd-safe-bare", purpose: "session", owned: false });
+		assert.deepEqual([created, box.id], [false, bare.id]);
+		await sandboxes.remove({ name: "pd-safe-bare" });
+	});
+
+	test("sandbox isolation needs a git repository", async () => {
+		const plain = mkdtempSync(join(tmpdir(), "no-repo-"));
+		await assert.rejects(
+			sandboxes.ensure({ name: "pd-safe-norepo", repo: plain, requireRepo: true, purpose: "subagent", owned: true }),
+			/needs a git repository/u,
+		);
+		assert.equal(await provider.get("pd-safe-norepo"), undefined);
+	});
+
+	test("big leftovers stay behind and are named; uncommitted-change warnings come back", async () => {
+		execFileSync("sh", ["-c", `echo dirty >> "${work}/file.txt"`]);
+		const made = await sandboxes.ensure({ name: "pd-safe-big", repo: work, branch: "pi-durable/big", purpose: "subagent", owned: true });
+		execFileSync("git", ["-C", work, "checkout", "-q", "--", "file.txt"]);
+		assert.ok(made.warnings.some((w) => /uncommitted changes/u.test(w)), made.warnings.join("\n"));
+		const env = await sandboxes.env(made.ref, work);
+		getOrThrow(await env.writeFile("small.txt", "small", context));
+		getOrThrow(await env.exec("dd if=/dev/zero of=huge.bin bs=1048576 count=11 2>/dev/null", undefined, context));
+		const summary = await sandboxes.bringBack(made.ref, { remove: true });
+		assert.match(summary.text, /Not committed .*huge\.bin/u);
+		assert.equal(git(work, "show", "sbx/pd-safe-big/pi-durable/big:small.txt"), "small");
+		assert.throws(() => git(work, "cat-file", "-e", "sbx/pd-safe-big/pi-durable/big:huge.bin"));
+		// A pull after the sandbox is gone reports what an earlier pull left.
+		const again = await sandboxes.pull({ name: "pd-safe-big" }, work, []);
+		assert.deepEqual([again.gone, again.branches], [true, ["sbx/pd-safe-big/pi-durable/big"]]);
+	});
+
+	test("artifacts stay inside the checkout and the output directory", () => {
+		assert.deepEqual(artifactPaths("dist/a.txt", "/home/u/repo", "/tmp/out/box"), {
+			remote: "/home/u/repo/dist/a.txt",
+			local: "/tmp/out/box/dist/a.txt",
+		});
+		for (const bad of ["../x", "/etc/passwd", "a/../../b", "~/x", ""]) {
+			assert.throws(() => artifactPaths(bad, "/home/u/repo", "/tmp/out/box"), /relative path/u, bad);
+		}
+	});
+
+	test("a pending or failed session sandbox blocks tools instead of running them here", async () => {
+		const broken = parseConfig({
+			defaultKind: "dev",
+			providers: { fake: {} },
+			kinds: { dev: { provider: "fake" }, broken: { provider: "fake", setup: "exit 1" } },
+		});
+		const local = new Sandboxes(() => new Sbx(broken, { factories: new Map([["fake", () => provider]]) }));
+		const database = join(mkdtempSync(join(tmpdir(), "pi-durable-blocked-")), "s.sqlite");
+		const harness = await Harness.open(await openNodeSqliteStorage(database), { models: createModels(), registry: createRegistry() }, context);
+		const envs = new ExecutionEnvs(work, local);
+		const env = () => envs.env({ conversationId: ROOT_CONVERSATION_ID, cwd: work, read: harness }, context);
 		try {
-			const root = await harness.root(context, { agent: { cwd: work, model: { provider: "faux", modelId: "faux-1" } } });
-			harness.resume();
-			const submission = await root.submit({ type: "input", content: "go" }, context);
-			const settled = await submission.wait(context);
-			assert.equal(settled.status, "done");
-			const name = (await provider.list()).length === 0 ? undefined : "unexpected";
-			assert.equal(name, undefined, "the sandbox was removed after the pull");
-			const branches = git(work, "for-each-ref", "--format=%(refname:short)", "refs/heads/sbx/");
-			const branch = branches.split("\n").find((b) => b.endsWith("/made") || b.includes("/pi-durable/t"));
-			assert.ok(branch !== undefined, branches);
-			assert.equal(git(work, "show", `${branch}:made.txt`), "made");
-			assert.equal(existsSync(join(work, "made.txt")), false, "the child's bash ran in the sandbox");
-			assert.match(childPrompt, /run in the sandbox/u);
-			const page = await root.entries({}, 100, undefined, context);
-			const results = page.items.filter((entry) => entry.kind === "pi.tool-result").map((entry) => JSON.stringify(entry.model));
-			assert.ok(results.some((text) => text.includes(`local branch ${branch}`)), results.join("\n"));
+			await harness.root(context, { agent: { cwd: work } });
+			await markSessionSandboxPending(harness, "pd-x-session-dev", "dev", context);
+			await assert.rejects(env(), /not ready/u);
+			assert.equal((await sandboxTarget(harness, ROOT_CONVERSATION_ID, context)).kind, "blocked");
+			const options = { sessionId: "blocked", cwd: work, notice: () => {} };
+			await assert.rejects(setSessionSandbox(harness, local, "broken", options, context), /setup failed/u);
+			await assert.rejects(env(), /sandbox failed/u);
+			assert.match(await setSessionSandbox(harness, local, "", options, context), /failed/u);
+			await setSessionSandbox(harness, local, "off", options, context);
+			assert.equal((await env()).id, "node:local");
+			assert.match(await setSessionSandbox(harness, local, "dev", options, context), /now run in sandbox/u);
+			assert.ok((await env()) instanceof SandboxExecutionEnv);
+			await setSessionSandbox(harness, local, "off", options, context);
 		} finally {
 			await harness.close(context);
 			await envs.cleanup(context);
-			await provider.cleanup();
 		}
 	});
 });
 
-describe("sandbox tools through a Harness", () => {
-	test("sandbox_run, and sandbox_pull bringing the session sandbox's branch home and removing it", async () => {
+type Step = FauxResponseStep;
+
+/** A response that never comes; `reached` resolves once the request is out. Aborting the run rejects it. */
+function never(): { step: Step; reached: Promise<void> } {
+	let reach!: () => void;
+	const reached = new Promise<void>((resolve) => (reach = resolve));
+	const step: Step = (_input, options) =>
+		new Promise((_, reject) => {
+			reach();
+			options?.signal?.addEventListener("abort", () => reject(options.signal!.reason), { once: true });
+		});
+	return { step, reached };
+}
+
+async function waitFor(check: () => boolean | Promise<boolean>, timeoutMs = 10_000): Promise<void> {
+	const deadline = Date.now() + timeoutMs;
+	while (!(await check())) {
+		if (Date.now() > deadline) throw new Error("condition not reached");
+		await new Promise((resolve) => setTimeout(resolve, 20));
+	}
+}
+
+/**
+ * A Harness with the coding tools, the orchestration and sandbox tools, and a faux model scripted per conversation:
+ * requests whose context names a subagent take `child` steps, the rest `main` steps.
+ */
+async function harnessWith(
+	provider: FakeProvider,
+	work: string,
+	script: { main: Step[]; child: Step[] },
+	approve = false,
+) {
+	const sandboxes = setup(provider);
+	const faux = fauxProvider();
+	const models = createModels();
+	models.setProvider(faux.provider);
+	const profile = { name: "general", description: "", isolation: "none", runner: "pi", instructions: "", source: "built-in" };
+	const host: Host = {
+		sessionId: "1795802865031-test",
+		sessionDir: mkdtempSync(join(tmpdir(), "pi-durable-host-")),
+		cwd: work,
+		profiles: { get: () => profile, resolveModel: () => ({}), describe: () => "", all: [profile] } as unknown as AgentProfiles,
+		sandboxes,
+		harness: undefined,
+	};
+	const approvals = new Approvals();
+	approvals.handle(async () => approve);
+	const registry = createRegistry();
+	registry.install(CodingTools);
+	registry.install(defineExtension({ name: "sandbox-prompt", sections: [SANDBOX_SECTION] }));
+	const { orchestration, tasks } = createOrchestration(host);
+	registry.install(tasks);
+	registry.install(orchestration);
+	registry.install(createSandboxTools(host, approvals));
+	const envs = new ExecutionEnvs(work, sandboxes);
+	const prompts: { main: string[]; child: string[] } = { main: [], child: [] };
+	const route: Step = (input, options, state, model) => {
+		const text = JSON.stringify(input.messages);
+		const who = text.includes("You are the subagent") ? "child" : "main";
+		prompts[who].push(text);
+		const step = script[who].shift() ?? fauxAssistantMessage("(nothing more)");
+		return typeof step === "function" ? step(input, options, state, model) : step;
+	};
+	faux.setResponses(Array.from({ length: 40 }, () => route));
+	const harness = await Harness.open(
+		await openNodeSqliteStorage(join(host.sessionDir, "s.sqlite")),
+		{ models, registry, env: envs.env },
+		context,
+	);
+	host.harness = harness;
+	const root = await harness.root(context, { agent: { cwd: work, model: { provider: "faux", modelId: "faux-1" } } });
+	const results = async () =>
+		(await root.entries({}, 200, undefined, context)).items
+			.filter((entry) => entry.kind === "pi.tool-result")
+			.map((entry) => JSON.stringify(entry.model))
+			.reverse();
+	const close = async () => {
+		await harness.close(context);
+		await envs.cleanup(context);
+	};
+	return { harness, root, sandboxes, host, prompts, results, close };
+}
+
+const call = (name: string, args: Parameters<typeof fauxToolCall>[1]) => fauxAssistantMessage(fauxToolCall(name, args), { stopReason: "toolUse" });
+const commitInBash = (file: string) =>
+	call("bash", { command: `echo ${file} > ${file}.txt && git add ${file}.txt && git commit -qm ${file}` });
+
+describe("sandboxes through a Harness", () => {
+	test("a sandbox:dev subagent: its tools run in the VM and its commits come back as a branch", async () => {
 		const provider = await fakeProvider();
 		const work = repository();
-		const sandboxes = setup(provider);
-		const faux = fauxProvider();
-		const models = createModels();
-		models.setProvider(faux.provider);
-		const host = { sessionId: "1795802865031-tools", cwd: work, sandboxes } as unknown as Host;
-		const registry = createRegistry();
-		registry.install(CodingTools);
-		registry.install(createSandboxTools(host));
-		const envs = new ExecutionEnvs(work, sandboxes);
-		const results: string[] = [];
-		const record = (input: { messages: { role: string; content: unknown }[] }) => {
-			const last = input.messages.at(-1);
-			if (last?.role === "toolResult") results.push(JSON.stringify(last.content));
-		};
-		faux.setResponses([
-			fauxAssistantMessage(fauxToolCall("sandbox_run", { command: 'echo "ran $KIND"' }), { stopReason: "toolUse" }),
-			(input) => {
-				record(input);
-				return fauxAssistantMessage(
-					fauxToolCall("bash", { command: "git checkout -qb feature && echo x > x.txt && git add x.txt && git commit -qm x" }),
-					{ stopReason: "toolUse" },
-				);
-			},
-			fauxAssistantMessage(fauxToolCall("sandbox_pull", { remove: true }), { stopReason: "toolUse" }),
-			(input) => {
-				record(input);
-				return fauxAssistantMessage("ok");
-			},
-		]);
-		const database = join(mkdtempSync(join(tmpdir(), "pi-durable-tools-")), "s.sqlite");
-		const harness = await Harness.open(await openNodeSqliteStorage(database), { models, registry, env: envs.env }, context);
+		const h = await harnessWith(provider, work, {
+			main: [call("subagent", { task: "add made.txt", isolation: "sandbox:dev" }), fauxAssistantMessage("ok")],
+			child: [commitInBash("made"), fauxAssistantMessage("done")],
+		});
 		try {
-			const root = await harness.root(context, { agent: { cwd: work, model: { provider: "faux", modelId: "faux-1" } } });
-			const { ref } = await sandboxes.ensure({ name: "pd-tools-session", repo: work, purpose: "session" });
-			await harness.commit(async (tx) => {
+			h.harness.resume();
+			const settled = await (await h.root.submit({ type: "input", content: "go" }, context)).wait(context);
+			assert.equal(settled.status, "done");
+			assert.equal((await provider.list()).length, 0, "the sandbox was removed after the pull");
+			const branch = git(work, "for-each-ref", "--format=%(refname:short)", "refs/heads/sbx/");
+			assert.match(branch, /\/pi-durable\/t\d+$/u);
+			assert.equal(git(work, "show", `${branch}:made.txt`), "made");
+			assert.equal(existsSync(join(work, "made.txt")), false, "the child's bash ran in the sandbox");
+			assert.match(h.prompts.child[0] ?? "", /run in the sandbox/u);
+			assert.ok((await h.results()).some((text) => text.includes(`local branch ${branch}`)));
+		} finally {
+			await h.close();
+			await provider.cleanup();
+		}
+	});
+
+	test("a subagent stopped before answering still brings its work back and loses its sandbox", async () => {
+		const provider = await fakeProvider();
+		const work = repository();
+		const stall = never();
+		const h = await harnessWith(provider, work, {
+			main: [call("subagent", { task: "work", isolation: "sandbox" }), fauxAssistantMessage("ok")],
+			child: [commitInBash("partial"), stall.step],
+		});
+		try {
+			h.harness.resume();
+			const submission = await h.root.submit({ type: "input", content: "go" }, context);
+			await stall.reached;
+			const child = (await h.harness.commit((tx) => tx.scanConversations({}, 10), context)).items.find((c) => c.owner !== undefined)!;
+			await (await h.harness.conversation(child.id, context))!.abort(context);
+			assert.equal((await submission.wait(context)).status, "done");
+			const results = await h.results();
+			assert.ok(results.some((text) => /ended without an answer/u.test(text) && /local branch sbx\//u.test(text)), results.join("\n"));
+			assert.equal((await provider.list()).length, 0);
+			assert.match(git(work, "for-each-ref", "--format=%(refname:short)", "refs/heads/sbx/"), /pi-durable\/t/u);
+		} finally {
+			await h.close();
+			await provider.cleanup();
+		}
+	});
+
+	test("aborting a parallel fan-out cancels its sandbox children, which still bring their work back", async () => {
+		const provider = await fakeProvider();
+		const work = repository();
+		const stall = never();
+		const h = await harnessWith(provider, work, {
+			main: [call("parallel", { tasks: [{ task: "work", isolation: "sandbox" }] })],
+			child: [commitInBash("cut"), stall.step],
+		});
+		try {
+			h.harness.resume();
+			const submission = await h.root.submit({ type: "input", content: "go" }, context);
+			await stall.reached;
+			assert.equal((await provider.list()).length, 1);
+			await h.root.abort(context);
+			await submission.wait(context);
+			await waitFor(async () => (await provider.list()).length === 0);
+			assert.match(git(work, "for-each-ref", "--format=%(refname:short)", "refs/heads/sbx/"), /pi-durable\/t/u);
+		} finally {
+			await h.close();
+			await provider.cleanup();
+		}
+	});
+
+	test("a stopped background subagent's sandbox goes, after its work comes back", async () => {
+		const provider = await fakeProvider();
+		const work = repository();
+		const stall = never();
+		const h = await harnessWith(provider, work, {
+			main: [call("subagent", { task: "work", isolation: "sandbox", background: true }), fauxAssistantMessage("started")],
+			child: [commitInBash("bg"), stall.step],
+		});
+		try {
+			h.harness.resume();
+			await (await h.root.submit({ type: "input", content: "go" }, context)).wait(context);
+			await stall.reached;
+			const child = (await h.harness.commit((tx) => tx.scanConversations({}, 10), context)).items.find((c) => c.id !== ROOT_CONVERSATION_ID)!;
+			await (await h.harness.conversation(child.id, context))!.abort(context);
+			await waitFor(async () => (await provider.list()).length === 0);
+			assert.match(git(work, "for-each-ref", "--format=%(refname:short)", "refs/heads/sbx/"), /pi-durable\/bg/u);
+		} finally {
+			await h.close();
+			await provider.cleanup();
+		}
+	});
+
+	test("in a sandboxed session, an isolated subagent works in a worktree inside the session's sandbox", async () => {
+		const provider = await fakeProvider();
+		const work = repository();
+		const h = await harnessWith(provider, work, {
+			main: [call("subagent", { task: "add wt.txt", isolation: "worktree" }), fauxAssistantMessage("ok")],
+			child: [commitInBash("wt"), fauxAssistantMessage("done")],
+		});
+		try {
+			const name = sandboxName(h.host.sessionId, "session-dev");
+			const { ref, box } = await h.sandboxes.ensure({ name, repo: work, purpose: "session", owned: true });
+			await h.harness.commit(async (tx) => {
 				(await tx.doc(SessionSandbox)).ref = ref;
 			}, context);
-			harness.resume();
-			const settled = await (await root.submit({ type: "input", content: "go" }, context)).wait(context);
-			assert.equal(settled.status, "done");
-			assert.match(results[0] ?? "", /ran job/u);
-			assert.match(results[0] ?? "", /removed/u);
-			assert.match(results[1] ?? "", /sbx\/pd-tools-session\/feature/u);
-			assert.equal(git(work, "show", "sbx/pd-tools-session/feature:x.txt"), "x");
-			assert.equal(await provider.get("pd-tools-session"), undefined, "removed after the pull");
-			assert.equal((await harness.snapshot(SessionSandbox, context))?.ref, undefined, "the session is local again");
-			assert.equal((await provider.list()).length, 0);
+			h.harness.resume();
+			assert.equal((await (await h.root.submit({ type: "input", content: "go" }, context)).wait(context)).status, "done");
+			assert.equal((await provider.list()).length, 1, "no second VM");
+			const branches = (await box.exec(`git -C ${ref.workdir} for-each-ref --format='%(refname:short)' refs/heads/pi-durable/`)).stdout.trim();
+			assert.match(branches, /^pi-durable\/1795802865031-t\d+$/u);
+			assert.equal((await box.exec(`git -C ${ref.workdir} show ${branches}:wt.txt`)).stdout.trim(), "wt");
+			assert.equal((await box.exec(`ls ${ref.home}/.pi-durable/worktrees | wc -l`)).stdout.trim(), "0", "its worktree was removed");
+			assert.equal(git(work, "for-each-ref", "refs/heads/"), git(work, "for-each-ref", "refs/heads/main"), "nothing new locally");
+			assert.match(h.prompts.child[0] ?? "", /git worktree at .*inside the sandbox VM/u);
+			assert.ok((await h.results()).some((text) => text.includes(`on branch ${branches} in sandbox`)));
 		} finally {
-			await harness.close(context);
-			await envs.cleanup(context);
+			await h.close();
+			await provider.cleanup();
+		}
+	});
+
+	test("sandbox_run, sandbox_pull of the session's sandbox, and no removal of another without approval", async () => {
+		const provider = await fakeProvider();
+		const work = repository();
+		const h = await harnessWith(provider, work, {
+			main: [
+				call("sandbox_run", { command: 'echo "ran $KIND"' }),
+				call("bash", { command: "git checkout -qb feature && echo x > x.txt && git add x.txt && git commit -qm x" }),
+				call("sandbox_pull", { sandbox: "someone-elses", remove: true }),
+				call("sandbox_pull", { remove: true }),
+				fauxAssistantMessage("ok"),
+			],
+			child: [],
+		});
+		try {
+			const name = sandboxName(h.host.sessionId, "session-dev");
+			const { ref } = await h.sandboxes.ensure({ name, repo: work, purpose: "session", owned: true });
+			await h.sandboxes.ensure({ name: "someone-elses", repo: work, purpose: "session" });
+			await h.harness.commit(async (tx) => {
+				(await tx.doc(SessionSandbox)).ref = ref;
+			}, context);
+			h.harness.resume();
+			assert.equal((await (await h.root.submit({ type: "input", content: "go" }, context)).wait(context)).status, "done");
+			const [run, , foreign, own] = await h.results();
+			assert.match(run ?? "", /ran job/u);
+			assert.match(run ?? "", /removed/u);
+			assert.match(foreign ?? "", /Not removed: someone-elses was not made by this session/u);
+			assert.notEqual(await provider.get("someone-elses"), undefined);
+			assert.match(own ?? "", new RegExp(`sbx/${name}/feature`, "u"));
+			assert.equal(git(work, "show", `sbx/${name}/feature:x.txt`), "x");
+			assert.equal(await provider.get(name), undefined, "removed after the pull");
+			assert.equal((await h.harness.snapshot(SessionSandbox, context))?.ref, undefined, "the session is local again");
+		} finally {
+			await h.close();
 			await provider.cleanup();
 		}
 	});

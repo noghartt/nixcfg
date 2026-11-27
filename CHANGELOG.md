@@ -17,8 +17,12 @@ whenever it feels like a checkpoint.
   from the parent's repository; its commits come back as `sbx/<sandbox>/<branch>` and the sandbox
   is removed unless `keepSandbox` (failures keep it). `pi-durable --sandbox[=kind[:name]]` and
   `/sandbox [kind|name|off]` put a whole session in a sandbox, reattached on resume, with a prompt
-  section on network, ports and what comes back. New `sandbox_run` and `sandbox_pull` tools. All
-  replay-safe through deterministic sandbox names, and provider-agnostic (capabilities only).
+  section on network, ports and what comes back; it fails closed (tools and prompts refused while it
+  is pending or failed). In a sandboxed session isolated subagents and swarm members work in git
+  worktrees inside the session sandbox. Every subagent ending (answer, stop, abort, cancel) brings
+  its work back and cleans up. New `sandbox_run` and `sandbox_pull` tools (removing a foreign or
+  kept sandbox needs approval). All replay-safe through deterministic sandbox names and a seeded
+  marker, and provider-agnostic (capabilities only).
   sbx now exports its fake provider (`src/testing.ts`) for consumers' tests (`docs/pi-durable.md`).
 - **home/noghartt/sandbox**: `sbx`, sandboxes behind a provider interface (capabilities, reusable
   contract tests) with exe.dev as the first provider on the official `@exedev/sdk`. VM kinds set

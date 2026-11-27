@@ -48,6 +48,12 @@ const CACHED_CHUNKS = 4;
 /** Spill output reaches the sandbox in appends of about this size. */
 const SPILL_BATCH_BYTES = 1024 * 1024;
 const MAX_TIMEOUT_SECONDS = 2_147_483_647 / 1000;
+/** A file script gets this long before the tool gives up on the sandbox. */
+const SCRIPT_DEADLINE_MS = 5 * 60 * 1000;
+/** A command gets this long past its timeout (sbx's 10 s kill grace included) before the local wait gives up. */
+const EXEC_DEADLINE_GRACE_MS = 30_000;
+/** How long cleanup waits for the remote kills of running commands. */
+const CLEANUP_WAIT_MS = 5_000;
 /** Printed on stderr by a command that never started (missing cwd or program); never shown to the caller. */
 const SPAWN_MARK = "sbx-pi-durable-spawn-error:";
 
@@ -120,7 +126,8 @@ export class SandboxExecutionEnv implements ExecutionEnv {
 	readonly home: string;
 	cwd: string;
 	readonly #describe: (() => string) | undefined;
-	readonly #running = new Set<AbortController>();
+	/** Commands still running, with their settling, so cleanup can wait (boundedly) for the remote kills. */
+	readonly #running = new Map<AbortController, Promise<unknown>>();
 
 	constructor(options: SandboxEnvOptions) {
 		this.box = options.box;
@@ -153,15 +160,18 @@ export class SandboxExecutionEnv implements ExecutionEnv {
 	): Promise<Result<string, FileError>> {
 		const stop = aborted<string>(context, path);
 		if (stop) return stop;
+		// A sandbox that stops answering must not hang a tool forever.
+		const deadline = AbortSignal.timeout(SCRIPT_DEADLINE_MS);
+		const signal = context.abortSignal === undefined ? deadline : AbortSignal.any([context.abortSignal, deadline]);
 		try {
-			const result = await this.box.exec(`${PRELUDE}\n${body}`, {
-				...options,
-				...(context.abortSignal === undefined ? {} : { signal: context.abortSignal }),
-			});
+			const result = await this.box.exec(`${PRELUDE}\n${body}`, { ...options, signal });
 			if (result.exitCode !== 0) return err(fileError(result.stderr || `exit ${result.exitCode}`, path));
 			return ok(result.stdout);
 		} catch (error) {
-			if (isAbort(error, context)) return err(new FileError("aborted", "aborted", path));
+			if (context.abortSignal?.aborted === true) return err(new FileError("aborted", "aborted", path));
+			if (deadline.aborted) {
+				return err(new FileError("unknown", `the sandbox did not answer within ${SCRIPT_DEADLINE_MS / 1000} s`, path));
+			}
 			return err(new FileError("unknown", toError(error).message, path, toError(error)));
 		}
 	}
@@ -505,7 +515,6 @@ export class SandboxExecutionEnv implements ExecutionEnv {
 		const local = new AbortController();
 		const onAbort = () => local.abort(signal?.reason);
 		signal?.addEventListener("abort", onAbort, { once: true });
-		this.#running.add(local);
 		let callbackError: ExecutionError | undefined;
 		let spawnError: string | undefined;
 		const spill = options?.spill === undefined ? undefined : new RemoteSpill(this, options.spill, context);
@@ -527,8 +536,17 @@ export class SandboxExecutionEnv implements ExecutionEnv {
 			return spill?.push(text);
 		};
 		const started = Date.now();
+		// sbx enforces the timeout on the sandbox; this is for a sandbox that stops answering altogether.
+		let deadlineHit = false;
+		const deadline =
+			timeout === undefined
+				? undefined
+				: setTimeout(() => {
+						deadlineHit = true;
+						local.abort(new Error("the sandbox stopped answering"));
+					}, timeout * 1000 + EXEC_DEADLINE_GRACE_MS);
 		try {
-			const result = await this.box.exec(script, {
+			const running = this.box.exec(script, {
 				signal: local.signal,
 				capture: false,
 				...(timeout === undefined ? {} : { timeoutMs: timeout * 1000 }),
@@ -536,6 +554,8 @@ export class SandboxExecutionEnv implements ExecutionEnv {
 				onStdout: (chunk) => emit(stdout.decode(chunk), "stdout"),
 				onStderr: (chunk) => emit(stderr.decode(chunk), "stderr"),
 			});
+			this.#running.set(local, running.catch(() => undefined));
+			const result = await running;
 			const spillPath = await spill?.finish();
 			const attach = (error: ExecutionError) => {
 				if (spillPath !== undefined) error.spillPath = spillPath;
@@ -557,21 +577,29 @@ export class SandboxExecutionEnv implements ExecutionEnv {
 			const spillPath = await spill?.finish().catch(() => undefined);
 			const failure =
 				callbackError ??
-				(signal?.aborted === true || local.signal.aborted
+				(deadlineHit
+					? new ExecutionError("timeout", `timeout:${timeout} (the sandbox stopped answering)`)
+					: signal?.aborted === true || local.signal.aborted
 					? new ExecutionError("aborted", "aborted")
 					: new ExecutionError("unknown", toError(error).message, toError(error)));
 			if (spillPath !== undefined) failure.spillPath = spillPath;
 			return err(failure);
 		} finally {
+			if (deadline !== undefined) clearTimeout(deadline);
 			signal?.removeEventListener("abort", onAbort);
 			this.#running.delete(local);
 		}
 	}
 
 	async cleanup(_context: Context): Promise<void> {
-		// Aborting makes sbx kill each command's remote process group.
-		for (const controller of this.#running) controller.abort(new Error("environment closed"));
+		// Aborting makes sbx kill each command's remote process group; the kills are waited for, but not forever.
+		const running = [...this.#running];
 		this.#running.clear();
+		for (const [controller] of running) controller.abort(new Error("environment closed"));
+		await Promise.race([
+			Promise.all(running.map(([, settled]) => settled)),
+			new Promise((resolve) => setTimeout(resolve, CLEANUP_WAIT_MS).unref()),
+		]);
 	}
 }
 

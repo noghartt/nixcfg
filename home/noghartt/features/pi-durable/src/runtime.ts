@@ -66,11 +66,18 @@ import {
 	selectSession,
 	writeMeta,
 } from "./sessions.ts";
-import { Sandboxes, sandboxName } from "./sandbox.ts";
+import {
+	markSessionSandboxPending,
+	parseSandboxArgument,
+	Sandboxes,
+	sandboxTarget,
+	sessionSandboxProblem,
+	setSessionSandbox,
+} from "./sandbox.ts";
 import { createSandboxTools } from "./sandbox-tools.ts";
-import { Background, Identity, Labels, type SandboxRef, SessionSandbox } from "./state.ts";
+import { Background, Identity, Labels, SessionSandbox } from "./state.ts";
 import { loadStatus, type StatusReport, usageSince } from "./status.ts";
-import { createOrchestration } from "./subagent.ts";
+import { closeBackgroundSandboxes, createOrchestration } from "./subagent.ts";
 import { createSwarm, endSwarm, loadSwarmBoard, startSwarm, type SwarmBoardView, swarmActivity, swarmInput } from "./swarm.ts";
 import { createSpillExtension } from "./spill.ts";
 import { createWatchExtension } from "./watch.ts";
@@ -364,8 +371,8 @@ export async function openDurable(options: OpenDurableOptions): Promise<OpenDura
 		registry.install(createWatchExtension(location.cwd));
 		registry.install(createMessaging(host));
 		registry.install(createResearch(location.cwd));
-		registry.install(createSandboxTools(host));
 		const approvals = new Approvals();
+		registry.install(createSandboxTools(host, approvals));
 		registry.install(createAntigravity(approvals));
 		// Last, so its afterTool hook sees the text the Harness is about to bound.
 		registry.install(createSpillExtension(envs.env));
@@ -749,6 +756,9 @@ export async function openDurable(options: OpenDurableOptions): Promise<OpenDura
 		const controller: DurableController = {
 			submit: (text, whenBusy) =>
 				command(async () => {
+					// Fail closed: with the session's sandbox pending or failed, the prompt is not sent at all.
+					const target = await sandboxTarget(opened, current.id, context);
+					if (target.kind === "blocked") throw new Error(`Not sent. ${target.reason}`);
 					const expanded = REFERENCE_HINT.test(text)
 						? await expandReferences(resources.expandInput(text), host)
 						: resources.expandInput(text);
@@ -1013,54 +1023,18 @@ export async function openDurable(options: OpenDurableOptions): Promise<OpenDura
 			// Queued like other commands, so a prompt sent while a sandbox is being made runs in it.
 			sandbox: (argument) =>
 				command(async () => {
-					notice("info", await sessionSandbox(argument.trim()));
+					notice(
+						"info",
+						await setSessionSandbox(
+							opened,
+							sandboxes,
+							argument.trim(),
+							{ sessionId: location.id, cwd: location.cwd, notice },
+							context,
+						),
+					);
 				}).then(() => {}),
 			sandboxKinds: () => sandboxes.kinds(),
-		};
-
-		const describeRef = (ref: SandboxRef): string =>
-			`${ref.name} (kind ${ref.kind}${ref.workdir === undefined ? "" : `, checkout ${ref.workdir}${ref.branch === undefined ? "" : ` on ${ref.branch}`}`})`;
-		/** `/sandbox` and `--sandbox`: the session sandbox lives in a session document, so a reopen reattaches by name. */
-		const sessionSandbox = async (argument: string): Promise<string> => {
-			const current = (await opened.snapshot(SessionSandbox, context))?.ref;
-			const kept = (ref: SandboxRef) =>
-				`${ref.name} is kept: sandbox_pull (or \`sbx pull ${ref.name}\`) brings its branches back, \`sbx rm ${ref.name}\` removes it.`;
-			if (argument === "" || argument === "status") {
-				return current === undefined
-					? `No session sandbox; /sandbox <kind|name> makes or attaches one (kinds: ${sandboxes.kinds().join(", ") || "sbx is not set up"}).`
-					: `This session's tools run in sandbox ${describeRef(current)}.`;
-			}
-			if (argument === "off") {
-				if (current === undefined) return "No session sandbox.";
-				await opened.commit(async (tx) => {
-					delete (await tx.doc(SessionSandbox)).ref;
-				}, context);
-				return `Tools run on this machine again. ${kept(current)}`;
-			}
-			const colon = argument.indexOf(":");
-			const kind = colon >= 0 ? argument.slice(0, colon) : sandboxes.kinds().includes(argument) ? argument : undefined;
-			let ref: SandboxRef;
-			if (kind === undefined) ref = await sandboxes.attach(argument, location.cwd);
-			else {
-				const given = colon >= 0 ? argument.slice(colon + 1) : undefined;
-				const name = given || sandboxName(location.id, `session-${kind}`);
-				if (current?.name !== name) notice("info", `Getting sandbox ${name} (kind ${kind}) ready; prompts wait for it.`);
-				({ ref } = await sandboxes.ensure({
-					name,
-					kind,
-					repo: location.cwd,
-					purpose: "session",
-					owned: given === undefined,
-					onProgress: (message) => notice(message.startsWith("warning") ? "warning" : "info", message),
-				}));
-			}
-			await opened.commit(async (tx) => {
-				(await tx.doc(SessionSandbox)).ref = ref;
-			}, context);
-			return (
-				`This session's tools now run in sandbox ${describeRef(ref)}.` +
-				(current !== undefined && current.name !== ref.name ? ` The previous one, ${kept(current)}` : "")
-			);
 		};
 
 		const savedModel = agentOf(state.conversation).model;
@@ -1074,17 +1048,25 @@ export async function openDurable(options: OpenDurableOptions): Promise<OpenDura
 		}
 		warnResources();
 		for (const problem of profiles.diagnostics) notice("warning", `Agent profile: ${problem}`);
-		// Recovered work from an interrupted turn continues now.
-		harness.resume();
+		// --sandbox marks the session's sandbox pending before recovered work resumes, so nothing runs on this machine
+		// while it is being made.
+		let startSandbox: string | undefined;
 		if (options.sandbox !== undefined) {
-			let argument = options.sandbox;
 			try {
-				argument ||= sandboxes.sbx.config.defaultKind;
+				startSandbox = options.sandbox || sandboxes.sbx.config.defaultKind;
+				const target = parseSandboxArgument(startSandbox, sandboxes.kinds(), location.id);
+				await markSessionSandboxPending(opened, target.name, target.kind, context);
 			} catch (error) {
 				fail(error);
+				startSandbox = undefined;
 			}
-			if (argument) void controller.sandbox(argument);
+		} else {
+			const problem = sessionSandboxProblem(await opened.snapshot(SessionSandbox, context));
+			if (problem !== undefined) notice("warning", problem);
 		}
+		// Recovered work from an interrupted turn continues now.
+		harness.resume();
+		if (startSandbox !== undefined) void controller.sandbox(startSandbox);
 		// Messages from other sessions, also those sent while this one was closed.
 		const stopInbox = startInbox(location.directory, opened, report);
 		requestActivity();
@@ -1111,6 +1093,15 @@ export async function openDurable(options: OpenDurableOptions): Promise<OpenDura
 					await activityRun;
 					// The dashboard shows a closed session without live status.
 					await writeMeta(location.directory, { live: undefined }).catch(() => {});
+					// The TUI is gone by now, so anything left behind is said on stderr.
+					for (const line of await closeBackgroundSandboxes(
+						opened,
+						sandboxes,
+						state.conversations.map((summary) => summary.id),
+						context,
+					).catch((error: unknown) => [`Background sandboxes were not cleaned up: ${String(error)}`])) {
+						console.error(`pi-durable: ${line}`);
+					}
 					try {
 						// Close writes no outcome: a running turn resumes with --continue.
 						await opened.close(context);

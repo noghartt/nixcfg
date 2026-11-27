@@ -4,6 +4,8 @@ import {
 	type AgentChange,
 	AssistantEntry,
 	type ConversationId,
+	type Harness,
+	LiveDoc,
 	configure,
 	defineExtension,
 	defineTask,
@@ -25,7 +27,7 @@ import { AGY_SUBAGENT_TOOL } from "./antigravity.ts";
 import type { AgentProfile } from "./profiles.ts";
 import { DEFAULT_PARALLEL, type Host, MAX_PARALLEL, MAX_PARALLEL_TASKS } from "./host.ts";
 import { Background, Identity, type IdentityState, MESSAGE_KIND, REPORT_KIND } from "./state.ts";
-import { type Isolation, parseIsolation, type Sandboxes, sandboxName } from "./sandbox.ts";
+import { type Isolation, parseIsolation, type SandboxSummary, type Sandboxes, sandboxName, sandboxOf } from "./sandbox.ts";
 import { ensureWorktree, summarizeWorktree } from "./worktrees.ts";
 
 /** Tools a subagent keeps whatever its profile offers: talking to other agents is how it reports mid-task. */
@@ -66,27 +68,42 @@ export async function prepareChild(
 	spec: ChildSpec,
 	key: string,
 	context: Context,
-): Promise<{ change: AgentChange; identity: IdentityState }> {
+): Promise<{ change: AgentChange; identity: IdentityState; warnings: string[] }> {
 	const profile = host.profiles.get(spec.agent);
 	const parent = await api.agent(context);
 	const isolation = parseIsolation(spec.isolation ?? profile.isolation);
 	let cwd = parent.cwd ?? host.cwd;
 	let worktree: IdentityState["worktree"];
 	let sandbox: IdentityState["sandbox"];
-	if (isolation.mode === "worktree") ({ worktree, cwd } = await ensureWorktree(cwd, host.sessionDir, host.sessionId, key));
-	if (isolation.mode === "sandbox") {
-		// Seeded from the local repository's commits (also when the parent itself works in the session's sandbox); its
-		// conversation keeps the local cwd, which the environment maps into the sandbox's checkout.
+	const warnings: string[] = [];
+	// Where the parent's tools run decides where an isolated child's do: a parent in a sandbox keeps its children in
+	// it, as git worktrees of its checkout, so their branches land where the parent works and no work has to travel
+	// through this machine. (A different kind asked for is noted, not honoured: the session chose its machine.)
+	const parentSandbox = await sandboxOf(api, api.conversationId, context);
+	if (isolation.mode !== "none" && parentSandbox !== undefined) {
+		sandbox = await host.sandboxes.worktreeIn(parentSandbox, host.sessionId, key);
+		if (isolation.kind !== undefined && isolation.kind !== parentSandbox.kind) {
+			warnings.push(`isolation ${isolation.mode}:${isolation.kind} ran in a worktree of the session's sandbox ${parentSandbox.name} (kind ${parentSandbox.kind})`);
+		}
+	} else if (isolation.mode === "worktree") {
+		({ worktree, cwd } = await ensureWorktree(cwd, host.sessionDir, host.sessionId, key));
+	} else if (isolation.mode === "sandbox") {
+		// Seeded from the local repository's commits; the conversation keeps the local cwd, which the environment maps
+		// into the sandbox's checkout.
 		const keep = spec.keepSandbox ?? profile.keepSandbox;
-		({ ref: sandbox } = await host.sandboxes.ensure({
+		const made = await host.sandboxes.ensure({
 			name: sandboxName(host.sessionId, key),
 			...(isolation.kind === undefined ? {} : { kind: isolation.kind }),
 			repo: cwd,
+			requireRepo: true,
 			branch: `pi-durable/${key}`,
 			purpose: "subagent",
+			owned: true,
 			...(keep === true ? { keep } : {}),
 			...(context.abortSignal === undefined ? {} : { signal: context.abortSignal }),
-		}));
+		});
+		sandbox = made.ref;
+		warnings.push(...made.warnings);
 	}
 	const extra = spec.extraTools ?? [];
 	const offered =
@@ -119,10 +136,16 @@ export async function prepareChild(
 					: "commit your work on your branch before you answer: the main agent reviews and merges the branch."),
 		sandbox === undefined
 			? undefined
-			: `You work in your own sandbox VM ${sandbox.name}` +
-				(sandbox.workdir === undefined ? "" : `, in its checkout ${sandbox.workdir} on branch ${sandbox.branch}`) +
-				"; the sandbox section of your instructions says what it can reach. Commit your work on your branch before you " +
-				`answer: it comes back to the main agent as branch sbx/${sandbox.name}/${sandbox.branch}, which it reviews and merges.`,
+			: sandbox.worktreeOf !== undefined
+				? `You work in your own git worktree at ${sandbox.workdir}, on branch ${sandbox.branch}, inside the sandbox VM ` +
+					`${sandbox.name} that ${spec.swarm === true ? "the coordinator" : "the main agent"} works in; others work in its checkout ` +
+					`${sandbox.worktreeOf} and their own worktrees at the same time. Change files only inside your worktree, and commit ` +
+					`your work on your branch before you ${spec.swarm === true ? "report it done" : "answer"}: the branch stays in that ` +
+					"checkout, where it is reviewed and merged. The sandbox section of your instructions says what the VM can reach."
+				: `You work in your own sandbox VM ${sandbox.name}` +
+					(sandbox.workdir === undefined ? "" : `, in its checkout ${sandbox.workdir} on branch ${sandbox.branch}`) +
+					"; the sandbox section of your instructions says what it can reach. Commit your work on your branch before you " +
+					`answer: it comes back to the main agent as branch sbx/${sandbox.name}/${sandbox.branch}, which it reviews and merges.`,
 		profile.instructions || undefined,
 	]
 		.filter(Boolean)
@@ -145,7 +168,7 @@ export async function prepareChild(
 		...(sandbox === undefined ? {} : { sandbox }),
 		...(spec.swarm === true ? { swarm: true } : {}),
 	};
-	return { change, identity };
+	return { change, identity, warnings };
 }
 
 export async function createChild(
@@ -172,6 +195,20 @@ export const Anchor = defineTask<null, { phase: "done" }, null>({
 	abort: (_task, runtime, context) =>
 		runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), context),
 });
+
+/**
+ * Wrap up a subagent's workspace: a local worktree that changed nothing goes (with `remove`), a sandbox's work is
+ * committed and brought back and, with `remove`, the sandbox (or its worktree in the parent's sandbox) goes unless
+ * kept. Replay-safe, as both steps are.
+ */
+export async function wrapUp(sandboxes: Sandboxes | undefined, identity: IdentityState, remove: boolean): Promise<string | undefined> {
+	if (identity.worktree !== undefined) return summarizeWorktree(identity.worktree, remove);
+	if (identity.sandbox !== undefined && sandboxes !== undefined) {
+		const summary: SandboxSummary = await sandboxes.bringBack(identity.sandbox, { remove });
+		return summary.text;
+	}
+	return undefined;
+}
 
 /**
  * The sandboxes of the open session, for the Reporter: task definitions are module-level, and one process holds one
@@ -232,19 +269,23 @@ export const Reporter = defineTask<ReporterInput, ReporterState, null>({
 			const state = await runtime.readSignal(SubmissionSettled, "answered", context);
 			const settled = state !== undefined && "value" in state ? state.value : undefined;
 			const identity = await runtime.snapshot(Identity, conversationId, context);
-			// A background subagent may get more messages, so its sandbox stays; each answer pulls its branch again.
+			// A background subagent may get more messages, so its sandbox stays and each answer pulls its branch again; once
+			// it is stopped (aborted), its work comes back and its sandbox goes.
+			const stopped = settled?.status === "unanswered" && settled.reason === "aborted";
 			const worktree =
-				identity?.worktree !== undefined
-					? await summarizeWorktree(identity.worktree, false)
-					: identity?.sandbox !== undefined && reporterSandboxes.current !== undefined
-						? (await reporterSandboxes.current.bringBack(identity.sandbox, { remove: false })).text
-						: undefined;
+				identity === undefined
+					? undefined
+					: identity.sandbox !== undefined
+						? await wrapUp(reporterSandboxes.current, identity, stopped)
+						: await wrapUp(reporterSandboxes.current, identity, false);
 			await runtime.commit(async (tx) => {
 				const next = (report?: string) => ({ status: "running", checkpoint: { phase: "report", report } }) as const;
 				if (settled === undefined) return next(`[subagent ${name} never answered]`);
 				// Stopped, or withdrawn while queued: nothing to report.
 				if (settled.status === "unanswered") {
-					return next(settled.reason === "aborted" ? undefined : `[subagent ${name} failed: ${settled.reason}]`);
+					// Stopped: nothing to report but where its work went.
+					if (settled.reason === "aborted") return next(identity?.sandbox === undefined ? undefined : `[subagent ${name} stopped]\n${worktree}`);
+					return next(`[subagent ${name} failed: ${settled.reason}]${worktree === undefined ? "" : `\n\n${worktree}`}`);
 				}
 				if (settled.type !== "input") return next();
 				const record = (await tx.doc(Background, reportTo)).agents[name];
@@ -281,8 +322,12 @@ export const Reporter = defineTask<ReporterInput, ReporterState, null>({
 			await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: null } }), context);
 		},
 	},
-	abort: (_task, runtime, context) =>
-		runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), context),
+	// Aborted (its conversation ended or was stopped for good): the subagent's sandbox goes, after its work comes back.
+	abort: async (task, runtime, context) => {
+		const identity = await runtime.snapshot(Identity, task.input.conversationId, context);
+		if (identity?.sandbox !== undefined) await wrapUp(reporterSandboxes.current, identity, true).catch(() => undefined);
+		await runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), context);
+	},
 });
 
 const SubagentParameters = obj({
@@ -350,6 +395,15 @@ export function createOrchestration(host: Host): { orchestration: Extension; tas
 		parameters: SubagentParameters,
 		// A rerun after a crash finds the child, worktree, and submission it already made.
 		replay: "safe",
+		// Aborted while parked on its child: the child's work still comes back, and its sandbox or worktree goes.
+		cancel: async (_args, api, context) => {
+			const child = await api.commit(
+				async (tx) => (await tx.scanConversations({ ownerTaskId: api.taskId }, 1)).items[0]?.id,
+				context,
+			);
+			const identity = child === undefined ? undefined : await api.snapshot(Identity, child, context);
+			if (identity !== undefined) await wrapUp(host.sandboxes, identity, true);
+		},
 		execute: async (args, api, context) => {
 			const state = await api.readSignal(SubmissionSettled, "answered", context);
 			if (state !== undefined) {
@@ -376,11 +430,24 @@ export function createOrchestration(host: Host): { orchestration: Extension; tas
 			};
 			if (args.background === true) return startBackground(api, spec, args.task, context);
 
-			const { change, identity } = await prepareChild(host, orchestration, api, spec, `t${api.taskId}`, context);
-			const child = await api.commit(async (tx) => {
-				const existing = (await tx.scanConversations({ ownerTaskId: api.taskId }, 1)).items[0];
-				return existing?.id ?? createChild(tx, api.taskId, change, identity);
-			}, context);
+			// A rerun after the child exists reuses it as it is: its worktree or sandbox is never made (or replaced) again.
+			const scan = () =>
+				api.commit(async (tx) => (await tx.scanConversations({ ownerTaskId: api.taskId }, 1)).items[0]?.id, context);
+			let child = await scan();
+			if (child === undefined) {
+				const { change, identity, warnings } = await prepareChild(host, orchestration, api, spec, `t${api.taskId}`, context);
+				const withWarnings: IdentityState = warnings.length === 0 ? identity : { ...identity, warnings };
+				try {
+					child = await api.commit(async (tx) => {
+						const existing = (await tx.scanConversations({ ownerTaskId: api.taskId }, 1)).items[0];
+						return existing?.id ?? createChild(tx, api.taskId, change, withWarnings);
+					}, context);
+				} catch (error) {
+					// No child holds the workspace just made, so nothing would ever clean it up.
+					if ((await scan()) === undefined) await wrapUp(host.sandboxes, identity, true);
+					throw error;
+				}
+			}
 			await api.details({ conversationId: child, name, agent: profile.name }, context);
 			const handle = (await api.conversation(child, context))!;
 			await handle.submit(
@@ -479,20 +546,17 @@ export function createOrchestration(host: Host): { orchestration: Extension; tas
 		);
 		const identity = child === undefined ? undefined : await api.snapshot(Identity, child, context);
 		const label = `subagent ${identity?.name ?? "?"} (conversation #${child ?? "?"})`;
+		// Every ending wraps up the workspace, answered or not: a worktree that changed nothing goes, a sandbox's work is
+		// committed and brought back, and the sandbox goes unless kept.
+		const workspace = identity === undefined ? undefined : await wrapUp(host.sandboxes, identity, true);
+		const warnings = identity?.warnings?.length ? `Warnings: ${identity.warnings.join("; ")}` : undefined;
 		if (settled === undefined || settled.status !== "done" || settled.type !== "input") {
 			const reason = settled === undefined ? "no answer" : settled.status === "unanswered" ? settled.reason : "no answer";
-			return { output: [{ type: "text" as const, text: `${label} ended without an answer: ${reason}` }], isError: true };
+			const text = [`${label} ended without an answer: ${reason}`, workspace, warnings].filter(Boolean).join("\n\n");
+			return { output: [{ type: "text" as const, text }], isError: true };
 		}
 		const answer = await api.commit((tx) => answerOf(tx, settled.answer), context);
-		// A finished isolated subagent that changed nothing leaves no worktree behind.
-		// A finished sandbox-isolated one: its work is committed, pulled back, and the sandbox removed unless kept.
-		const worktree =
-			identity?.worktree !== undefined
-				? await summarizeWorktree(identity.worktree, true)
-				: identity?.sandbox !== undefined
-					? (await host.sandboxes.bringBack(identity.sandbox, { remove: true })).text
-					: undefined;
-		const text = [answer || "(no text in its answer)", worktree, `[${label}]`].filter(Boolean).join("\n\n");
+		const text = [answer || "(no text in its answer)", workspace, warnings, `[${label}]`].filter(Boolean).join("\n\n");
 		return { output: [{ type: "text" as const, text }] };
 	}
 
@@ -501,7 +565,15 @@ export function createOrchestration(host: Host): { orchestration: Extension; tas
 		if (known !== undefined && known.createdBy !== api.taskId) {
 			throw new Error(`A background subagent named ${spec.name} exists; message it with agents send, or pick another name.`);
 		}
-		const { change, identity } = await prepareChild(host, orchestration, api, spec, `bg${api.taskId}`, context);
+		// A rerun after the child exists reuses it; its workspace is not made again.
+		if (known !== undefined) {
+			return {
+				output: [{ type: "text" as const, text: `Started background subagent ${spec.name} (conversation #${known.conversationId}).` }],
+				details: { conversationId: known.conversationId, name: spec.name, agent: known.profile ?? "general", background: true },
+			};
+		}
+		const { change, identity: made, warnings } = await prepareChild(host, orchestration, api, spec, `bg${api.taskId}`, context);
+		const identity: IdentityState = warnings.length === 0 ? made : { ...made, warnings };
 		const child = await api.commit(async (tx) => {
 			const state = await tx.doc(Background, api.conversationId);
 			const existing = state.agents[spec.name];
@@ -525,14 +597,21 @@ export function createOrchestration(host: Host): { orchestration: Extension; tas
 			};
 			await tx.createTask(Reporter, input, background);
 			return id;
-		}, context);
+		}, context).catch(async (error: unknown) => {
+			// No child holds the workspace just made, so nothing would ever clean it up.
+			if ((await api.snapshot(Background, api.conversationId, context))?.agents[spec.name] === undefined) {
+				await wrapUp(host.sandboxes, made, true);
+			}
+			throw error;
+		});
 		return {
 			output: [
 				{
 					type: "text" as const,
 					text:
 						`Started background subagent ${spec.name} (conversation #${child}, profile ${identity.profile}). ` +
-						"Its answer arrives as a message when it finishes; agents send/stop/read reach it meanwhile.",
+						"Its answer arrives as a message when it finishes; agents send/stop/read reach it meanwhile." +
+						(warnings.length === 0 ? "" : ` Warnings: ${warnings.join("; ")}`),
 				},
 			],
 			details: { conversationId: child, name: spec.name, agent: identity.profile ?? "general", background: true },
@@ -657,3 +736,33 @@ export function createOrchestration(host: Host): { orchestration: Extension; tas
 	return { orchestration, tasks };
 }
 
+
+/**
+ * When the session closes, idle background subagents' sandboxes go, after their work comes back: their answers were
+ * reported, and a VM nobody is using would only wait for the reaper. One still at work keeps its sandbox, since its run
+ * resumes on the next open. Returns a line for each sandbox it could not remove, naming it.
+ */
+export async function closeBackgroundSandboxes(
+	harness: Harness,
+	sandboxes: Sandboxes,
+	conversations: readonly ConversationId[],
+	context: Context,
+): Promise<string[]> {
+	const problems: string[] = [];
+	for (const id of conversations) {
+		const background = await harness.snapshot(Background, id, context);
+		for (const [name, agent] of Object.entries(background?.agents ?? {})) {
+			const identity = await harness.snapshot(Identity, agent.conversationId, context);
+			if (identity?.sandbox === undefined) continue;
+			if ((await harness.snapshot(LiveDoc, agent.conversationId, context))?.run !== undefined) continue;
+			const where = identity.sandbox.worktreeOf === undefined ? `sandbox ${identity.sandbox.name}` : `worktree ${identity.sandbox.workdir} in sandbox ${identity.sandbox.name}`;
+			const summary = await Promise.race([
+				sandboxes.bringBack(identity.sandbox, { remove: true }),
+				new Promise<undefined>((resolve) => void setTimeout(() => resolve(undefined), 30_000).unref()),
+			]);
+			if (summary === undefined) problems.push(`The ${where} of background subagent ${name} did not answer; remove it with sbx rm ${identity.sandbox.name}.`);
+			else if (summary.failed && !summary.removed) problems.push(`The ${where} of background subagent ${name} was kept: ${summary.text}`);
+		}
+	}
+	return problems;
+}

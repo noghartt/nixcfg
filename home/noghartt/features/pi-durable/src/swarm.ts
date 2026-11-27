@@ -23,8 +23,8 @@ import { type AgyOutcome, DEFAULT_MODEL as AGY_DEFAULT_MODEL, execAgy } from "./
 import { type Host, oneLine } from "./host.ts";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentProfile } from "./profiles.ts";
-import { MESSAGE_KIND, Swarm, type SwarmMember, type SwarmPost, type SwarmState, type WorktreeInfo } from "./state.ts";
-import { Anchor, type ChildSpec, createChild, prepareChild } from "./subagent.ts";
+import { Identity, MESSAGE_KIND, Swarm, type SwarmMember, type SwarmPost, type SwarmState, type WorktreeInfo } from "./state.ts";
+import { Anchor, type ChildSpec, createChild, prepareChild, wrapUp } from "./subagent.ts";
 import { ensureWorktree, summarizeWorktree } from "./worktrees.ts";
 
 /** Who wrote a post: a member's name, or the coordinator. */
@@ -641,7 +641,14 @@ export function createSwarm(host: Host, orchestration: Extension): { extension: 
 			const record = swarm.members[member]!;
 			// An Antigravity member's run sees the mark and stops agy.
 			if (record.conversationId !== undefined) await (await api.conversation(record.conversationId, context))?.abort(context);
-			const worktree = record.worktree === undefined ? undefined : await summarizeWorktree(record.worktree, true);
+			// A member in a sandboxed session works in a worktree inside the sandbox; that one is wrapped up there.
+			const identity = record.conversationId === undefined ? undefined : await api.snapshot(Identity, record.conversationId, context);
+			const worktree =
+				record.worktree !== undefined
+					? await summarizeWorktree(record.worktree, true)
+					: identity?.sandbox !== undefined
+						? await wrapUp(host.sandboxes, identity, true)
+						: undefined;
 			lines.push(`Killed ${member}.${worktree === undefined ? "" : ` ${worktree}`}`);
 		}
 		return text(lines.join("\n\n"));
@@ -803,8 +810,9 @@ export function createSwarm(host: Host, orchestration: Extension): { extension: 
 				// this call committed their members).
 				const known = (await api.snapshot(Swarm, context))?.members ?? {};
 				for (const item of prepared) {
-					if (item.worktree === undefined || known[item.name]?.createdBy === api.taskId) continue;
-					await summarizeWorktree(item.worktree, true);
+					if (known[item.name]?.createdBy === api.taskId) continue;
+					if (item.worktree !== undefined) await summarizeWorktree(item.worktree, true);
+					else if (item.child?.identity.sandbox !== undefined) await wrapUp(host.sandboxes, item.child.identity, true);
 				}
 				throw error;
 			});
