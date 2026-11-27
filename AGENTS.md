@@ -38,7 +38,7 @@ home/<user>/features/cua/    standalone Cua Driver feature: pinned app + daemon,
 home/<user>/features/darwin/  shared Mac composition (apps, agent stack, Ghostty+Herdr) imported by palantir.nix and mithril.nix
 home/<user>/features/hashcards/ standalone hashcards (spaced repetition) CLI, built from source; bump package.nix (all hosts)
 home/<user>/features/leverage/ standalone Leverage Computer CLI: hash-pinned `stable` build, self-updater off; bump package.nix (palantir)
-home/<user>/features/exebox/ standalone `exebox` CLI: agentbox's sandbox contract on exe.dev VMs, contract tests at build, hourly reaper (palantir, mithril)
+home/<user>/features/sandbox/ standalone `sbx`: provider-agnostic sandboxes (provider interface + contract tests, VM kinds, git seed/pull), exe.dev provider on @exedev/sdk, hourly reaper (all hosts)
 home/<user>/features/agent-evals/ standalone eval pipeline: `aeval` ingest/label/classify/report/export/replay over session transcripts (both hosts)
 home/<user>/features/pi/extensions/agent-forum/  agent forum client tools (forum_*), loaded by Pi only
 hosts/mellon/agent-forum/    agent forum service (Bun + SQLite) and its VM test
@@ -154,7 +154,7 @@ docs/                        per-feature design notes (read the matching doc bef
 Feature-level design lives in `docs/`, which is not loaded automatically: read the matching doc
 before changing a feature, and update it in the same change.
 
-- `docs/agentbox.md`: Mellon agent sandboxes (nspawn, net profiles, sizes, env catalog, reaping).
+- `docs/sandbox.md`: `sbx` sandboxes: provider interface, kinds, exe.dev provider, auth, git flow, reaper, adding a provider.
 - `docs/herdr.md`: Herdr launch from Ghostty, saved machines, plugins and keybindings.
 - `docs/omo.md`: harness modules, agent-path `gh` shim, OmO settings, model chains, memory guards.
 - `docs/orchestrator.md`: leader + worker runs, graph, placement, leader tools.
@@ -164,8 +164,7 @@ before changing a feature, and update it in the same change.
 - `docs/agent-evals.md`: `aeval` ingest, labelling, reports, export, replay.
 - `docs/agent-forum.md`: forum service and client tools.
 - `docs/extensions.md`: herdr-fork and findings-cache.
-- `docs/cloud-mode.md`: `--cloud`, sandboxes, subagent isolation, `publish`.
-- `docs/exebox.md`: exe.dev sandboxes.
+- `docs/cloud-mode.md`: `--cloud` over SSH, `publish`.
 
 ## Commands
 
@@ -175,8 +174,6 @@ before changing a feature, and update it in the same change.
 - `nix eval .#nixosConfigurations.mellon.config.system.build.toplevel.drvPath` — cheap eval smoke test
 - `nix eval .#darwinConfigurations.palantir.system.drvPath` — Darwin eval smoke test (same for `mithril`)
 - `nix flake check` — full evaluation (builds; slow)
-- `nix build .#checks.x86_64-linux.agentbox` — VM test of the sandbox stack (daemon
-  authorization and TTY, sizes, net profiles; about 3 minutes)
 - `sudo nixos-rebuild switch --flake .#mellon` — apply on the host
 - `sudo darwin-rebuild switch --flake .#palantir` — apply on the Mac after bootstrap (`.#mithril` on the personal one)
 - `nix flake update` — bump inputs; review the `flake.lock` diff after
@@ -221,8 +218,8 @@ Patterns here are adapted from:
   unrelated edits, and keep any existing `.worktrees/` directories git-ignored.
 - Never commit secrets. Strategy: 1Password via opnix — user secrets as
   `programs.onepassword-secrets` (HM), system secrets as `services.onepassword-secrets`
-  (NixOS; Mellon's sandbox env catalog is the first). The service-account token lives
-  outside the repo (`~/.config/opnix/token` for HM, `/etc/opnix-token` for NixOS,
+  (NixOS, none yet). The service-account token lives
+  outside the repo (`~/.config/opnix/token` for HM, `/etc/opnix-token` for NixOS once one exists,
   provisioned with `opnix token set`); never commit it.
   Shell environment secrets are declared by reference in
   `home/noghartt/features/cli/secrets-env.nix` and resolved at interactive zsh startup,

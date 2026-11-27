@@ -10,11 +10,28 @@ whenever it feels like a checkpoint.
 
 ### Removed
 
+- **mellon**: agentbox (systemd-nspawn sandboxes, root daemon, net profiles, `sandbox.internal` DNS
+  and tailnet route, opnix sandbox env catalog) and its `checks.x86_64-linux.agentbox` VM test.
+- **home/noghartt**: exebox (exe.dev sandboxes) on Palantir and Mithril, replaced by `sbx`.
+- **home/noghartt/omo**: cloud-mode's `--sandbox`/`--env`/`--net`/`--size`, the `local` and `exe`
+  targets, subagent sandboxes and `handoff`; legacy sandbox sessions are blocked until re-targeted.
+  Plain `omo --cloud <host[:path]>` and `publish` (now `cloud/<host>/<branch>`) remain; children keep
+  their own tool limits and only the top session publishes.
+- **home/noghartt/pi**: orchestrator sandbox placement (`workers.*`, `sandbox.ts`); isolated nodes use
+  worktrees, a cloud-mode leader's nodes need isolation `current`. destructive-guard's sandbox skip
+  and `aeval replay --sandbox` (now rejected) are gone too.
 - **home/noghartt/omo**: OmO no longer loads Pi's command palette, session tree, orchestrator
   or agent-forum client; Pi keeps all four.
 
 ### Added
 
+- **home/noghartt/sandbox**: `sbx`, sandboxes behind a provider interface (capabilities, reusable
+  contract tests) with exe.dev as the first provider on the official `@exedev/sdk`. VM kinds set
+  egress, size, integrations and setup (`dev`, `agent` with no public internet, `job` for one-off
+  compute via `sbx run`); templates copied with `cp` for fast starts; repos seeded and pushed
+  through exe.dev's GitHub integration (no tokens on VMs), branches pulled back as `sbx/<name>/*`;
+  tag-scoped API token; hourly reaper archives branches before removing idle VMs. Never creates
+  metered standalone VMs (`docs/sandbox.md`).
 - **palantir**: OpenVPN Connect, from the `openvpn-connect` cask.
 - **home/noghartt/omo**: Refuseless GLM 5.3 Abliterated (`refuseless/glm-5.3-abliterated`)
   is a custom OmO provider and is in the model picker: 1M context, 131k output,

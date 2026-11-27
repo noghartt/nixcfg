@@ -19,8 +19,7 @@ OmO keeps its own agent dir (`~/.omo/agent`) but follows Pi's packaged
 extensions (minus `pi-workflows`, whose tool collides with `omo.js`, and the command palette,
 session tree, orchestrator and agent-forum client, which stay Pi-only), skills, and keybindings,
 plus the `/unsupervised <task>` prompt template (`features/omo/prompts/`, adapted from
-fersilva16: ultrawork, no questions, tested end to end, nothing pushed or committed except
-a branch inside a sandbox, where only commits leave),
+fersilva16: ultrawork, no questions, tested end to end, nothing pushed or committed),
 plus OmO-only packages (findings-cache, cloud-mode, ui-chrome, ui-prompt) auto-discovered from
 `features/omo/extensions/<name>/` (any subdirectory
 with a `package.json`; used for extensions that hook OmO internals or OmO-only features);

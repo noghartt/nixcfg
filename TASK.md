@@ -34,40 +34,20 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [ ] Verify OmO on Mellon after install (binary starts under nix-ld, scope limits apply, eval kernels run)
 - [x] OmO `cloud-mode`: `--cloud`/`/cloud` runs read/write/edit/grep/bash on an SSH host (verified against an OrbStack Ubuntu machine: tools, eval `tool.*`, background server + `kill_bash`, fail-closed, resume)
 - [ ] First `omo --cloud mellon` run from Palantir once Mellon is installed; measure per-call latency over Tailscale
-- [x] Agent sandboxes (systemd-nspawn): per-sandbox user namespace, cgroup limits, private network, btrfs subvolumes under /agent/sandboxes, `agentbox` CLI, `omo --cloud mellon --sandbox` from Palantir's OmO
-- [x] Verify sandboxes after the next Mellon rebuild: base image lands, `agentbox ensure` boots and seeds, no host/LAN/tailnet reach, internet egress, uid mapping, slice limits, `kill_bash` stops sandbox processes
-- [x] Sandbox tailnet access: approve the `10.231.0.0/16` route and add split DNS `sandbox.internal` -> Mellon's tailnet IP in the admin console, then verify `<name>.sandbox.internal:<port>` from Palantir
-- [x] Sandbox idle expiry: `agentbox-reap.timer` stops after 12h idle, removes after 7d (branches archived to `/agent/archive` for 30d), `agentbox keep`, cloud-mode notice on recreation
-- [ ] Verify sandbox expiry after the next Mellon rebuild: timer active, `agentbox ls` idle/expiry columns, `keep`, a forced reap (`touch -d '8 days ago' /agent/meta/<name>.used`) archives and removes, bundles fetchable by the user
-- [x] Sandbox fixes after the Isopolis run: `sg` fallback for stale-group callers, 8-core CPU windows and slice weight, `specialfs`/`/tmp` boot noise, quiet sudo, `agentbox recreate`, uncommitted work in archives
-- [ ] Verify after the next Mellon rebuild: `nproc` is 8 inside a new sandbox, a clean boot log, `agentbox recreate` on a scratch sandbox with uncommitted work
 - [x] Orchestrator: three-tier pool with limit-based spill, per-node `repo`, Herdr tab in the leader's workspace, non-fatal pane rename
-- [x] agentbox root daemon replacing sudo (socket activation, group-database authorization, fd passing with a pty for interactive exec), net profiles (none/dev/open) with a sandbox resolver and ipsets, size classes (small/medium/large) applied live, VM test `checks.x86_64-linux.agentbox`
-- [ ] Verify after the Mellon rebuild: `agentbox ls` from an old Herdr shell works without `sg`; existing sandboxes show `open medium`; a new `agentbox ensure x` is `dev`, reaches `https://github.com` but not `https://example.org`; `omo --cloud local --sandbox` still runs commands and PTY bash; `journalctl -u 'agentbox-root@*'` stays quiet during cloud-mode use
-- [ ] Verify after rebuild: tailnet devices still reach `<name>.sandbox.internal` servers, Docker containers are unaffected, and widen the `dev` allowlist (`net-profiles.nix`) where real tools hit missing domains
 - [x] Swarm config aligned with the orchestrator tiers (no Haiku, no GPT-5.6 Sol/Luna, `anthropic-subscription` first)
-- [x] Orchestrator: host-side leader with one sandbox per node, Jev placement (net/size/env), `orch_consult` + plan/needs_leader audits (Fable 5.1 / GPT-6 Astra), `orch_publish`, outcome log and priors
-- [x] OmO cloud mode: write-capable subagents get their own sandbox (`<parent>-<short>`, branch `task/<parent>/<short>`, delivered as `sandbox/<box>/task/...`); `--net`/`--size` on `omo --cloud --sandbox` and `/cloud`
+- [x] Orchestrator: host-side leader with a worktree per node, `orch_consult` + plan/needs_leader audits (Fable 5.1 / GPT-6 Astra), `orch_publish`, outcome log and priors
 - [x] Agent forum: Mellon service (`hosts/mellon/agent-forum`) + Pi/OmO client tools (`forum_*`)
-- [x] Swarm: agentbox member backend on Mellon (sandbox per member, host-side OmO with cloud-mode, collect/evolve/rm)
 - [x] agent-evals: `aeval` ingest/label/classify/report/priors/export/replay (`features/agent-evals`)
-- [ ] Verify after the Mellon rebuild (needs the new agentbox): `orch` on a host checkout gives each isolated node its own `o<run>-<node>` sandbox with its Herdr tab in the leader's workspace and branches as `sandbox/<box>/*`; `agentbox ls` shows the config default net/size (`dev`/`medium`) and `open` never appears unless `workers.allowOpenNet`; a shared-checkout node runs without `OMO_CLOUD` and the guard still asks
-- [ ] Verify after rebuild: `orch_consult` answers from Fable (Astra when Claude limits are at 85%+), and `orch_publish` pushes `sandbox/<box>/<branch>` under a new name with a draft PR and refuses the default branch
+- [ ] Verify after rebuild: `orch_consult` answers from Fable (Astra when Claude limits are at 85%+), and `orch_publish` pushes a worktree node's branch under a new name with a draft PR and refuses the default branch
 - [ ] Verify after rebuild: `~/.local/state/agent-evals/outcomes.jsonl` gains one line per settled attempt (directory 0700, file 0600), then `aeval ingest` counts them
-- [ ] Verify after rebuild: in `omo --cloud local --sandbox --net dev --size small`, two parallel write `task` lanes get one `<parent>-<short>` sandbox each (explore/librarian lanes none), each lane's final message ends with `Branch: sandbox/...`, the branch shows in the parent's clone, and `publish` pushes it
 - [ ] Follow-up: tag `workpool`/`workflow`/`team_*` spawns like `task` in cloud-mode; typecheck the TypeScript extensions (no tsc in the dev shell)
 - [ ] Verify the forum after rebuild: `systemctl status agent-forum`, the journal lists 127.0.0.1:7410 plus the tailnet addresses, `ss -ltnp | grep 7410` shows no 0.0.0.0 or LAN address, `curl http://mellon:7410/api/health` from Palantir, and an OmO session loads `forum_*` through tool_search (Pi: active at start) for a post/wait/claim/resolve round trip across two machines
-- [ ] Verify aeval after rebuild: the hourly timer (Mellon) / launchd agent (Palantir) runs clean, `aeval classify --llm --limit 5` works through `omo -p`, `aeval replay` on a real session (then `--sandbox` on Mellon), and Codex/Pi parsing on first real files
+- [ ] Verify aeval after rebuild: the hourly timer (Mellon) / launchd agent (Palantir) runs clean, `aeval classify --llm --limit 5` works through `omo -p`, `aeval replay` on a real session, and Codex/Pi parsing on first real files
 - [ ] Start labelling sessions in `aeval label` so reports and exports have data
-- [x] Sandbox sessions run unsupervised (destructive-guard skips bash/write/edit there) and `/unsupervised <task>` OmO template, inherited by orchestrator workers
+- [x] `/unsupervised <task>` OmO template, inherited by orchestrator workers
 - [ ] Try `/unsupervised` once after activation: template listed, ultrawork loads, a guarded command is refused without a dialog
-- [x] Orchestrator workers in agentbox sandboxes (`OMO_CLOUD` + `OMO_CLOUD_SANDBOX` per worker; evidence collection through `agentbox exec`)
-- [x] Sandbox env catalog (opnix-resolved, opt-in per sandbox via `agentbox env` / `--env`), read-only `GH_TOKEN`, and cloud-mode `publish` (push over SSH + draft PR via the local gh)
-- [ ] Before the next Mellon rebuild: create the 1Password item `Nix/AGENTBOX_GH_TOKEN` (fine-grained, read-only contents/metadata/issues/pull requests; token in notes) and run `sudo opnix token set` on Mellon; then check `opnix-secrets.service`, `agentbox env <box> GH_TOKEN`, `gh auth status` inside, and one `publish` with a draft PR
 - [x] Mellon GitHub key: create the `Nix/mellon-github` SSH Key item (ed25519) and add its public key to GitHub before rebuilding; then `ssh -T git@github.com` on Mellon answers without a 1Password prompt
-- [x] `omo --cloud local --sandbox`: OmO on the sandbox host drives its sandboxes (and orchestrator workers) without SSHing into itself
-- [ ] First overnight run on Mellon: select Mellon in the Mac's Herdr sidebar, `omo --cloud local --sandbox --env GH_TOKEN`, `/agent orchestrator`, `/unsupervised <goal incl. push + draft PR>`; check the PR in the morning
-- [ ] Verify sandboxed orchestrator workers after the next rebuild: `omo --cloud mellon --sandbox`, `/agent orchestrator`, `/unsupervised <goal>`; workers get `o<run>-<node>` sandboxes and Herdr tabs, settled results reach the leader ungated, branches land as `sandbox/<box>/*` in the leader's sandbox
 - [x] Gaming: Steam + GameMode (32-bit graphics already enabled by the NVIDIA module)
 - [ ] Verify the work WARP profile uses traffic-only mode and excludes Tailscale IPv4/IPv6 ranges
 
@@ -133,6 +113,18 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [ ] Declare a monitor option schema for connector, mode, scale, position, and workspace
 - [ ] Add Mellon kanshi profiles after monitor connector names are known
 
+## Sandboxes (sbx)
+
+- [x] Retire agentbox (Mellon) and exebox (Macs); cloud-mode is plain SSH only, orchestrator uses worktrees
+- [ ] Before rebuilding Mellon: clear the retired `10.231.0.0/16` route (`sudo tailscale set --advertise-routes=`) and delete the `sandbox.internal` split DNS entry in the Tailscale admin console
+- [ ] Before rebuilding the Macs: collect any branches out of old exebox VMs and `ssh exe.dev rm` them (the exebox reaper goes away with the rebuild)
+- [x] `sbx`: provider interface + contract tests, VM kinds (dev/agent/job), exe.dev provider on `@exedev/sdk`, git seed/pull via the GitHub integration, archive-then-reap (`features/sandbox`, `docs/sandbox.md`)
+- [ ] exe.dev setup: `sbx auth setup` (tag-scoped token), link GitHub on the Integrations page, `sbx github add <owner/repo>` per repo, attach printed integrations by tag
+- [ ] Live-verify `sbx` (`SBX_LIVE=1`): tag syntax and `tag --d`, `cp` of a paused template, tag-scoped token inheritance, `integrations attach` by tag, setup scripts with sudo, push through `github.int.exe.xyz`, remote kill on cancel; build `sbx` on Mellon (x86_64 tests not run yet)
+- [ ] pi-durable: sandbox `ExecutionEnv`, `isolation: "sandbox:<kind>"` for subagent/parallel, `--sandbox`/`/sandbox` sessions, `sandbox_run` tool
+- [ ] Measure exe.dev usage for a few weeks before deciding on standalone (metered) VMs
+- [ ] Mellon provider: self-hosted runner implementing the `sbx` provider interface (passes `tests/contract.ts`)
+
 ## Tooling / CI
 
 - [x] Allow direct-checkout work in this repository and ignore `.worktrees/`
@@ -178,9 +170,6 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
       (`hosts/common/optional/macbook.nix` + `home/noghartt/features/darwin`)
 - [ ] Bootstrap on the M4 Pro (DARWIN.md): set the hostname, install Nix, opnix token, first `darwin-rebuild switch --flake .#mithril`
 - [ ] Check `omo-memwatch` limits against this Mac's RAM (tuned for Palantir's 24 GB)
-- [x] exe.dev sandboxes alongside agentbox: `exebox` CLI (agentbox contract, contract tests at build, hourly reaper) and `omo --cloud exe --sandbox` (Palantir and Mithril)
-- [ ] exe.dev: register this Mac's 1Password agent key (or expose the registered one; optional `~/.ssh/exe_dev.pub` pins it), then verify end to end: `exebox ensure t --seed <repo>` creates a VM with rg/timeout, `omo --cloud exe --sandbox` runs read/edit/grep/PTY bash and `kill_bash` stops remote processes, a write `task` lane gets `<box>-<short>` and delivers `sandbox/<box>/task/...`, `publish` pushes, `exebox rm` frees the VM; check whether `start`/`resize` exist as assumed
-- [ ] exe.dev for orchestrator workers (`workers.placement: "exe"`), once the cloud-mode path has run for a while
 - [ ] homebrew module if an application is unavailable or unsuitable through nixpkgs
 - [ ] Karabiner/Hammerspoon-style key remaps (ref: fersilva16 darwin modules)
 

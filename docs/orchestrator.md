@@ -50,22 +50,12 @@ worker's pane and shared-checkout nodes split the leader's, and dialogs appear i
 pane. Outside Herdr, workers are hidden RPC children in `git worktree add` checkouts at the same
 path, and their dialogs are relayed to the leader's UI.
 
-Placement (`workers.placement`: `auto` | `sandbox` | `worktree`) decides where isolated nodes run.
-`auto` means sandboxes when `agentbox` is on PATH and the leader runs OmO (so Mellon), worktrees
-otherwise. Under sandbox placement a host-side leader gives each isolated node its own agentbox
-sandbox `o<run>-<node>` on this machine (a synthesized `local` cloud target in
-`orchestrator/sandbox.ts`), seeded from the host checkout and switched to `orch/<run>-<node>` at
-the leader's HEAD; a `workdir` node whose upstream is sandboxed may get its own sandbox seeded
-`--from` the upstream's. A leader in OmO cloud mode keeps taking workers to its cloud host (seeded
-from its sandbox with `--from`, collected `--into` it). The worker process stays local (its own
-Herdr tab in the leader's workspace, or an RPC child) with `OMO_CLOUD`/`OMO_CLOUD_SANDBOX`/
-`OMO_CLOUD_ENV` aiming its tools into the sandbox, so it runs unguarded there; evidence is read
-with git through `agentbox exec`, and each final settle commits leftovers and fetches the
-sandbox's branches into the repo as `sandbox/<box>/*`. Shared-checkout nodes (isolation
-`current`) under a host-side leader stay plain guarded local workers; reviewers always share the
-reviewed checkout. Worker sandboxes stay until idle expiry. Net, size and env come from the config
-defaults (`placement.ts`: net `dev`, size `medium`, env keys from `workers.envAllowed` or
-`OMO_CLOUD_ENV` under a cloud leader); `open` net needs `workers.allowOpenNet`.
+Isolated nodes (the default `worktree` isolation) get their own Git worktree on this machine;
+`workdir` nodes and reviewers share the checkout they build on or review, and shared-checkout
+nodes (isolation `current`) stay plain guarded local workers. A leader in OmO cloud mode
+(`OMO_CLOUD`) cannot create worktrees: its nodes need isolation `current` (`repo` is refused),
+run as local worker processes whose cloud-mode points at the leader's host directory, and
+evidence is read with git over cloud-mode's SSH master (`orchestrator/cloud.ts`).
 
 ## Leader tools
 
@@ -73,7 +63,7 @@ defaults (`placement.ts`: net `dev`, size `medium`, env keys from `workers.envAl
   shared board.
 - `orch_consult` asks Fable 5.1, or GPT-6 Astra when Claude's limits are at `spillAt`, one question
   with leader-supplied context through a one-shot read-only RPC child. Advisory only.
-- `orch_publish` pushes an accepted node's branch (`sandbox/<box>/<branch>` for sandbox nodes) to
+- `orch_publish` pushes an accepted worktree node's branch (once it has commits) to
   origin over SSH under a leader-chosen name, never forced and never the default branch, and can
   open a draft PR.
 
