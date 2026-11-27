@@ -8,6 +8,56 @@ whenever it feels like a checkpoint.
 
 ## [Unreleased]
 
+### Added
+
+- **home/noghartt/sandbox**: `sbx`, sandboxes behind a provider interface (capabilities, reusable
+  contract tests) with exe.dev as the first provider on the official `@exedev/sdk`. VM kinds set
+  egress, size, integrations and setup (`dev`, `agent` with no public internet, `job` for one-off
+  compute via `sbx run`); templates copied with `cp` for fast starts; repos seeded and pushed
+  through exe.dev's GitHub integration (no tokens on VMs), branches pulled back as `sbx/<name>/*`;
+  tag-scoped API token; hourly reaper archives branches before removing idle VMs. Never creates
+  metered standalone VMs (`docs/sandbox.md`).
+- **home/noghartt/pi-durable**: `/accounts` manages logins from inside a session. Bare, it lists every
+  login by provider (Claude with its fallback accounts, then each provider in the agent dir's `auth.json`):
+  signed in or not, email, and for pooled Claude accounts the block and which is active. `/accounts add
+  <name>` signs an extra Claude account in through pi's login dialog (URL, pasted code), `/accounts login
+  <provider>` signs the agent dir in to any provider pi offers OAuth for (its models join `/model`), and
+  `/accounts remove <name>` deletes an extra account after a confirmation; all complete their arguments.
+  Added and removed accounts take effect in the open session (the account pool is always there and
+  reloads), also accounts added from a shell, once `/accounts` or `/status` runs. The sign-in, order and
+  removal code is shared with `pi-durable accounts`, and the package's install check now runs tests
+  (`features/pi-durable/tests/`).
+- **home/noghartt/pi-durable**: an `agency` system-prompt section: the agent takes the clear next step
+  (watch a PR's CI and fix failures, run tests after a change, act on watcher reports) instead of ending
+  on "Should I ...?"; it still asks before destructive or hard-to-undo actions and on open decisions.
+- **home/noghartt/pi-durable**: Claude multi-account fallback. `pi-durable accounts login <name>` signs
+  extra Claude accounts in (each with its own `accounts/<name>/auth.json` and token refresh), `accounts
+  list` / `remove` manage them. A request that hits a usage limit before any content streamed continues on
+  the next account, and requests return to `main` once its window resets; blocks are shared across
+  processes in `accounts/state.json`. Switches show a notice, the footer shows the active account and
+  `/status` lists them; with one account nothing changes. The statusline's limits also read the extra accounts.
+- **home/noghartt/pi-durable**: `/btw <question>` asks a quick side question about the shown
+  conversation while the agent keeps working: one tool-less request on the conversation's model, streamed
+  into a panel, never written to the transcript. `/status` shows Claude/ChatGPT subscription limits (via
+  the statusline's shared cache), today's spend and tokens across every session by model, and session counts.
+- **home/noghartt/cli**: `pr-babysit` skill for Claude Code, Codex and Pi (`cli/agents/skills/`).
+  Run after opening a PR (ideally as a background subagent): it waits on CI, fixes failing checks and
+  actionable review threads, handles conflicts, pushes, and drafts replies for the user to post (the `gh`
+  shim still blocks posting), until the PR is green and quiet.
+- **home/noghartt/pi-durable**: deep research (`docs/deep-research.md`). `/research <question>` runs the
+  `research` skill: the conversation plans angles, fans out `researcher` subagents, has `research-critic`
+  review their notes, and writes a cited report with an annotated reading list to
+  `~/research/<date>-<slug>/`. New tools: `web_search` (Exa, Kagi), `web_fetch` (Exa reader, plain
+  fetch, headless Chrome with no window, Wayback Machine, Kagi summarizer; cached 30 days), `lookup`
+  (Wikipedia, OpenAlex, arXiv, Hacker News, GitHub), `research_note` (the researchers' only way to write) and
+  `research_verify` (checks note quotes against their pages). Researchers get no shell or file tools, since
+  they read untrusted pages. `EXA_API_KEY` comes from 1Password through `secrets-env.nix`; `KAGI_API_KEY` waits for its item.
+- **home/noghartt/pi-durable**: `/swarm <task>`, modelled on Antigravity's `/swarm`. The conversation
+  becomes a coordinator that adds workers (profiles, optional worktrees, sharded tasks). They
+  collaborate on a durable board where `@mentions` wake agents and waiting costs nothing. A
+  plain-code monitor alerts the coordinator when the swarm stalls. `/swarm board` shows the overview,
+  roster and posts, and `/swarm end` stops the swarm.
+
 ### Removed
 
 - **mellon**: agentbox (systemd-nspawn sandboxes, root daemon, net profiles, `sandbox.internal` DNS
@@ -20,18 +70,83 @@ whenever it feels like a checkpoint.
 - **home/noghartt/pi**: orchestrator sandbox placement (`workers.*`, `sandbox.ts`); isolated nodes use
   worktrees, a cloud-mode leader's nodes need isolation `current`. destructive-guard's sandbox skip
   and `aeval replay --sandbox` (now rejected) are gone too.
+- **overlays**: `overlays/pi.nix`. `pi-durable` moved to its own feature (see Changed).
+- **home/noghartt/leverage**: Leverage Computer CLI on Palantir. Upstream serves only a moving
+  `stable` download, so each release broke the pinned build. `~/.config/leverage` is left in place.
 - **home/noghartt/omo**: OmO no longer loads Pi's command palette, session tree, orchestrator
   or agent-forum client; Pi keeps all four.
 
+### Changed
+
+- **home/noghartt/pi-durable**: the `codex-reviewer` and `research-critic` profiles run on
+  GPT-6.2 Astra (`openai-codex/gpt-6.2-astra`) instead of GPT-6 Astra.
+- **home/noghartt/pi-durable**: `/swarm` members run on models other than the coordinator's.
+  `swarm add` now requires a profile. The coordinator's guide names its own model, sends mechanical
+  parts to cheap implementers and judgment calls to strong ones, and gives verifiers a different
+  model family from their authors. `add` takes a per-member `thinking` level (on agy, the model's
+  `-low`/`-medium`/`-high` variant). Antigravity profiles now join as board members: each post that
+  mentions one runs agy (continuing one agy conversation) with every post it has not seen, and
+  agy's answer is posted as its reply.
+- **home/noghartt/pi-durable**: `/fork` is now `/tree` filtered to user messages instead of a flat
+  message list, and both open under an overview of the session's branches (where each forked, what it
+  added, how it starts, which one is shown).
+- **home/noghartt/pi-durable**: `pi-durable` (1.0.1 -> 1.6.0) is a standalone feature instead of an
+  overlay, still built against the nixpkgs Pi package's own modules. It now loads skills, prompt
+  templates and AGENTS.md through Pi's resource loader, so a repository's `.agents/skills` are
+  found as in `pi`, following Pi's project trust. Typing `/` lists Pi's commands, templates and
+  `/skill:<name>`; `@` completes paths. `/tree`, `/fork` and `/clone` branch on Durable forks
+  inside one session, shown with Pi's tree selector. `/new`, `/resume` (Pi's session picker),
+  `/name`, `/session`, `/copy`, `/thinking`, `/reload` and `/trust` are new. Sessions reopen on
+  the branch last shown, and empty sessions are not kept. 1.0.1 sessions in `~/.pi/agent` are
+  not opened.
+- **home/noghartt/pi-next**: `pi` starts from an empty, hand-managed agent dir
+  (`~/.config/pi/agent`): no extensions, settings or logins carry over. The previous Pi module
+  stays only for the values OmO inherits; OmO is unchanged. Old sessions stay
+  in `~/.pi/agent`, and `aeval` still reads only that dir.
+- **flake**: `nixpkgs-darwin` ea9e3ef -> 619c39f (2026-11-22), which brings Pi 1.6.0 to the Macs.
+- **flake**: `nixpkgs` 0bb2eed -> 2786a2a (2026-11-01 -> 2026-11-21), which brings Pi 1.6.0 (from
+  1.4.0) to Mellon. `nixpkgs-hardware` is unchanged.
+
 ### Added
 
-- **home/noghartt/sandbox**: `sbx`, sandboxes behind a provider interface (capabilities, reusable
-  contract tests) with exe.dev as the first provider on the official `@exedev/sdk`. VM kinds set
-  egress, size, integrations and setup (`dev`, `agent` with no public internet, `job` for one-off
-  compute via `sbx run`); templates copied with `cp` for fast starts; repos seeded and pushed
-  through exe.dev's GitHub integration (no tokens on VMs), branches pulled back as `sbx/<name>/*`;
-  tag-scoped API token; hourly reaper archives branches before removing idle VMs. Never creates
-  metered standalone VMs (`docs/sandbox.md`).
+- **home/noghartt/pi-durable**: a tool result cut to 2000 lines / 50 KB keeps its complete text in a
+  temp file named in an `[info] Full output: <path>` diagnostic, as bash's output already did, so
+  long subagent, `parallel`, `agents read` or `antigravity` answers can be paged with `read`. The
+  file goes through the conversation's execution environment, ready for remote (cloud) ones.
+- **home/noghartt/pi-durable**: subagent profiles per model, shipped by the feature: Opus 5.5 and
+  Sonnet 5.5 workers, scout and reviewer; Codex reviewer (GPT-6 Astra) and worker (GPT-5.6 Sol);
+  and `runner: antigravity` profiles on Gemini 4 Neon (`gemini` read-only, `gemini-worker`
+  writing in its own worktree), run through agy as a nested call.
+- **home/noghartt/git-twig**: `git twig` 0.6.0 (built from source, all hosts): linked Git worktrees
+  with copy-on-write file clones; its bundled skill is linked into Claude Code, Codex and Pi.
+- **home/noghartt/pi-durable**: isolated subagents get their worktrees from `git twig new`
+  (`PI_DURABLE_TWIG=0` uses `git worktree add`). Warnings and errors collapse into a `⚠ n` / `✖ n`
+  count in the footer; `/notices` shows or hides them and `/notices clear` dismisses them.
+- **home/noghartt/pi-durable**: `@session:`, `@agent:` and `@label:` complete in the editor (sessions,
+  conversations, labels, and labels after `#`); targets and labels with spaces can be quoted, and a
+  trailing backtick or punctuation is no longer read as part of a reference.
+- **home/noghartt/pi-durable**, **home/noghartt/pi-next**: Rex integration (`docs/rex.md`): inside a Rex
+  terminal, `pi` and pi-durable report working/blocked/done/error with the Program Status Protocol
+  (pi-durable also per subagent), and get Rex's session-start context as a `rex` prompt section.
+- **home/noghartt**: every worktree creator uses `git twig new` (`docs/git-twig.md`): Pi/OmO's
+  `worktree-agents` and orchestrator, Herdr (patched), and Claude Code through `WorktreeCreate`/
+  `WorktreeRemove` hooks that keep its layout; pi-durable's prompt steers manual worktrees to twig.
+- **home/noghartt/cli**: Cursor's `thermo-nuclear-code-quality-review` skill, pinned, for Claude Code,
+  Codex and Pi (`cli/agents/skills.nix`). It is user-invoked only (`disable-model-invocation`).
+- **home/noghartt/pi-durable**: agents. Subagent profiles are markdown files (`agents/*.md` in
+  the agent dir, `~/.agents/agents`, or a trusted project) with their own model, thinking, tools,
+  turn limit and instructions; `general`, `explore`, `reviewer` and `worker` are built in.
+  `subagent` waits without holding a process, or runs in the background and reports back;
+  `parallel` fans out up to 16 tasks, 4 at a time by default. `worktree` isolation gives a
+  subagent its own git branch and checkout. `watch` wakes the agent on a command's exit or
+  matching output, file changes, or a timer. `agents` messages, reads and stops this session's
+  agents; `sessions` reads and messages other sessions through an inbox. Labels in `/tree` and
+  `/label`, `@session:`/`@agent:`/`@label:` references in input, an agents panel with `/stop`,
+  and `/dashboard` (also `pi-durable agents`) listing every session by project with its live
+  status. All of it survives a restart.
+- **home/noghartt/pi-next**: `antigravity` tool that delegates a task to the Antigravity CLI
+  (`agy`) as a sub-agent on its Gemini/Claude models. Read-only by default; `allowWrites` asks
+  first. Packages in `features/pi-next/extensions/` are linked into `~/.config/pi/agent/extensions/`.
 - **palantir**: OpenVPN Connect, from the `openvpn-connect` cask.
 - **home/noghartt/omo**: Refuseless GLM 5.3 Abliterated (`refuseless/glm-5.3-abliterated`)
   is a custom OmO provider and is in the model picker: 1M context, 131k output,
@@ -93,6 +208,9 @@ whenever it feels like a checkpoint.
 
 ### Fixed
 
+- **home/noghartt/pi**: the statusline's limits fetcher also reads `~/.config/pi/agent/auth.json`
+  (pi-next's and pi-durable's agent dir), so a fetch from any process sees that Claude login, not only
+  one run with `PI_CODING_AGENT_DIR` set.
 - **home/noghartt/pi**: the statusline shows Claude limits again under OmO. OmO now signs
   Claude accounts in through the bundled Claude CLI, which keeps their tokens in its own store
   (the macOS Keychain), so `auth.json` holds no token the limits fetcher could use. Claude
@@ -110,6 +228,8 @@ whenever it feels like a checkpoint.
   `models.json` instead caps both models' planning `contextWindow` at 300k, which still
   compacts near ~210k while the account keeps 1M. Activation drops the stale key from the live
   `settings.json`.
+- **home/noghartt/hashcards**: declares SQLite, which it links against; Palantir's build failed
+  with `library not found for -lsqlite3`.
 - **home/noghartt/leverage**: bumped to 0.2.293. Upstream's moving `stable` download changed,
   so the pinned hash no longer matched and Palantir's rebuild failed.
 - **overlays**: opencode 2.2.5 builds on the Macs again. Its `node_modules` hash in nixpkgs went

@@ -4,5 +4,6 @@
     ./claude.nix
     ./codex.nix
     ./opencode.nix
+    ./skills.nix
   ];
 }

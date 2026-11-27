@@ -1,4 +1,3 @@
-{ pkgs, agentPath, ... }:
 {
   imports = [
     ./settings.nix
@@ -16,9 +15,9 @@
 
   programs.pi-coding-agent = {
     enable = true;
-    package = agentPath.wrap pkgs.pi-coding-agent;
+    # features/pi-next installs `pi`; this module only supplies
+    # the values OmO inherits.
+    package = null;
   };
-  # Experimental durable agent; shares Pi's auth, settings, and keybindings.
-  home.packages = [ (agentPath.wrap pkgs.pi-durable) ];
   home.sessionVariables.PI_OFFLINE = true;
 }

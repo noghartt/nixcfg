@@ -2,6 +2,7 @@
   fetchFromGitHub,
   lib,
   rustPlatform,
+  sqlite,
 }:
 rustPlatform.buildRustPackage (finalAttrs: {
   pname = "hashcards";
@@ -15,6 +16,8 @@ rustPlatform.buildRustPackage (finalAttrs: {
   };
 
   cargoHash = "sha256-CK4k8etB4MZUkJWk/OabuBuIN+AkT/GulsYS1Qa7NVE=";
+
+  buildInputs = [ sqlite ];
 
   # The suite starts HTTP servers on picked ports, which the Darwin build
   # sandbox refuses; upstream's own flake skips it too.

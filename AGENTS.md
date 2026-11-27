@@ -28,16 +28,18 @@ hosts/common/local.nix       per-machine private additions, imported by every ho
 hosts/<host>/                host specs, routed to mkNixOSConfig or mkDarwinConfig
 home/<user>/user.nix         cross-platform user factory (functor + overrideAttrs)
 home/<user>/home.nix         portable HM baseline imported on every host
-home/<user>/features/cli/    shared shell/dev tools; agents/ holds Claude, Codex, OpenCode, agent-path gh shim
+home/<user>/features/cli/    shared shell/dev tools; agents/ holds Claude, Codex, OpenCode, agent-path gh shim, shared skills (skills.nix; own ones in skills/, e.g. pr-babysit, rex-workflows)
 home/<user>/features/desktop/ portable desktop default + platform-specific modules
 home/<user>/features/herdr/  standalone Herdr feature: native HM settings + pinned package
-home/<user>/features/pi/     standalone Pi feature: settings + packaged extensions
+home/<user>/features/pi/     previous Pi setup: settings + packaged extensions OmO inherits; no longer installs `pi`
+home/<user>/features/pi-next/ `pi` on a hand-managed agent dir (`~/.config/pi/agent`); Nix links only extensions/ (antigravity, rex) and skills/ (cli/agents/skills.nix)
+home/<user>/features/pi-durable/ `pi-durable`: durable (SQLite) agent with pi's TUI, skills and /tree, built on Pi's Durable library; subagent profiles, parallel fan-out, /swarm (coordinator + workers on any profile, Antigravity included, on a shared board), worktrees, watchers, cross-session messaging, dashboard, /btw side questions, /status (limits, daily usage), Claude multi-account fallback on usage limits (`pi-durable accounts`, `/accounts` also signs in to other providers); src/ + tests/ + package.nix + agents/ (per-model subagent profiles, incl. Antigravity runner) (all hosts)
 home/<user>/features/omo/    standalone OmO Native (`omo`) feature: own agent dir, model chains, memory guards (palantir, mithril, mellon)
 home/<user>/features/vscode/ standalone VS Code feature: marketplace extensions + live settings.json
 home/<user>/features/cua/    standalone Cua Driver feature: pinned app + daemon, skill and docs MCP for harnesses (palantir, mithril)
 home/<user>/features/darwin/  shared Mac composition (apps, agent stack, Ghostty+Herdr) imported by palantir.nix and mithril.nix
 home/<user>/features/hashcards/ standalone hashcards (spaced repetition) CLI, built from source; bump package.nix (all hosts)
-home/<user>/features/leverage/ standalone Leverage Computer CLI: hash-pinned `stable` build, self-updater off; bump package.nix (palantir)
+home/<user>/features/git-twig/  standalone `git twig` (CoW linked worktrees), built from source; skill linked into every harness, every worktree creator goes through it (all hosts)
 home/<user>/features/sandbox/ standalone `sbx`: provider-agnostic sandboxes (provider interface + contract tests, VM kinds, git seed/pull), exe.dev provider on @exedev/sdk, hourly reaper (all hosts)
 home/<user>/features/agent-evals/ standalone eval pipeline: `aeval` ingest/label/classify/report/export/replay over session transcripts (both hosts)
 home/<user>/features/pi/extensions/agent-forum/  agent forum client tools (forum_*), loaded by Pi only
@@ -84,9 +86,9 @@ docs/                        per-feature design notes (read the matching doc bef
 - Hardware-specific modules live in the host dir (e.g. mellon's `nvidia.nix`); promote to
   `hosts/common/optional/` only when a second host needs them.
 - Package overrides shared by Linux and Darwin live in `overlays/` and are applied by both
-  common host modules. Pi itself comes from nixpkgs; `overlays/pi.nix` only builds
-  `pi-durable`, the experimental durable agent upstream runs only from source, pinned to
-  1.0.1 (the last release that ships its CLI entry point).
+  common host modules. Pi comes from nixpkgs unmodified; `pi-durable` is our own app on the
+  Durable library inside that Pi package (`features/pi-durable/`), marked broken when Pi moves
+  past its `verifiedPiVersion` (see `docs/pi-durable.md`).
   `overlays/ghostty.nix` (Darwin only) keeps `ghostty-bin` at a release newer than the
   locked `nixpkgs-darwin` and steps aside once the lock reaches that version.
   `overlays/opencode.nix` (Darwin only) replaces opencode 2.2.5's stale `node_modules` hash
@@ -156,6 +158,11 @@ before changing a feature, and update it in the same change.
 
 - `docs/sandbox.md`: `sbx` sandboxes: provider interface, kinds, exe.dev provider, auth, git flow, reaper, adding a provider.
 - `docs/herdr.md`: Herdr launch from Ghostty, saved machines, plugins and keybindings.
+- `docs/rex.md`: Rex (replaces Herdr): program status and session context from `pi` and pi-durable.
+- `docs/git-twig.md`: CoW worktrees, and every place (pi-durable, Pi extensions, Herdr patch, Claude hooks) that creates them.
+- `docs/pi-durable.md`: the Durable agent, its TUI (skills, /tree branches, labels, sessions, dashboard, /swarm), agent tools
+  (profiles, subagent, parallel, watch, agents, sessions), re-porting.
+- `docs/deep-research.md`: `/research` runs in pi-durable (Exa/Kagi tools, headless Chrome fallback, researcher profiles, plain-folder reports).
 - `docs/omo.md`: harness modules, agent-path `gh` shim, OmO settings, model chains, memory guards.
 - `docs/orchestrator.md`: leader + worker runs, graph, placement, leader tools.
 - `docs/statusline.md`: footer, sidebar, limits.
@@ -163,7 +170,7 @@ before changing a feature, and update it in the same change.
 - `docs/omo-ui.md`: ui-prompt and ui-chrome, OmO version guard.
 - `docs/agent-evals.md`: `aeval` ingest, labelling, reports, export, replay.
 - `docs/agent-forum.md`: forum service and client tools.
-- `docs/extensions.md`: herdr-fork and findings-cache.
+- `docs/extensions.md`: herdr-fork, findings-cache and antigravity (`agy` sub-agent).
 - `docs/cloud-mode.md`: `--cloud` over SSH, `publish`.
 
 ## Commands

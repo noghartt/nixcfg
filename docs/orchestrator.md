@@ -47,8 +47,8 @@ Inside Herdr each worker is a visible, interactive harness in its worktree works
 workspace and branched from the leader's commit even when the leader runs in a linked worktree,
 since Herdr only creates worktrees from the main checkout); `workdir` nodes split the upstream
 worker's pane and shared-checkout nodes split the leader's, and dialogs appear in the worker's own
-pane. Outside Herdr, workers are hidden RPC children in `git worktree add` checkouts at the same
-path, and their dialogs are relayed to the leader's UI.
+pane. Outside Herdr, workers are hidden RPC children in `git twig new` checkouts (`docs/git-twig.md`)
+at the same path, and their dialogs are relayed to the leader's UI.
 
 Isolated nodes (the default `worktree` isolation) get their own Git worktree on this machine;
 `workdir` nodes and reviewers share the checkout they build on or review, and shared-checkout

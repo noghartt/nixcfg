@@ -19,7 +19,6 @@
   nixpkgs.config.allowUnfree = true;
   nixpkgs.overlays = [
     flake.outputs.overlays.codex
-    flake.outputs.overlays.pi
     flake.outputs.overlays.ghostty
     flake.outputs.overlays.opencode
   ];

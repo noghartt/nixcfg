@@ -9,7 +9,8 @@ files edited this session with `git diff HEAD` stats, git branch/upstream/status
 version). Git runs via `pi.exec` off the render path. Limits (`statusline/limits.ts`): Claude
 (5h, 7d, per-model weekly, extra-usage spend from `api/oauth/usage`, accounts with identical
 tokens deduped and pooled) and ChatGPT (`chatgpt.com/backend-api/wham/usage`). Tokens are read
-read-only from Pi's and OmO's `auth.json` and Codex CLI's `~/.codex/auth.json`, never
+read-only from Pi's and OmO's `auth.json` (plus pi-durable's extra Claude accounts,
+`<agent dir>/accounts/*/auth.json`) and Codex CLI's `~/.codex/auth.json`, never
 refreshed. Under OmO, Claude comes from OmO's own usage polling instead: OmO signs Claude
 accounts in through the bundled Claude CLI, whose tokens stay in the CLI's store (Keychain on
 macOS), so the column reads `pi.getSubscriptionLimits()` (providers `anthropic-subscription`

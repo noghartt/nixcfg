@@ -1,0 +1,8 @@
+{
+  "name": "pi-durable",
+  "private": true,
+  "type": "module",
+  "imports": {
+    "#pi/*": "./pi/*"
+  }
+}

@@ -89,15 +89,44 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [ ] Tune `omo-memwatch` limits (4 GB warn / 12 GB stop) from its first real snapshots
 - [x] Pi/OmO statusline: badge-free footer and fixed right sidebar column (fullscreen TUI) with title, context, subagents, orchestrator workers, a tokens-per-turn sparkline, Claude plan limit meters with pace words and run-out time, and a Todo section mirroring OmO's todo list
 - [x] Cua Driver 0.33.1 on Palantir: pinned app + launchd daemon, skill for Pi/Claude/Codex (not OmO), Cua docs MCP
-- [x] Leverage Computer CLI 0.2.108 on Palantir: hash-pinned binary, self-updater off
-- [ ] Leverage onboarding: `leverage login`, then `leverage agent docs onboard` (scan, approve, apply, open the activation URL)
-- [x] Agent PATH `gh` shim refusing GitHub comments/reviews for every harness (Pi, pi-durable, OmO, Claude Code, Codex)
+- [x] Agent PATH `gh` shim refusing GitHub comments/reviews for every harness (Pi, OmO, Claude Code, Codex)
 - [x] Global `.omo/` git ignore; quiet Pi/OmO startup, condensed changelog, resume-hint exit, OmO tips off
 - [x] OmO-only extension packages auto-discovered from `features/omo/extensions/`
 - [x] Orchestrator: consistent `[orchestrator]` relay prefix + system-prompt note; `/agent` switch between omo and leader mode
 - [x] OmO `ui-prompt`: prompt card + info line, in-prompt questions, `Ctrl+X` chords, `Tab` agent cycle, title with busy dot, turn footer, bar cursor
 - [x] OmO `ui-chrome`: modal dialogs/pickers/panels over a faded backdrop, compact tool rows, transcript/code/notice/widget cards
 - [ ] Recheck `ui-prompt`/`ui-chrome` internal hooks (their `host.ts` headers) on every OmO version bump
+- [x] Bare `pi` on its own agent dir (`features/pi-next`), in parallel with OmO
+- [x] `antigravity` tool in bare `pi`: `agy` as a sub-agent (Nix-tracked `pi-next/extensions/`)
+- [ ] Try `agy acp` instead of `-p` if multi-turn or permission prompts through Pi are needed
+- [x] `pi-durable` as a standalone feature (`features/pi-durable/`) on Pi's resource loader and TUI components
+- [x] `pi-durable` parity: `/skill:*` and prompt templates, `@` paths, `/tree` + `/fork` + `/clone` on Durable forks, `/new` + `/resume` + `/name`, `/trust`, `/reload`
+- [x] `pi-durable` agents: profiles (`agents/*.md`), `subagent` (parked or background), `parallel` fan-out with a cap, worktree isolation, `watch` (command/file/timer), `agents` + `sessions` messaging with an inbox, labels in `/tree`, `@session:`/`@agent:`/`@label:` references, agents panel + `/stop`, `/dashboard` + `pi-durable agents`
+- [ ] Verify `pi-durable` agents with real models after the next switch: a profile with its own model, a `parallel` of `worker`s merging cleanly, a background subagent's report, a `watch` on a real test run, a message between two open sessions
+- [x] `pi-durable` `/btw` (tool-less side question, not kept) and `/status` (subscription limits, today's usage across sessions, session counts)
+- [x] `pi-durable` Claude multi-account fallback: `pi-durable accounts login/list/remove`, an `AccountPool` that moves a request limited before content to the next account, shared blocks in `accounts/state.json`
+- [ ] Sign a second Claude account in with `pi-durable accounts login` (browser) and watch a real usage-limit switch and the return to `main`
+- [x] `/accounts` in the TUI: list logins by provider (emails, blocks, active), `add <name>`, `login <provider>` (OAuth), `remove <name>`; the pool reloads in the open session
+- [ ] Finish a real `/accounts add` and `/accounts login openai-codex` sign-in in the TUI (checked only up to the code prompt)
+- [ ] Try `/btw` mid-run in the TUI (panel over a running bash, Esc aborting) and `/status` with a Claude login after the next switch
+- [ ] Try `git twig` worktrees: a `worker` subagent in a large repo (TWIG_TRACE=1 shows CoW), and `git twig adopt --dry-run` on existing worktrees; build git-twig on Mellon (Linux reflink path untested); `claude --worktree` and a Claude subagent with `isolation: worktree` (hooks), `herdr worktree create` (patch)
+- [x] Rex integration for `pi` and pi-durable: program status (OSC 7501) and session-start context (`docs/rex.md`)
+- [ ] Herdr is no longer used (Rex replaced it): decide whether to drop `features/herdr`, its twig patch, the herdr-state/herdr-fork Pi extensions and the orchestrator's Herdr placement, or keep them for Mellon
+- [ ] Rex: open a pi-durable subagent or the orchestrator's workers in Rex panes (`rex split`), as Herdr placement did
+- [x] `pi-durable` `/swarm` (agy-style coordinator, workers, mention-woken board, stall monitor, `/swarm board`)
+- [ ] Verify `/swarm` with real models after the next switch: a worktree author plus a verifier, merged by the coordinator
+- [x] `/swarm` members on other models than the coordinator (required profile, model-picking guide) and Antigravity members (agy runs per mention)
+- [ ] Verify a mixed `/swarm` for real: Fable coordinator, Sonnet/Codex authors, a Codex or Opus verifier, a Gemini member through agy
+- [ ] `/swarm` follow-ups: board channels, forked workers, uncommitted changes in worktrees, workers adding helpers
+- [ ] `pi-durable` headless mode (`run "<prompt>"`, resumable) for unattended jobs
+- [ ] `pi-durable`: Durable hooks (tests after edits), durable approvals (signals for `beforeTool` gates)
+- [ ] `pi-durable`: spend caps per subagent/fan-out (beyond `maxTurns`), and a global cap on concurrent subagents
+- [x] Deep research (`docs/deep-research.md`): `/research` + `research` skill, `researcher` and `research-critic` profiles, `web_search` (Exa/Kagi), `web_fetch` ladder (Exa, fetch, headless Chrome, Wayback, Kagi summarizer; cached), `lookup` (Wikipedia, OpenAlex, arXiv, HN, `gh`), `research_note`, `research_verify`
+- [x] Deep research: `EXA_API_KEY` item in the `Nix` vault, mapped in `secrets-env.nix`
+- [ ] Deep research: create the `KAGI_API_KEY` item (notes field), THEN add its mapping back to `secrets-env.nix` (`opnix env` fails all-or-nothing); run a first `/research` end to end with real keys (Exa highlights and Kagi request shapes are untested)
+- [ ] Deep research: after the switch, check `web_fetch` reaches the `headless chrome` step through `PI_DURABLE_CHROME` (Macs and Mellon); restart the general `cua-driver` agent, which answered every call with `permissions_pending` (exit 75) during testing
+- [ ] Deep research: opt-in logged-in route (`/research --logged-in`, a Cua Driver runtime with `--grant existing-profile` for that run only; Cua notes in the doc), hard spend caps per run
+- [ ] Re-port `pi-durable` whenever nixpkgs moves Pi past `verifiedPiVersion` (evaluation warns)
 - [x] Herdr `/fork` into a new pane (Pi + OmO) and OmO findings cache shared across worktrees
 - [x] Statusline limits: shared cross-process cache + lock, ChatGPT group, pooled Claude accounts, pace ticks, todos-stalled marker
 - [ ] Cua Driver first run: grant Accessibility and Screen Recording (`cua-driver permissions grant`), then check `cua-driver doctor`

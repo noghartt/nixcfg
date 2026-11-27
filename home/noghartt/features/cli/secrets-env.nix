@@ -26,6 +26,13 @@ let
       name = "REFUSELESS_API_KEY";
       reference = "op://Nix/REFUSELESS_API_KEY/notesPlain";
     }
+    # pi-durable's research tools (docs/deep-research.md); key in notes.
+    # KAGI_API_KEY joins once its item exists: one missing reference makes
+    # `opnix env` export nothing at all.
+    {
+      name = "EXA_API_KEY";
+      reference = "op://Nix/EXA_API_KEY/notesPlain";
+    }
   ];
 
   configJson = builtins.toJSON { vars = envVars; };

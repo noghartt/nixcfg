@@ -4,12 +4,18 @@ AI harnesses use their native Home Manager modules. Claude Code, Codex, and Open
 small per-harness modules under `features/cli/agents/`; Pi is a standalone feature because it
 owns model settings and Nix-packaged extensions. Claude's global `settings.json` is a writable
 runtime file: activation refreshes Nix-owned top-level keys while preserving tool-injected keys
-such as hooks. Codex's `config.toml` is writable the same way (Codex saves project trust there),
+such as hooks; within `hooks`, Nix owns only the worktree events (`docs/git-twig.md`). Codex's `config.toml` is writable the same way (Codex saves project trust there),
 merged per leaf so hand-added MCP servers survive beside Nix's. Cua Driver gives Pi, Claude Code, and Codex computer use: its notarized
 `CuaDriver.app` is pinned in Nix but copied to `/Applications` on activation, because macOS
 permission grants, LaunchServices, and the CLI's relaunch check key on that path. Its skill is
 pinned to the same release tag; OmO filters it out because its native `computer` tool covers
 the same ground. Telemetry and the self-updater are off; bump `features/cua/package.nix`.
+`features/pi` is the previous Pi setup: it supplies the values OmO inherits below, but no longer
+installs `pi`. `features/pi-next` does, and `features/pi-durable` installs `pi-durable`
+(`docs/pi-durable.md`), both with `PI_CODING_AGENT_DIR` defaulting to `~/.config/pi/agent`
+inside the wrappers only; Nix writes there
+only one `extensions/<name>` link per package in `features/pi-next/extensions/`, so Pi is otherwise
+configured by hand and changes to it never reach OmO.
 Every harness binary (Pi, `pi-durable`, OmO, Claude Code, Codex) is wrapped by
 `cli/agents/agent-path.nix` (`agentPath.wrap`, or `agentPath.prependPath` in an existing
 wrapper script) so only its process tree sees `~/.agents/bin` first on PATH. The `gh` shim

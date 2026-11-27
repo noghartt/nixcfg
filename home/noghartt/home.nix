@@ -6,9 +6,12 @@
     ../../config/neovim
     ./features/agent-evals
     ./features/cli
+    ./features/git-twig
     ./features/hashcards
     ./features/herdr
     ./features/pi
+    ./features/pi-durable
+    ./features/pi-next
     ./features/sandbox
   ];
 

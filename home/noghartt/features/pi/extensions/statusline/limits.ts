@@ -1,4 +1,4 @@
-import { closeSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
+import { closeSync, openSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -99,9 +99,25 @@ function agentDirs(): Set<string> {
 			process.env.OMO_CODING_AGENT_DIR,
 			process.env.SENPI_CODING_AGENT_DIR,
 			join(home, ".pi", "agent"),
+			// pi-next's and pi-durable's agent dir: listed so every process's fetch sees their logins, not only theirs.
+			join(home, ".config", "pi", "agent"),
 			join(home, ".omo", "agent"),
 		].filter((dir): dir is string => Boolean(dir)),
 	);
+}
+
+// pi-durable's extra Claude accounts (`pi-durable accounts login <name>`) each keep their own
+// auth.json under `<agent dir>/accounts/<name>/`; their windows pool with the rest.
+function authFiles(): string[] {
+	return [...agentDirs()].flatMap((dir) => {
+		let extra: string[] = [];
+		try {
+			extra = readdirSync(join(dir, "accounts"), { withFileTypes: true })
+				.filter((entry) => entry.isDirectory())
+				.map((entry) => join(dir, "accounts", entry.name, "auth.json"));
+		} catch {}
+		return [join(dir, "auth.json"), ...extra];
+	});
 }
 
 // Tokens are only read: Pi, OmO, and Codex each rotate their own refresh tokens, and a
@@ -121,8 +137,8 @@ export function discoverAccounts(now = Date.now()): Account[] {
 		);
 		if (!duplicate) claude.push({ provider: "claude", access: slot.access, refresh: slot.refresh });
 	};
-	for (const dir of agentDirs()) {
-		const auth = readJson(join(dir, "auth.json")) as Record<string, unknown> | undefined;
+	for (const file of authFiles()) {
+		const auth = readJson(file) as Record<string, unknown> | undefined;
 		if (!auth || typeof auth !== "object") continue;
 		for (const provider of ["anthropic", "anthropic-subscription"]) {
 			for (const slot of oauthSlots(auth[provider])) if (live(slot.expires) && slot.access.startsWith("sk-ant-oat")) addClaude(slot);
@@ -333,6 +349,33 @@ function claudeEmail(access: string): Promise<string | undefined> {
 		});
 	claudeEmails.set(access, pending);
 	return pending;
+}
+
+// The email of each OAuth login in one auth.json, by provider id, for pi-durable's /accounts:
+// Claude through the same cached profile request as below, ChatGPT from its token, OmO's
+// Claude CLI slots from their recorded profile, and any other credential that stores one.
+// Expired tokens are skipped, as in discoverAccounts.
+export async function authFileEmails(path: string, now = Date.now()): Promise<Record<string, string>> {
+	const auth = readJson(path) as Record<string, unknown> | undefined;
+	if (!auth || typeof auth !== "object") return {};
+	const found = await Promise.all(
+		Object.entries(auth).map(async ([provider, credential]): Promise<[string, string | undefined]> => {
+			const stored = text((credential as { email?: unknown } | null)?.email);
+			const slot = oauthSlots(credential).find((candidate) => candidate.expires === undefined || candidate.expires > now);
+			if ((provider === "anthropic" || provider === "anthropic-subscription") && slot?.access.startsWith("sk-ant-oat")) {
+				return [provider, (await claudeEmail(slot.access)) ?? stored];
+			}
+			if ((provider === "chatgpt-subscription" || provider === "openai-codex") && slot) {
+				return [provider, chatgptEmail(slot.access) ?? stored];
+			}
+			const profiles = (credential as { accounts?: unknown } | null)?.accounts;
+			const profile = Array.isArray(profiles)
+				? profiles.map((entry) => text((entry as { profile?: { email?: unknown } } | null)?.profile?.email)).find(Boolean)
+				: undefined;
+			return [provider, stored ?? profile];
+		}),
+	);
+	return Object.fromEntries(found.filter((entry): entry is [string, string] => entry[1] !== undefined));
 }
 
 // Signed-in accounts per provider, in discovery order. Resolved per process and never

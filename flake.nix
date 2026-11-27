@@ -105,7 +105,6 @@
     in
     {
       overlays.codex = import ./overlays/codex.nix;
-      overlays.pi = import ./overlays/pi.nix;
       overlays.ghostty = import ./overlays/ghostty.nix;
       overlays.opencode = import ./overlays/opencode.nix;
       overlays.grok-bot = import ./overlays/grok-bot.nix;
