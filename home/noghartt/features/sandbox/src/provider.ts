@@ -54,18 +54,27 @@ export interface KindSpec {
   env: Readonly<Record<string, string>>;
 }
 
-/** A git checkout to seed a sandbox with (see git.ts). */
+/** A git checkout to seed a sandbox with; seeding is core (seed.ts), on exec/writeFile. */
 export interface RepoSpec {
   /** A local checkout's path, or `owner/repo` on GitHub. */
   source: string;
   branch?: string;
 }
 
+/** What the provider records about the checkout, so every machine sees it. */
+export interface CheckoutMeta {
+  /** `owner/repo`, or the repository's directory name. */
+  repo: string;
+  branch?: string;
+  /** The commit the checkout was seeded at; the base for incremental pulls. */
+  commit?: string;
+}
+
 export interface CreateSpec {
   kind: KindSpec;
   /** Human name, unique among sandboxes; generated when absent. */
   name?: string;
-  repo?: RepoSpec;
+  checkout?: CheckoutMeta;
 }
 
 export interface ForkSpec {
@@ -89,6 +98,8 @@ export interface SandboxInfo {
   /** `owner/repo` or the repository's directory name. */
   repo?: string;
   branch?: string;
+  /** Commit the checkout was seeded at. */
+  commit?: string;
   /** Absolute or home-relative directory holding the checkout; commands start here by default. */
   workdir?: string;
   /** The default HTTPS URL, when the provider has one. */
@@ -110,10 +121,19 @@ export interface ExecOptions {
   onStderr?: (chunk: string) => void | Promise<void>;
   /** Keep output in the result (default true); false streams with bounded memory. */
   capture?: boolean;
+  /**
+   * Standard input, buffered: it is uploaded before the command starts (exe.dev's
+   * API has no stdin), so it suits files and prompts, not interactive streams.
+   * Without it, stdin is empty.
+   */
+  stdin?: string | Uint8Array;
 }
 
 export interface ExecResult {
-  /** 128+N when killed by signal N; 124 on timeout. */
+  /**
+   * The command's status: 128+N when killed by signal N; on `timeoutMs`, 124, or
+   * 137 when it ignored SIGTERM for the 10-second grace period.
+   */
   exitCode: number;
   stdout: string;
   stderr: string;
@@ -131,7 +151,10 @@ export interface Sandbox {
   /** `ssh` destination, when `interactiveShell`. */
   readonly sshDest?: string;
 
-  /** Run a shell script. A nonzero exit is a result, not an error. */
+  /**
+   * Run a POSIX sh script in the home directory. A nonzero exit is a result, not an
+   * error. Does not count as use: callers record use with `touch`.
+   */
   exec(command: string, options?: ExecOptions): Promise<ExecResult>;
   /** Paths are relative to the home directory unless absolute. Binary-safe. */
   readFile(path: string, options?: { signal?: AbortSignal }): Promise<Uint8Array>;
@@ -146,6 +169,8 @@ export interface Sandbox {
   /** Needs `httpsUrl`. */
   url(port?: number): string;
   setKeep(keep: boolean): Promise<void>;
+  /** Record use now, for the reaper. Commands, file operations and the reaper's own probes do not. */
+  touch(): Promise<void>;
 }
 
 export interface TemplateInfo {
@@ -163,9 +188,16 @@ export interface Templates {
   remove(kind: string): Promise<boolean>;
 }
 
+/**
+ * Secret integrations are account-level grants, so sbx does not hold the right
+ * to make them: these return the commands the user runs once, with their own
+ * credentials, to attach integrations to sandboxes by tag.
+ */
 export interface Integrations {
-  /** Give sandboxes access to a GitHub repository without a token on them. */
-  addGithub(repo: string, options?: { readonly?: boolean }): Promise<string>;
+  /** Give sandboxes of kinds tagged for it access to a GitHub repository, with no token on them. */
+  githubCommands(repo: string, options?: { readonly?: boolean }): string[];
+  /** Attach a kind's integrations to every sandbox of the kind. */
+  kindCommands(kind: KindSpec): string[];
 }
 
 export interface SandboxProvider {
@@ -185,6 +217,13 @@ export interface SandboxProvider {
   readonly templates?: Templates;
   /** Present when `secretIntegrations`. */
   readonly integrations?: Integrations;
+  /**
+   * URL a sandbox can clone and push `owner/repo` through without credentials,
+   * when the provider offers one; core seeding probes it before relying on it.
+   */
+  gitRemote?(github: string): string | undefined;
+  /** Remove half-made sandboxes left by failed operations older than this; returns their ids. */
+  sweep?(options: { olderThanMs: number }): Promise<string[]>;
 }
 
 export class UnsupportedError extends Error {

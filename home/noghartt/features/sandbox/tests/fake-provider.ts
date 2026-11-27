@@ -58,7 +58,6 @@ export async function fakeProvider(): Promise<SandboxProvider & { cleanup(): Pro
     }
     #path(p: string) {
       if (this.status !== "running") throw new Error(`${this.name} is not running`);
-      this.lastUsed = new Date();
       return isAbsolute(p) ? p : join(this.dir, p);
     }
     exec(command: string, o: ExecOptions = {}): Promise<ExecResult> {
@@ -68,9 +67,10 @@ export async function fakeProvider(): Promise<SandboxProvider & { cleanup(): Pro
         const child = spawn("sh", ["-c", command], {
           cwd,
           env: { ...process.env, ...this.env, ...o.env, HOME: this.dir },
-          stdio: ["ignore", "pipe", "pipe"],
+          stdio: [o.stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"],
           detached: true,
         });
+        if (o.stdin !== undefined) child.stdin!.end(o.stdin);
         let stdout = "";
         let stderr = "";
         let timedOut = false;
@@ -92,11 +92,21 @@ export async function fakeProvider(): Promise<SandboxProvider & { cleanup(): Pro
         o.signal?.addEventListener("abort", onAbort, { once: true });
         child.stdout.setEncoding("utf8").on("data", (c: string) => {
           if (o.capture !== false) stdout += c;
-          o.onStdout?.(c);
+          try {
+            o.onStdout?.(c);
+          } catch (error) {
+            kill();
+            reject(error);
+          }
         });
         child.stderr.setEncoding("utf8").on("data", (c: string) => {
           if (o.capture !== false) stderr += c;
-          o.onStderr?.(c);
+          try {
+            o.onStderr?.(c);
+          } catch (error) {
+            kill();
+            reject(error);
+          }
         });
         child.on("error", reject);
         child.on("close", (code) => {
@@ -131,6 +141,9 @@ export async function fakeProvider(): Promise<SandboxProvider & { cleanup(): Pro
     }
     async setKeep(keep: boolean) {
       this.keep = keep;
+    }
+    async touch() {
+      this.lastUsed = new Date();
     }
   }
 

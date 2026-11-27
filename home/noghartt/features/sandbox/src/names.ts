@@ -7,6 +7,11 @@ import { basename } from "node:path";
 export const TAG = "sbx";
 export const KEEP_TAG = "sbx-keep";
 export const TEMPLATE_TAG = "sbx-tpl";
+/** On VMs still being set up; the reaper removes ones a failed run left behind. */
+export const PROVISIONING_TAG = "sbx-provisioning";
+/** Opt-in tag GitHub integrations attach to (`sbx github add`). */
+export const GITHUB_TAG = "sbx-gh";
+export const TEMPLATE_PREFIX = "sbx-tpl-";
 const NAME_PREFIX = "sbx-name-";
 const KIND_PREFIX = "sbx-kind-";
 /** Leaves room for the 7-character suffix inside a 63-byte DNS label, with margin. */
@@ -37,7 +42,7 @@ export function vmName(name: string, hex = suffix()): string {
 }
 
 export function templateVmName(kind: string, hex = suffix()): string {
-  return `sbx-tpl-${sanitize(kind, 24)}-${hex}`;
+  return `${TEMPLATE_PREFIX}${sanitize(kind, 24)}-${hex}`;
 }
 
 export function nameTag(name: string): string {
@@ -77,11 +82,13 @@ export interface Meta {
   u?: string;
   /** Template fingerprint (setup + image). */
   h?: string;
+  /** Commit the checkout was seeded at. */
+  s?: string;
 }
 
 export function encodeMeta(meta: Meta): string {
   const m: Meta = { ...meta };
-  for (const drop of ["b", "r"] as const) {
+  for (const drop of ["s", "b", "r"] as const) {
     if (Buffer.byteLength(JSON.stringify(m)) <= MAX_COMMENT) break;
     delete m[drop];
   }

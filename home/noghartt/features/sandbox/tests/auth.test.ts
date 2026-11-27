@@ -1,44 +1,67 @@
 import assert from "node:assert/strict";
-import { statSync } from "node:fs";
+import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { signToken } from "@exedev/sdk";
-import { addKeyInstruction, keyPath, setupKey, TOKEN_COMMANDS, token, tokenPermissions } from "../src/providers/exe-auth.ts";
+import {
+  addKeyInstruction,
+  authPaths,
+  configured,
+  generateCommand,
+  parseToken,
+  setupKey,
+  storeToken,
+  TOKEN_COMMANDS,
+  token,
+  tokenPermissions,
+} from "../src/providers/exe-auth.ts";
 
-test("tokens expire within the hour and allow only sbx's commands", () => {
+test("sbx's token may run only the VM commands it uses", () => {
+  assert.deepEqual([...TOKEN_COMMANDS], ["new", "ls", "cp", "rm", "ssh", "tag", "comment", "pause", "resume"]);
   const now = Date.UTC(2025, 0, 1);
-  const p = tokenPermissions(now);
-  assert.equal(p.exp, now / 1000 + 3600);
-  assert.deepEqual(p.cmds, [...TOKEN_COMMANDS]);
-  for (const forbidden of ["ssh-key add", "ssh-key generate-api-key", "integrations remove", "billing capacity", "share set-public"])
-    assert.ok(!p.cmds.includes(forbidden), forbidden);
+  assert.equal(tokenPermissions(now).exp, now / 1000 + 3600);
 });
 
-test("EXE_TOKEN overrides the key", async () => {
-  const t = await token(async () => assert.fail("must not sign"), { EXE_TOKEN: "exe1.given" });
-  assert.equal(t, "exe1.given");
+test("auth setup prints a tag-scoped generate-api-key command", () => {
+  assert.equal(
+    generateCommand("My-Mac.local"),
+    "ssh exe.dev ssh-key generate-api-key --label=sbx-my-mac --tag=sbx --exp=90d --cmds=new,ls,cp,rm,ssh,tag,comment,pause,resume --json",
+  );
+  assert.equal(addKeyInstruction("/k"), "ssh exe.dev ssh-key add --tag=sbx < /k.pub");
 });
 
-test("a missing key says how to make one", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "sbx-auth-"));
-  await assert.rejects(token(signToken, { XDG_CONFIG_HOME: dir }), /sbx auth setup/);
-  assert.equal(keyPath({ XDG_CONFIG_HOME: dir }), join(dir, "sbx", "exe_key"));
+test("tokens are read from generate-api-key JSON or as bare tokens", () => {
+  assert.equal(parseToken('{"label":"sbx","token":"exe1.abc","namespace":"v0@exe.dev"}\n'), "exe1.abc");
+  assert.equal(parseToken("  exe0.eyJ4Ijox.c2ln-_  \n"), "exe0.eyJ4Ijox.c2ln-_");
+  assert.throws(() => parseToken("nope"), /no exe.dev token/);
 });
 
-test("auth setup makes a private ed25519 key, and tokens are signed from it", async () => {
+test("EXE_TOKEN, then the stored token, then the fallback key", async () => {
   const dir = await mkdtemp(join(tmpdir(), "sbx-auth-"));
   const env = { XDG_CONFIG_HOME: dir };
-  const path = keyPath(env);
-  assert.deepEqual(await setupKey(path), { path, created: true });
-  assert.deepEqual(await setupKey(path), { path, created: false });
-  assert.equal(statSync(path).mode & 0o777, 0o600);
-  assert.match(addKeyInstruction(path), /ssh exe\.dev ssh-key add < .*exe_key\.pub$/);
-  const t = await token(signToken, env);
-  const [scheme, payload] = t.split(".");
+  const paths = authPaths(env);
+  assert.equal(paths.token, join(dir, "sbx", "exe_token"));
+  assert.equal(configured(env, paths), false);
+  await assert.rejects(token(signToken, env, paths), /sbx auth setup/);
+
+  await setupKey(paths.key);
+  assert.equal(statSync(paths.key).mode & 0o777, 0o600);
+  assert.equal(configured(env, paths), true);
+  const signed = await token(signToken, env, paths);
+  const [scheme, payload] = signed.split(".");
   assert.equal(scheme, "exe0");
   const perms = JSON.parse(Buffer.from(payload, "base64url").toString());
   assert.deepEqual(perms.cmds, [...TOKEN_COMMANDS]);
   assert.ok(perms.exp > Date.now() / 1000 && perms.exp <= Date.now() / 1000 + 3600);
+
+  await storeToken(paths.token, "exe1.stored");
+  assert.equal(statSync(paths.token).mode & 0o777, 0o600);
+  assert.equal(await token(signToken, env, paths), "exe1.stored");
+  assert.equal(await token(async () => assert.fail("must not sign"), { ...env, EXE_TOKEN: "exe1.env" }, paths), "exe1.env");
+
+  writeFileSync(paths.token, "\n");
+  assert.match(await token(signToken, env, paths), /^exe0\./, "an empty token file falls through to the key");
+  assert.equal(readFileSync(paths.token, "utf8"), "\n");
 });

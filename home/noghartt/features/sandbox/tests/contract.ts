@@ -2,6 +2,7 @@
 // with a factory that returns a fresh provider and a kind it can create
 // (see contract-*.test.ts, and live.test.ts for the real exe.dev).
 import assert from "node:assert/strict";
+import { randomBytes } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,14 +24,16 @@ export function providerContract(label: string, setup: () => Promise<ContractSet
     let kind: KindSpec;
     let cleanup: (() => Promise<void>) | undefined;
     let box: Sandbox;
-    const name = `contract-${process.pid}`;
+    // Names carry this run's id, so cleanup never touches another run's sandboxes.
+    const run = `c${randomBytes(3).toString("hex")}`;
+    const name = `${run}-main`;
 
     before(async () => {
       ({ provider, kind, cleanup } = await setup());
       box = await provider.create({ kind, name });
     });
     after(async () => {
-      for (const s of await provider.list()) if (s.name.startsWith("contract-")) await provider.remove(s);
+      for (const s of await provider.list()) if (s.name.startsWith(run)) await provider.remove(s);
       await cleanup?.();
     });
 
@@ -51,7 +54,7 @@ export function providerContract(label: string, setup: () => Promise<ContractSet
       assert.equal((await provider.get(name))?.id, box.id);
       assert.equal((await provider.get(box.id))?.name, name);
       assert.ok((await provider.list()).some((s) => s.id === box.id));
-      assert.equal(await provider.get("contract-does-not-exist"), undefined);
+      assert.equal(await provider.get(`${run}-missing`), undefined);
     });
 
     it("refuses a duplicate name", async () => {
@@ -81,6 +84,24 @@ export function providerContract(label: string, setup: () => Promise<ContractSet
       assert.ok(chunks.includes("!e\n"));
     });
 
+    it("takes buffered stdin, and gives an empty one otherwise", async () => {
+      const bytes = new Uint8Array([0, 1, 2, 255, 10]);
+      const r = await box.exec("od -An -tu1 | tr -s ' ' ' '", { stdin: bytes });
+      assert.equal(r.stdout.trim(), "0 1 2 255 10");
+      assert.equal((await box.exec("wc -c | tr -d ' '", { stdin: "abc" })).stdout.trim(), "3");
+      assert.equal((await box.exec("wc -c | tr -d ' '")).stdout.trim(), "0");
+    });
+
+    it("records use only when touched", async () => {
+      const before = (await provider.get(name))!.info.lastUsed;
+      await sleep(20);
+      await box.exec("true");
+      assert.deepEqual((await provider.get(name))!.info.lastUsed, before, "exec is not use");
+      await box.touch();
+      const after = (await provider.get(name))!.info.lastUsed;
+      assert.ok(after && (!before || after >= before));
+    });
+
     it("times commands out on the sandbox", async () => {
       const r = await box.exec("sleep 30", { timeoutMs: 1000 });
       assert.equal(r.exitCode, 124);
@@ -98,6 +119,18 @@ export function providerContract(label: string, setup: () => Promise<ContractSet
       await sleep(3500);
       const r = await box.exec("test -e cancelled-marker");
       assert.equal(r.exitCode, 1, "the command was stopped on the sandbox");
+    });
+
+    it("stops the remote command when a callback fails", async () => {
+      await box.exec("rm -f callback-marker");
+      const running = box.exec("echo start; sleep 3; echo late > callback-marker", {
+        onStdout: () => {
+          throw new Error("callback broke");
+        },
+      });
+      await assert.rejects(running, /callback broke/);
+      await sleep(3500);
+      assert.equal((await box.exec("test -e callback-marker")).exitCode, 1);
     });
 
     it("round-trips binary files", async () => {
@@ -133,7 +166,7 @@ export function providerContract(label: string, setup: () => Promise<ContractSet
     it("forks when it can", async (t) => {
       if (!provider.capabilities().fork) return t.skip("no fork");
       await box.writeFile("fork-me", "1");
-      const copy = await provider.fork(box, { name: `contract-fork-${process.pid}`, kind });
+      const copy = await provider.fork(box, { name: `${run}-fork`, kind });
       assert.equal(copy.kind, box.kind);
       assert.notEqual(copy.id, box.id);
       assert.equal(new TextDecoder().decode(await copy.readFile("fork-me")), "1");
@@ -159,7 +192,7 @@ export function providerContract(label: string, setup: () => Promise<ContractSet
     });
 
     it("removes sandboxes", async () => {
-      const gone = await provider.create({ kind, name: `contract-rm-${process.pid}` });
+      const gone = await provider.create({ kind, name: `${run}-rm` });
       assert.equal(await provider.remove(gone.name), true);
       assert.equal(await provider.get(gone.name), undefined);
       assert.equal(await provider.remove(gone.name), false);

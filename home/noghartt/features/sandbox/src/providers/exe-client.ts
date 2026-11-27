@@ -23,7 +23,6 @@ export interface ExeNewOptions {
   egress: EgressPolicy;
   env?: readonly string[];
   image?: string;
-  integrations?: readonly string[];
   setupScript?: string;
   signal?: AbortSignal;
 }
@@ -48,7 +47,7 @@ export interface ExeClient {
   list(signal?: AbortSignal): Promise<ExeVM[]>;
   /** Resolves once SSH works, and the setup script finished when there is one. */
   create(options: ExeNewOptions): Promise<ExeVM>;
-  /** Without the source's tags; resolves once SSH works. */
+  /** Keeps the source's tags, so a tag-scoped token still sees the copy; resolves once SSH works. */
   copy(source: string, options: ExeCopyOptions): Promise<ExeVM>;
   /** False when the VM did not exist. */
   remove(name: string): Promise<boolean>;
@@ -62,19 +61,22 @@ export interface ExeClient {
   writeFile(vm: string, path: string, data: string | Uint8Array, options?: { mode?: number; signal?: AbortSignal }): Promise<void>;
   upload(vm: string, local: string, remote: string, options?: { exclude?: readonly string[]; signal?: AbortSignal }): Promise<void>;
   download(vm: string, remote: string, local: string, signal?: AbortSignal): Promise<void>;
-  attachIntegration(name: string, spec: string): Promise<void>;
-  addGithubIntegration(options: { name: string; repository: string; readonly: boolean; attach: string }): Promise<void>;
 }
 
 /** Wraps the SDK. Imported lazily so the rest of sbx loads without it. */
-export async function sdkClient(options: { token: () => Promise<string>; baseURL?: string; userAgent?: string }): Promise<ExeClient> {
+export async function sdkClient(options: {
+  token: () => Promise<string>;
+  baseURL?: string;
+  userAgent?: string;
+  fetch?: typeof fetch;
+}): Promise<ExeClient> {
   const sdk = await import("@exedev/sdk");
   // Tokens live an hour; re-sign well before, so long `sbx run`s can still clean up.
   let client: ReturnType<typeof sdk.exedev> | undefined;
   let issued = 0;
   const api = async () => {
     if (!client || Date.now() - issued > 30 * 60_000) {
-      client = sdk.exedev({ token: await options.token(), baseURL: options.baseURL, userAgent: options.userAgent });
+      client = sdk.exedev({ token: await options.token(), baseURL: options.baseURL, userAgent: options.userAgent, fetch: options.fetch });
       issued = Date.now();
     }
     return client;
@@ -105,7 +107,6 @@ export async function sdkClient(options: { token: () => Promise<string>; baseURL
         egress: o.egress,
         env: o.env?.length ? o.env : undefined,
         image: o.image,
-        integration: o.integrations?.length ? o.integrations : undefined,
         "setup-script": o.setupScript,
         "no-email": true,
         waitUntil: o.setupScript ? "setup" : "ssh",
@@ -116,7 +117,6 @@ export async function sdkClient(options: { token: () => Promise<string>; baseURL
     async copy(source, o) {
       const vm = await (await api()).vm(source).cp({
         name: o.name,
-        "copy-tags": false,
         cpu: o.cpu,
         memory: o.memory,
         disk: o.disk,
@@ -154,16 +154,5 @@ export async function sdkClient(options: { token: () => Promise<string>; baseURL
     writeFile: async (vm, path, data, o) => (await api()).vm(vm).writeFile(path, data, o),
     upload: async (vm, local, remote, o) => (await api()).vm(vm).upload(local, remote, o),
     download: async (vm, remote, local, signal) => (await api()).vm(vm).download(remote, local, { signal }),
-    async attachIntegration(name, spec) {
-      await (await api()).integrationsAttach(name, spec);
-    },
-    async addGithubIntegration(o) {
-      await (await api()).integrationsAdd("github", {
-        name: o.name,
-        repository: o.repository,
-        readonly: o.readonly || undefined,
-        attach: o.attach,
-      });
-    },
   };
 }

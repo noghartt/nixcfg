@@ -14,6 +14,8 @@ let
     set -e
     sudo apt-get update -q
     sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q ripgrep fd-find jq
+    # Ubuntu ships fd as fdfind; agents call it fd.
+    sudo ln -sf /usr/bin/fdfind /usr/local/bin/fd
   '';
   settings = {
     defaultKind = "dev";
@@ -24,10 +26,12 @@ let
         egress = "all";
         cpu = 2;
         memory = 4;
+        # GitHub integrations attach to this tag (`sbx github add`), so these VMs can push.
+        tags = [ "sbx-gh" ];
         setup = tools;
       };
       # No public internet. The account's `llm` integration is attached to every VM
-      # (auto:all) and `sbx github add` attaches repositories to tag:sbx, so neither
+      # (auto:all) and GitHub repositories reach it through the sbx-gh tag, so neither
       # is listed here. A setup script would need the internet, so extra tooling for
       # this kind goes in a template (`sbx template build agent`), which is built
       # with egress and copied without it.
@@ -36,6 +40,7 @@ let
         egress = "integrations";
         cpu = 2;
         memory = 4;
+        tags = [ "sbx-gh" ];
       };
       # The whole Personal pool, for one-off compute; `sbx run` removes it afterwards.
       job = {
@@ -84,6 +89,7 @@ in
       ProgramArguments = reap;
       StartInterval = 3600;
       ProcessType = "Background";
+      StandardOutPath = "${config.home.homeDirectory}/Library/Logs/sbx-reap.log";
       StandardErrorPath = "${config.home.homeDirectory}/Library/Logs/sbx-reap.log";
     };
   };

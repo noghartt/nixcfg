@@ -11,14 +11,15 @@ import type { ExeClient, ExeVM } from "../src/providers/exe-client.ts";
 interface FakeVM extends ExeVM {
   dir: string;
   env: Record<string, string>;
-  integrations: string[];
 }
 
 export interface FakeExe extends ExeClient {
   vms: Map<string, FakeVM>;
   calls: string[];
-  githubIntegrations: { name: string; repository: string; readonly: boolean; attach: string }[];
   failCopy: boolean;
+  /** Fail this many `rm` calls (after removing, when `removeAnyway`). */
+  failRemoves: number;
+  removeAnyway: boolean;
   cleanup(): Promise<void>;
 }
 
@@ -30,11 +31,19 @@ function sh(command: string, vm: FakeVM, options: { signal?: AbortSignal; onStdo
     let stderr = "";
     child.stdout.setEncoding("utf8").on("data", (c: string) => {
       if (options.capture !== false) stdout += c;
-      options.onStdout?.(c);
+      try {
+        options.onStdout?.(c);
+      } catch (error) {
+        reject(error);
+      }
     });
     child.stderr.setEncoding("utf8").on("data", (c: string) => {
       if (options.capture !== false) stderr += c;
-      options.onStderr?.(c);
+      try {
+        options.onStderr?.(c);
+      } catch (error) {
+        reject(error);
+      }
     });
     const onAbort = () => reject(options.signal!.reason);
     options.signal?.addEventListener("abort", onAbort, { once: true });
@@ -50,7 +59,6 @@ export async function fakeExe(): Promise<FakeExe> {
   const root = await mkdtemp(join(tmpdir(), "fake-exe-"));
   const vms = new Map<string, FakeVM>();
   const calls: string[] = [];
-  const githubIntegrations: FakeExe["githubIntegrations"] = [];
   const vm = (name: string) => {
     const found = vms.get(name);
     if (!found) throw Object.assign(new Error(`VM ${name} not found`), { status: 404 });
@@ -75,8 +83,9 @@ export async function fakeExe(): Promise<FakeExe> {
   const client: FakeExe = {
     vms,
     calls,
-    githubIntegrations,
     failCopy: false,
+    failRemoves: 0,
+    removeAnyway: false,
     async cleanup() {
       await rm(root, { recursive: true, force: true });
     },
@@ -100,7 +109,6 @@ export async function fakeExe(): Promise<FakeExe> {
         egress: o.egress,
         dir,
         env: Object.fromEntries((o.env ?? []).map((e) => [e.slice(0, e.indexOf("=")), e.slice(e.indexOf("=") + 1)])),
-        integrations: [...(o.integrations ?? [])],
       };
       vms.set(o.name, v);
       if (o.setupScript) {
@@ -118,20 +126,28 @@ export async function fakeExe(): Promise<FakeExe> {
       const v: FakeVM = {
         ...src,
         name: o.name,
-        tags: [],
+        tags: [...src.tags],
         sshDest: `${o.name}.exe.xyz`,
         httpsUrl: `https://${o.name}.exe.xyz`,
         status: "running",
         createdAt: new Date().toISOString(),
         egress: o.egress ?? src.egress,
         dir,
-        integrations: [],
       };
       vms.set(o.name, v);
       return record(v);
     },
     async remove(name) {
       calls.push(`rm ${name}`);
+      if (client.failRemoves > 0) {
+        client.failRemoves--;
+        if (client.removeAnyway) {
+          const v = vms.get(name);
+          vms.delete(name);
+          if (v) await rm(v.dir, { recursive: true, force: true });
+        }
+        throw new Error("network error");
+      }
       const v = vms.get(name);
       if (!v) return false;
       vms.delete(name);
@@ -172,14 +188,6 @@ export async function fakeExe(): Promise<FakeExe> {
     },
     async download(name, remote, local) {
       await cp(path(running(name), remote), local, { recursive: true });
-    },
-    async attachIntegration(name, spec) {
-      calls.push(`integrations attach ${name} ${spec}`);
-      if (spec.startsWith("vm:")) vm(spec.slice(3)).integrations.push(name);
-    },
-    async addGithubIntegration(o) {
-      calls.push(`integrations add github ${o.name}`);
-      githubIntegrations.push(o);
     },
   };
   return client;

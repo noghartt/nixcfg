@@ -1,15 +1,14 @@
 // `sbx`: the command-line face of the library. Provider-agnostic: it branches
-// on capabilities only.
+// on capabilities only (auth setup is exe.dev's, the one provider so far).
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { mkdtemp, rm as rmPath, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { once } from "node:events";
 import { join, resolve } from "node:path";
+import { text } from "node:stream/consumers";
 import { parseArgs } from "node:util";
 import "./builtin.ts";
 import { configPath, loadConfig } from "./config.ts";
-import { fetchBundle, PULL_BUNDLE, pullScript } from "./git.ts";
-import { addKeyInstruction, keyPath, setupKey } from "./providers/exe-auth.ts";
+import { createSandbox, pullBranches } from "./core.ts";
+import { addKeyInstruction, authPaths, configured, generateCommand, parseToken, setupKey, storeToken } from "./providers/exe-auth.ts";
 import { type Sandbox, type SandboxProvider, NotFoundError, UnsupportedError } from "./provider.ts";
 import { reap } from "./reap.ts";
 import { Sbx } from "./registry.ts";
@@ -17,11 +16,12 @@ import { commandLine, quote } from "./shell.ts";
 
 const USAGE = `usage: sbx <command> [options]
 
-  auth setup                         create this machine's exe.dev key
+  auth setup [--key]                 store the exe.dev token (or make a signing key)
   kinds [--json]                     list sandbox kinds
+  integrations                       print the commands attaching kinds' integrations
   create [--kind k] [--name n] [--repo path|owner/repo] [--branch b] [--json]
   ls [--json]                        list sandboxes
-  exec <name> [--cwd d] [--timeout s] -- <cmd...>
+  exec <name> [--cwd d] [--timeout s] [--stdin] -- <cmd...>
   shell <name> [-- <cmd...>]         interactive ssh
   fork <name> [--name n] [--json]
   pause|resume|rm <name>
@@ -30,44 +30,55 @@ const USAGE = `usage: sbx <command> [options]
   pull <name> [branch...] [--repo path]
                                      fetch branches as sbx/<name>/<branch>
   github add <owner/repo> [--readonly]
+                                     print the command giving sandboxes the repo
   template build <kind> | ls [--json] | rm <kind>
   run [--kind job] [--repo r] [--branch b] [--artifacts path] [--out dir] [--keep] [--timeout s] -- <cmd...>
-  reap [--days n] [--dry-run] [--json]
+  reap [--days n] [--dry-run] [--json] [--if-configured]
 
 config: ${configPath()}`;
 
 class UsageError extends Error {}
 
-function die(message: string, code = 1): never {
-  process.stderr.write(`sbx: ${message}\n`);
-  process.exit(code);
-}
+const err = (message: string) => void process.stderr.write(`sbx: ${message}\n`);
+const progress = err;
 
-const progress = (message: string) => process.stderr.write(`sbx: ${message}\n`);
-const print = (text: string) => process.stdout.write(`${text}\n`);
+// One controller for the process: Ctrl-C, SIGTERM, SIGHUP and a closed stdout
+// all cancel the operation (and the remote command), so cleanup runs.
+const controller = new AbortController();
+/** A sandbox `run` still has to remove, reported if a second signal forces an exit. */
+let pending: Sandbox | undefined;
+let stdoutClosed = false;
+const closed = new Promise<void>((resolve) => {
+  process.stdout.on("error", (error: NodeJS.ErrnoException) => {
+    if (error.code !== "EPIPE") throw error;
+    stdoutClosed = true;
+    controller.abort(new Error("stdout closed"));
+    resolve();
+  });
+});
+for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const)
+  process.on(sig, () => {
+    if (controller.signal.aborted) {
+      if (pending) err(`${pending.name} (${pending.id}) was not removed; run: sbx rm ${pending.name}`);
+      process.exit(130);
+    }
+    if (sig === "SIGINT") err("interrupted; stopping (Ctrl-C again to quit now)");
+    controller.abort(new Error(`interrupted by ${sig}`));
+  });
+
+/** Writes with backpressure: the remote stream waits while the terminal or pipe is full. */
+function writer(stream: NodeJS.WriteStream) {
+  return (chunk: string): void | Promise<void> => {
+    if (stream === process.stdout && stdoutClosed) return;
+    if (stream.write(chunk)) return;
+    return Promise.race([once(stream, "drain").then(() => undefined), closed]);
+  };
+}
+const print = (line: string) => void writer(process.stdout)(`${line}\n`);
 const json = (value: unknown) => (print(JSON.stringify(value, null, 2)), 0);
 
-/** Ctrl-C aborts the operation (and the remote command); a second one exits at once. */
-function interruptible(): AbortSignal {
-  const controller = new AbortController();
-  process.on("SIGINT", () => {
-    if (controller.signal.aborted) process.exit(130);
-    progress("interrupted; stopping the remote command (Ctrl-C again to quit now)");
-    controller.abort(new Error("interrupted"));
-  });
-  return controller.signal;
-}
-
 function describe(s: Sandbox) {
-  return {
-    name: s.name,
-    id: s.id,
-    provider: s.provider,
-    kind: s.kind,
-    status: s.status,
-    sshDest: s.sshDest,
-    ...s.info,
-  };
+  return { name: s.name, id: s.id, provider: s.provider, kind: s.kind, status: s.status, sshDest: s.sshDest, ...s.info };
 }
 
 function age(date: Date | undefined): string {
@@ -99,7 +110,7 @@ function parse<T extends Record<string, { type: "string" | "boolean"; short?: st
 function seconds(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
   const n = Number(value);
-  if (!(n > 0)) throw new UsageError(`--timeout must be a positive number of seconds`);
+  if (!(n > 0)) throw new UsageError("--timeout must be a positive number of seconds");
   return n * 1000;
 }
 
@@ -114,6 +125,23 @@ function need(provider: SandboxProvider, feature: keyof ReturnType<SandboxProvid
   if (!provider.capabilities()[feature]) throw new UnsupportedError(provider.id, feature);
 }
 
+const streams = { onStdout: writer(process.stdout), onStderr: writer(process.stderr) };
+
+function exeAuthPaths(sbx: Sbx) {
+  const exe = Object.values(sbx.config.providers).find((p) => (p.type ?? "exe") === "exe") ?? {};
+  const str = (v: unknown) => (typeof v === "string" ? v : undefined);
+  return authPaths(process.env, { token: str(exe.token), key: str(exe.key) });
+}
+
+function integrationCommands(sbx: Sbx): string[] {
+  const commands: string[] = [];
+  for (const kind of Object.values(sbx.config.kinds)) {
+    const provider = sbx.provider(kind.provider);
+    if (provider.capabilities().secretIntegrations && kind.integrations.length) commands.push(...provider.integrations!.kindCommands(kind));
+  }
+  return commands;
+}
+
 async function main(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
   if (!command || command === "help" || command === "--help" || command === "-h") {
@@ -121,21 +149,40 @@ async function main(argv: string[]): Promise<number> {
     return command ? 0 : 2;
   }
   const { args, rest: after } = split(rest);
-
-  if (command === "auth") {
-    const [sub] = args;
-    if (sub !== "setup") throw new UsageError("usage: sbx auth setup");
-    const sbx = new Sbx(loadConfig());
-    const exeConfig = Object.values(sbx.config.providers).find((p) => (p.type ?? "exe") === "exe");
-    const { path, created } = await setupKey(keyPath(process.env, exeConfig?.key as string | undefined));
-    print(created ? `created ${path}` : `${path} already exists`);
-    print(`register it with exe.dev once (uses your normal exe.dev key):\n  ${addKeyInstruction(path)}`);
-    return 0;
-  }
-
   const sbx = new Sbx(loadConfig());
+  const signal = controller.signal;
 
   switch (command) {
+    case "auth": {
+      const { values, positionals } = parse(args, { key: { type: "boolean" } });
+      if (positionals[0] !== "setup") throw new UsageError("usage: sbx auth setup [--key]");
+      const paths = exeAuthPaths(sbx);
+      if (values.key) {
+        const { created } = await setupKey(paths.key);
+        print(created ? `created ${paths.key}` : `${paths.key} already exists`);
+        print(`register it once, scoped to sbx's VMs (with your own exe.dev key):\n  ${addKeyInstruction(paths.key)}`);
+      } else {
+        const generate = generateCommand();
+        if (process.stdin.isTTY) {
+          print(`make sbx's token with your own exe.dev key, scoped to sbx's VMs:\n  ${generate}`);
+          print("then paste the token (or the JSON it printed) and press Enter, or pipe it:");
+          print(`  ${generate} | sbx auth setup`);
+          const [line] = (await once(process.stdin.setEncoding("utf8"), "data")) as [string];
+          process.stdin.pause();
+          await storeToken(paths.token, parseToken(line));
+        } else await storeToken(paths.token, parseToken(await text(process.stdin)));
+        print(`stored the token in ${paths.token}`);
+      }
+      const commands = integrationCommands(sbx);
+      if (commands.length) print(`attach the kinds' integrations once:\n${commands.map((c) => `  ${c}`).join("\n")}`);
+      return 0;
+    }
+
+    case "integrations": {
+      for (const c of integrationCommands(sbx)) print(c);
+      return 0;
+    }
+
     case "kinds": {
       const { values } = parse(args, { json: { type: "boolean" } });
       const kinds = Object.values(sbx.config.kinds);
@@ -165,13 +212,10 @@ async function main(argv: string[]): Promise<number> {
         json: { type: "boolean" },
       });
       const kind = sbx.kind(values.kind);
-      const s = await sbx.provider(kind.provider).create(
-        {
-          kind,
-          name: values.name,
-          repo: values.repo ? { source: values.repo, branch: values.branch } : undefined,
-        },
-        { onProgress: progress, signal: interruptible() },
+      const s = await createSandbox(
+        sbx.provider(kind.provider),
+        { kind, name: values.name, repo: values.repo ? { source: values.repo, branch: values.branch } : undefined },
+        { onProgress: progress, signal },
       );
       if (values.json) json(describe(s));
       else print(`${s.name}  ${s.sshDest ?? ""}  ${s.info.url ?? ""}`.trimEnd());
@@ -202,16 +246,19 @@ async function main(argv: string[]): Promise<number> {
     }
 
     case "exec": {
-      const { values, positionals } = parse(args, { cwd: { type: "string" }, timeout: { type: "string" } });
+      const { values, positionals } = parse(args, { cwd: { type: "string" }, timeout: { type: "string" }, stdin: { type: "boolean" } });
       if (!after.length) throw new UsageError("usage: sbx exec <name> [--cwd d] -- <cmd...>");
+      const timeoutMs = seconds(values.timeout);
       const s = await sandbox(sbx, positionals[0]);
+      const stdin = values.stdin ? new Uint8Array(Buffer.from(await text(process.stdin))) : undefined;
+      await s.touch();
       const result = await s.exec(commandLine(after), {
         cwd: values.cwd ?? s.info.workdir,
-        timeoutMs: seconds(values.timeout),
-        signal: interruptible(),
+        timeoutMs,
+        signal,
         capture: false,
-        onStdout: (c) => void process.stdout.write(c),
-        onStderr: (c) => void process.stderr.write(c),
+        stdin,
+        ...streams,
       });
       return result.exitCode;
     }
@@ -220,6 +267,7 @@ async function main(argv: string[]): Promise<number> {
       const s = await sandbox(sbx, args[0]);
       need(sbx.providerOf(s), "interactiveShell");
       if (!s.sshDest) throw new UnsupportedError(s.provider, "interactiveShell");
+      await s.touch();
       const remote = after.length
         ? commandLine(after)
         : s.info.workdir
@@ -234,7 +282,7 @@ async function main(argv: string[]): Promise<number> {
       const s = await sandbox(sbx, positionals[0]);
       const provider = sbx.providerOf(s);
       need(provider, "fork");
-      const copy = await provider.fork(s, { name: values.name, kind: sbx.config.kinds[s.kind] }, { onProgress: progress });
+      const copy = await provider.fork(s, { name: values.name, kind: sbx.config.kinds[s.kind] }, { onProgress: progress, signal });
       if (values.json) json(describe(copy));
       else print(copy.name);
       return 0;
@@ -245,6 +293,7 @@ async function main(argv: string[]): Promise<number> {
       const s = await sandbox(sbx, args[0]);
       need(sbx.providerOf(s), "pause");
       await (command === "pause" ? s.pause() : s.resume());
+      if (command === "resume") await s.touch();
       return 0;
     }
 
@@ -276,20 +325,10 @@ async function main(argv: string[]): Promise<number> {
       const { values, positionals } = parse(args, { repo: { type: "string" } });
       const [name, ...branches] = positionals;
       const s = await sandbox(sbx, name);
-      if (!s.info.workdir) throw new Error(`${s.name} has no checkout`);
-      const repo = resolve(values.repo ?? ".");
-      const made = await s.exec(pullScript(s.info.workdir, branches));
-      if (made.exitCode !== 0) throw new Error(`bundling on ${s.name} failed: ${made.stderr.trim()}`);
-      const dir = await mkdtemp(join(tmpdir(), "sbx-"));
-      try {
-        const bundle = join(dir, "pull.bundle");
-        await writeFile(bundle, await s.readFile(PULL_BUNDLE));
-        const out = await fetchBundle(repo, bundle, s.name, branches);
-        if (out) process.stderr.write(`${out}\n`);
-      } finally {
-        await rmPath(dir, { recursive: true, force: true });
-        await s.exec(`rm -f ${PULL_BUNDLE}`).catch(() => undefined);
-      }
+      await s.touch();
+      const { fetched, output } = await pullBranches(s, resolve(values.repo ?? "."), branches, { signal });
+      if (output) err(output);
+      if (!fetched) err(`${s.name} has nothing new`);
       return 0;
     }
 
@@ -300,35 +339,36 @@ async function main(argv: string[]): Promise<number> {
         throw new UsageError("usage: sbx github add <owner/repo> [--readonly]");
       const provider = sbx.provider(sbx.kind().provider);
       need(provider, "secretIntegrations");
-      const name = await provider.integrations!.addGithub(repo, { readonly: values.readonly });
-      print(`added integration ${name}, attached to every sbx sandbox`);
-      print("(link your GitHub account once on exe.dev's Integrations page if this failed)");
+      print("run once with your own exe.dev key (link GitHub on exe.dev's Integrations page first):");
+      for (const c of provider.integrations!.githubCommands(repo, { readonly: values.readonly })) print(`  ${c}`);
       return 0;
     }
 
     case "template": {
       const { values, positionals } = parse(args, { json: { type: "boolean" } });
       const [sub, kindName] = positionals;
-      if (sub === "build" || sub === "rm") {
-        if (!kindName) throw new UsageError(`usage: sbx template ${sub} <kind>`);
+      const withTemplates = sbx.providerIds().map((id) => sbx.provider(id)).filter((p) => p.capabilities().templates);
+      if (sub === "build") {
+        if (!kindName) throw new UsageError("usage: sbx template build <kind>");
         const kind = sbx.kind(kindName);
         const provider = sbx.provider(kind.provider);
         need(provider, "templates");
-        if (sub === "rm") {
-          print((await provider.templates!.remove(kind.name)) ? `removed template ${kind.name}` : `no template for ${kind.name}`);
-          return 0;
-        }
-        const t = await provider.templates!.build(kind, { onProgress: progress, signal: interruptible() });
+        const t = await provider.templates!.build(kind, { onProgress: progress, signal });
         print(`built ${t.id}`);
+        return 0;
+      }
+      if (sub === "rm") {
+        // By name, so templates of kinds since removed from the config can go too.
+        if (!kindName) throw new UsageError("usage: sbx template rm <kind>");
+        let removed = false;
+        for (const p of withTemplates) removed = (await p.templates!.remove(kindName)) || removed;
+        print(removed ? `removed template ${kindName}` : `no template for ${kindName}`);
         return 0;
       }
       if (sub === "ls") {
         const kinds = Object.values(sbx.config.kinds);
         const all = [];
-        for (const id of sbx.providerIds()) {
-          const p = sbx.provider(id);
-          if (p.capabilities().templates) all.push(...(await p.templates!.list(kinds.filter((k) => k.provider === id))));
-        }
+        for (const p of withTemplates) all.push(...(await p.templates!.list(kinds)));
         if (values.json) return json(all);
         if (all.length)
           print(table([["KIND", "ID", "AGE", "CURRENT"], ...all.map((t) => [t.kind, t.id, age(t.created), t.current ? "yes" : "stale"])]));
@@ -349,36 +389,32 @@ async function main(argv: string[]): Promise<number> {
         timeout: { type: "string" },
       });
       if (!after.length) throw new UsageError("usage: sbx run [--kind job] -- <cmd...>");
+      const timeoutMs = seconds(values.timeout);
       const kind = sbx.kind(values.kind ?? (sbx.config.kinds.job ? "job" : undefined));
       const provider = sbx.provider(kind.provider);
-      const signal = interruptible();
-      const s = await provider.create(
+      const s = await createSandbox(
+        provider,
         { kind, name: values.name, repo: values.repo ? { source: values.repo, branch: values.branch } : undefined },
         { onProgress: progress, signal },
       );
+      pending = values.keep ? undefined : s;
       let code = 1;
       try {
         progress(`running on ${s.name}`);
-        const result = await s.exec(commandLine(after), {
-          cwd: s.info.workdir,
-          timeoutMs: seconds(values.timeout),
-          signal,
-          capture: false,
-          onStdout: (c) => void process.stdout.write(c),
-          onStderr: (c) => void process.stderr.write(c),
-        });
+        const result = await s.exec(commandLine(after), { cwd: s.info.workdir, timeoutMs, signal, capture: false, ...streams });
         code = result.exitCode;
         for (const path of values.artifacts ?? []) {
           const remote = path.startsWith("/") || !s.info.workdir ? path : `${s.info.workdir}/${path}`;
           const local = join(resolve(values.out ?? "sbx-artifacts"), s.name, path.replace(/^\/+/, ""));
           progress(`downloading ${remote} to ${local}`);
-          await s.download(remote, local).catch((error) => progress(`could not download ${remote}: ${(error as Error).message}`));
+          await s.download(remote, local, { signal }).catch((e) => progress(`could not download ${remote}: ${(e as Error).message}`));
         }
       } finally {
         if (values.keep) progress(`kept ${s.name}`);
         else {
           progress(`removing ${s.name}`);
           await provider.remove(s);
+          pending = undefined;
         }
       }
       return code;
@@ -392,14 +428,16 @@ async function main(argv: string[]): Promise<number> {
         "if-configured": { type: "boolean" },
       });
       // The scheduled reaper runs on machines that may never have set sbx up.
-      if (values["if-configured"] && !process.env.EXE_TOKEN && !existsSync(keyPath())) return 0;
+      if (values["if-configured"] && !configured(process.env, exeAuthPaths(sbx))) return 0;
       const days = values.days ? Number(values.days) : sbx.config.reap.days;
       if (!(days > 0)) throw new UsageError("--days must be positive");
-      const result = await reap(sbx, { days, dryRun: values["dry-run"] });
+      const result = await reap(sbx, { days, dryRun: values["dry-run"], onProgress: progress });
       if (values.json) json(result);
       else {
+        for (const name of result.swept) print(`swept half-made VM ${name}`);
         for (const name of result.removed) print(`${values["dry-run"] ? "would remove" : "removed"} ${name}`);
-        for (const f of result.failed) progress(`could not remove ${f.name}: ${f.error}`);
+        for (const s of result.skipped) print(`kept ${s.name}: ${s.reason}`);
+        for (const f of result.failed) err(`could not remove ${f.name}: ${f.error}`);
       }
       return result.failed.length ? 1 : 0;
     }
@@ -409,10 +447,13 @@ async function main(argv: string[]): Promise<number> {
   }
 }
 
+// exitCode, not exit(): output still queued for a slow pipe gets written.
 main(process.argv.slice(2)).then(
-  (code) => process.exit(code),
+  (code) => {
+    process.exitCode = code;
+  },
   (error) => {
-    if (error instanceof UsageError) die(error.message, 2);
-    die(error instanceof Error ? error.message : String(error));
+    err(error instanceof Error ? error.message : String(error));
+    process.exitCode = error instanceof UsageError ? 2 : controller.signal.aborted ? 130 : 1;
   },
 );
