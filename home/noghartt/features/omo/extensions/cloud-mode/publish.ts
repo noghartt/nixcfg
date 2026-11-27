@@ -1,7 +1,7 @@
-// The GitHub write path for cloud mode. Remote hosts and sandboxes hold no
-// write credentials (sandboxes get at most a read-only token), so pushing runs
-// here: the branch travels back as a git bundle, lands in the local clone
-// as sandbox/<label>/<branch>, and is pushed over SSH with the local keys.
+// The GitHub write path for cloud mode. Remote hosts hold no write
+// credentials, so pushing runs here: the branch travels back as a git bundle,
+// lands in the local clone as cloud/<host>/<branch>, and is pushed over SSH
+// with the local keys.
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -17,10 +17,10 @@ export function registerPublish(pi: ExtensionAPI, target: () => Target | undefin
 		name: "publish",
 		label: "Publish branch",
 		description:
-			"Push a branch from the cloud environment (remote host or sandbox) to GitHub with the user's login, optionally opening a draft PR. Fetches it into the local clone first. Never force-pushes and refuses the default branch. A subagent's branch, delivered into this checkout as sandbox/<box>/<branch>, is published by that full name (its remote name defaults to <branch>). Name branches by the repository's own conventions, and publish only when the task asks for a push or PR.",
+			"Push a branch from the remote host's checkout to GitHub with the user's login, optionally opening a draft PR. Fetches it into the local clone first. Never force-pushes and refuses the default branch. Name branches by the repository's own conventions, and publish only when the task asks for a push or PR.",
 		promptSnippet: "Push a cloud branch to GitHub (and open a draft PR) with the user's login",
 		parameters: Type.Object({
-			branch: Type.Optional(Type.String({ description: "Branch in the cloud checkout, or a delivered subagent branch sandbox/<box>/<branch>; default the current branch" })),
+			branch: Type.Optional(Type.String({ description: "Branch in the cloud checkout; default the current branch" })),
 			as: Type.Optional(Type.String({ description: "Remote branch name; default the same name" })),
 			pr: Type.Optional(
 				Type.Object({
@@ -45,10 +45,8 @@ export function registerPublish(pi: ExtensionAPI, target: () => Target | undefin
 			const current = await run(where, `git -C ${q(where.cwd)} symbolic-ref --short HEAD`, { signal });
 			const branch = params.branch ?? current.stdout.toString().trim();
 			if (!branch) throw new Error("the cloud checkout is not on a branch; pass branch.");
-			// A subagent's branch lives in the checkout as a remote-tracking ref and pushes under its own branch name.
-			const delivered = /^sandbox\/[^/]+\/(.+)$/.exec(branch);
-			const source = delivered ? `refs/remotes/${branch}` : `refs/heads/${branch}`;
-			const name = params.as ?? delivered?.[1] ?? branch;
+			const source = `refs/heads/${branch}`;
+			const name = params.as ?? branch;
 			await local("git", ["check-ref-format", "--branch", name], repo);
 			const symref = await local("git", [...GITHUB_OVER_SSH, "ls-remote", "--symref", "origin", "HEAD"], repo);
 			const defaultBranch = /^ref: refs\/heads\/(\S+)\s+HEAD/m.exec(symref)?.[1];
@@ -58,8 +56,7 @@ export function registerPublish(pi: ExtensionAPI, target: () => Target | undefin
 			const bundled = await run(where, `git -C ${q(where.cwd)} bundle create - ${q(source)}`, { signal });
 			if (bundled.code !== 0) throw new Error(`bundling ${branch}: ${bundled.stderr.trim() || `exit ${bundled.code}`}`);
 			const dir = await mkdtemp(join(tmpdir(), "omo-publish-"));
-			const label = where.box ?? where.dest;
-			const ref = `refs/remotes/sandbox/${label}/${branch}`;
+			const ref = `refs/remotes/cloud/${where.dest}/${branch}`;
 			try {
 				const file = join(dir, "branch.bundle");
 				await writeFile(file, bundled.stdout);

@@ -11,22 +11,8 @@ import type {
 	WriteOperations,
 } from "@earendil-works/pi-coding-agent";
 
-/** `box` names an agentbox sandbox on `dest`; every command then runs inside it. */
-export type Host = { dest: string; box?: string };
-
-// The machine OmO itself runs on, normally the sandbox host: commands run in a
-// local bash instead of over SSH, so an agent on Mellon never has to SSH into
-// Mellon through the 1Password agent. sudo inside `agentbox exec` resets the
-// environment, so nothing of this process's environment reaches the sandbox.
-export const LOCAL = "local";
-// exe.dev VMs: `exebox` takes agentbox's command contract and does the SSH to
-// the VM itself (exe.dev's pinned host key, its own connection sharing), so
-// the target is driven from this machine like `local`.
-export const EXE = "exe";
-export const isLocal = (host: Host): boolean => host.dest === LOCAL || host.dest === EXE;
-export const sandboxCli = (dest: string): string => (dest === EXE ? "exebox" : "agentbox");
-/** `served` is the sandbox's tailnet DNS name, for servers bound to 0.0.0.0. */
-export type Target = Host & { home: string; cwd: string; served?: string };
+export type Host = { dest: string };
+export type Target = Host & { home: string; cwd: string };
 
 export type RunResult = { code: number | null; stdout: Buffer; stderr: string };
 
@@ -52,16 +38,7 @@ export function sshOptions(shared = true): string[] {
 
 export const remoteShell = (cwd: string, command: string): string => `cd ${q(cwd)} && exec bash -c ${q(command)}`;
 
-// `exebox exec --own` gives a command that must die with its client an SSH connection of its own.
-const onHost = (host: Host, command: string, shared = true): string =>
-	host.box
-		? `${sandboxCli(host.dest)} exec ${!shared && host.dest === EXE ? "--own " : ""}${q(host.box)} -- bash -c ${q(command)}`
-		: command;
-
-const spawnArgs = (host: Host, command: string, shared = true): [string, string[]] =>
-	isLocal(host)
-		? ["bash", ["-c", onHost(host, command, shared)]]
-		: ["ssh", [...sshOptions(shared), "-T", "--", host.dest, onHost(host, command)]];
+const spawnArgs = (host: Host, command: string, shared = true): [string, string[]] => ["ssh", [...sshOptions(shared), "-T", "--", host.dest, command]];
 
 export function run(
 	host: Host,
@@ -187,9 +164,4 @@ export function userBashOps(target: Target): BashOperations {
 
 /** The agent's bash: OmO's local PTY runs ssh, so background sessions, input, and kill keep working. */
 export const ptyCommand = (target: Target, command: string): string =>
-	(isLocal(target)
-		? ["exec", "bash", "-c", onHost(target, remoteShell(target.cwd, command))]
-		: ["exec", "ssh", ...sshOptions(false), "-tt", "--", target.dest, onHost(target, remoteShell(target.cwd, command))]
-	)
-		.map(q)
-		.join(" ");
+	["exec", "ssh", ...sshOptions(false), "-tt", "--", target.dest, remoteShell(target.cwd, command)].map(q).join(" ");

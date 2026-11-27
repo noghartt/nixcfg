@@ -295,14 +295,7 @@ export default function destructiveGuard(pi: ExtensionAPI) {
 		if (!event.isError) sessionFiles.add(path);
 	});
 
-	// In an agentbox sandbox (OmO cloud mode), bash, write and edit run inside a
-	// disposable container, so every command there is allowed. Other tools (MCP,
-	// web) still act outside it and keep their checks.
-	const sandboxed = (tool: string) => Boolean(process.env.OMO_CLOUD_SANDBOX) && /^(?:bash|write|edit)$/.test(tool);
-
 	pi.on("tool_call", async (event, ctx) => {
-		if (sandboxed(event.toolName)) return undefined;
-
 		if (/(^|[_-])(delete|remove|destroy|drop|truncate|wipe|prune)([_-]|$)/i.test(event.toolName)) {
 			const subject = JSON.stringify(event.input, null, 2);
 			return confirmUnresolved(

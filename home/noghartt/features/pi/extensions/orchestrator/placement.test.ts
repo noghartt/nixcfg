@@ -1,54 +1,21 @@
 import { describe, expect, test } from "bun:test";
-import { defaultPlacement, type PlacementInput, placementMenu, resolveMode, type WorkersConfig } from "./placement.ts";
+import { type PlacementInput, placementMode } from "./placement.ts";
 
-const workers: WorkersConfig = {
-	placement: "auto",
-	envAllowed: { GH_TOKEN: "read-only gh token" },
-	allowOpenNet: false,
-	net: "dev",
-	size: "medium",
-};
-const isolated: PlacementInput = { kind: "work", isolated: true, leaderCloud: false, mode: "sandbox" };
+const isolated: PlacementInput = { isolated: true, upstream: false, leaderCloud: false };
 
-describe("resolveMode", () => {
-	test("auto uses sandboxes only with agentbox and OmO", () => {
-		expect(resolveMode("auto", true, "omo").mode).toBe("sandbox");
-		expect(resolveMode("auto", false, "omo").mode).toBe("worktree");
-		expect(resolveMode("auto", true, "pi").mode).toBe("worktree");
-	});
-	test("an explicit setting cannot force sandboxes onto Pi or a host without agentbox", () => {
-		expect(resolveMode("sandbox", true, "pi").mode).toBe("worktree");
-		expect(resolveMode("sandbox", false, "omo").mode).toBe("worktree");
-		expect(resolveMode("worktree", true, "omo").mode).toBe("worktree");
-	});
-});
-
-describe("placementMenu", () => {
-	test("isolated nodes choose between a sandbox and a worktree on a sandbox host", () => {
-		expect(placementMenu(isolated)).toEqual(["sandbox", "worktree"]);
-		expect(placementMenu({ ...isolated, mode: "worktree" })).toEqual(["worktree"]);
-	});
-	test("a cloud-mode leader keeps every isolated node in a sandbox", () => {
-		expect(placementMenu({ ...isolated, leaderCloud: true, mode: "worktree" })).toEqual(["sandbox"]);
+describe("placementMode", () => {
+	test("isolated nodes get a worktree", () => {
+		expect(placementMode(isolated)).toBe("worktree");
 	});
 	test("shared-checkout nodes stay shared", () => {
-		expect(placementMenu({ ...isolated, isolated: false })).toEqual(["shared"]);
+		expect(placementMode({ ...isolated, isolated: false })).toBe("shared");
+		expect(placementMode({ ...isolated, isolated: false, leaderCloud: true })).toBe("shared");
 	});
-	test("review nodes share the reviewed checkout, even a sandbox", () => {
-		expect(placementMenu({ ...isolated, kind: "review", upstream: { sandbox: true } })).toEqual(["shared"]);
+	test("nodes with an upstream work in its checkout", () => {
+		expect(placementMode({ ...isolated, upstream: true })).toBe("shared");
+		expect(placementMode({ ...isolated, isolated: false, upstream: true })).toBe("shared");
 	});
-	test("work on a sandbox upstream may branch into its own sandbox", () => {
-		expect(placementMenu({ ...isolated, upstream: { sandbox: true } })).toEqual(["shared", "sandbox"]);
-		expect(placementMenu({ ...isolated, upstream: { sandbox: false } })).toEqual(["shared"]);
-	});
-});
-
-describe("defaultPlacement", () => {
-	test("returns the configured defaults with every allowed key", () => {
-		expect(defaultPlacement(isolated, workers, ["GH_TOKEN"])).toEqual({ mode: "sandbox", net: "dev", size: "medium", env: ["GH_TOKEN"] });
-	});
-	test("a default of open is downgraded when open is not allowed", () => {
-		expect(defaultPlacement(isolated, { ...workers, net: "open" }, []).net).toBe("dev");
-		expect(defaultPlacement(isolated, { ...workers, net: "open", allowOpenNet: true }, []).net).toBe("open");
+	test("a cloud-mode leader cannot give a node its own worktree", () => {
+		expect(() => placementMode({ ...isolated, leaderCloud: true })).toThrow("cloud mode");
 	});
 });

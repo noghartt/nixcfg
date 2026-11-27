@@ -11,11 +11,9 @@ or any worktree of that repository, such as Herdr's under `~/.herdr/worktrees/`,
 `.git`, `.env`/credential files, root-level bare or dot-led globs still ask). Destructive
 Git commands, kills of foreign processes, and system-level categories always ask; everything
 else asks the user, or is refused when no UI.
-In an agentbox sandbox (`OMO_CLOUD_SANDBOX`) bash, write, and edit skip it entirely, since
-they run inside the disposable container; destructive-named tools (MCP and the like) act
-outside it and keep their checks. A turn typed as `/unsupervised` refuses instead of asking
-until the next typed (non-steer) input; `OMO_UNSUPERVISED` carries that into subagents and
-orchestrator workers, which also get a no-questions note.
+A turn typed as `/unsupervised` refuses instead of asking until the next typed (non-steer)
+input; `OMO_UNSUPERVISED` carries that into subagents and orchestrator workers, which also get
+a no-questions note.
 Subagents have no UI, so their writes to agent configuration (anything under `~/.omo`,
 including OmO's isolated task clones in `~/.omo/wt`, and extension sources) are refused: have
 them stage edits under `/tmp` and copy the result in from the parent session.

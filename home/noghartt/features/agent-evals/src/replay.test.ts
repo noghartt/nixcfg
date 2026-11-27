@@ -71,11 +71,10 @@ describe("replay", () => {
 		// when the build runs beside a loaded darwin-rebuild.
 	}, 60_000);
 
-	test("sandbox mode needs OmO, and a missing repository is an error", () => {
+	test("a missing repository is an error", () => {
 		const { db } = fixtureDb();
 		const task = resolveTask(db, { session: "omo-sess-1" });
 		expect(task.sourceId).toBe("omo:omo-sess-1");
 		expect(() => replay(db, task, { models: ["m"], harness: "omo" })).toThrow(/repository not found/);
-		expect(() => replay(db, { ...task, repo: process.cwd() }, { models: ["m"], harness: "pi", sandbox: true })).toThrow(/--harness omo/);
 	});
 });

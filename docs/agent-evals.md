@@ -14,7 +14,6 @@ and preferred alternatives (`$EDITOR`). `aeval classify` adds heuristic class su
 with `--llm`, a print-mode pass on the cheapest pool tier. `aeval report` aggregates per model,
 pool key and class. `aeval export` writes OpenAI or Anthropic
 SFT/preference JSONL from labelled turns only, with a manifest. `aeval replay` re-runs a node's
-or session's task on candidate models in remote-less scratch clones (or agentbox sandboxes via
-OmO cloud mode) and stores diffs and final answers for side-by-side rating; it never touches the
+or session's task on candidate models in remote-less scratch clones and stores diffs and final answers for side-by-side rating; it never touches the
 real checkout and cannot push. Pool keys come from the orchestrator's `config.json`; the
 package's test suite runs in its build.

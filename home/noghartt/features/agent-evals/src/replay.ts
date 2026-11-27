@@ -21,9 +21,6 @@ export interface ReplayOptions {
 	harness: "omo" | "pi";
 	base?: string;
 	repo?: string;
-	sandbox?: boolean;
-	net?: string;
-	size?: string;
 	timeoutMs?: number;
 	dryRun?: boolean;
 	log?: (line: string) => void;
@@ -116,12 +113,10 @@ export const REPLAY_PREAMBLE =
 /**
  * Each candidate gets its own clone of the task's repository at the task's base commit,
  * with no remotes and a refusing pre-push hook: the user's checkout is only read, and
- * nothing a candidate does can reach a remote. Sandbox mode seeds an agentbox sandbox
- * from that clone instead and runs the harness's tools inside it (OmO cloud mode).
+ * nothing a candidate does can reach a remote.
  */
 export function replay(db: Database, task: ReplayTask, opts: ReplayOptions): string {
 	const log = opts.log ?? (() => {});
-	if (opts.sandbox && opts.harness !== "omo") throw new Error("--sandbox runs tools through OmO cloud mode; use --harness omo");
 	const recorded = opts.repo ?? task.repo;
 	if (!recorded) throw new Error("repository not found: none recorded for this task; pass --repo");
 	const repoPath = resolve(recorded);
@@ -130,13 +125,12 @@ export function replay(db: Database, task: ReplayTask, opts: ReplayOptions): str
 	const base =
 		opts.base ??
 		((task.before ? run("git", ["-C", top, "rev-list", "-1", `--before=${task.before}`, "HEAD"]).stdout.trim() : "") || must("git", ["-C", top, "rev-parse", "HEAD"]));
-	if (opts.sandbox && run("agentbox", ["ls"]).status !== 0) throw new Error("--sandbox needs a working agentbox on this host");
 
 	const group = `rp-${new Date().toISOString().replace(/[-:]/g, "").slice(0, 15)}-${randomBytes(3).toString("hex")}`;
 	const groupDir = join(stateDir(), "replays", group);
 	log(`replay ${group}: ${task.sourceType} ${task.sourceId} at ${base.slice(0, 12)} in ${top}`);
 	if (opts.dryRun) {
-		for (const m of opts.models) log(`  would run ${opts.harness} -p --model ${m}${opts.sandbox ? " (sandbox)" : ""}`);
+		for (const m of opts.models) log(`  would run ${opts.harness} -p --model ${m}`);
 		return group;
 	}
 	mkdirSync(groupDir, { recursive: true, mode: 0o700 });
@@ -153,17 +147,16 @@ export function replay(db: Database, task: ReplayTask, opts: ReplayOptions): str
 		must("git", ["-C", checkout, "remote", "remove", "origin"]);
 		writeFileSync(join(checkout, ".git", "hooks", "pre-push"), NO_PUSH_HOOK, { mode: 0o755 });
 
-		const args = ["-p", "--model", model, ...(thinking ? ["--thinking", thinking] : []), "--session-dir", join(dir, "sessions")];
-		let box: string | null = null;
-		let boxDir: string | null = null;
-		if (opts.sandbox) {
-			box = `aeval-${group.slice(-6)}-${i}`;
-			const ensureArgs = ["ensure", box, "--seed", checkout, ...(opts.net ? ["--net", opts.net] : []), ...(opts.size ? ["--size", opts.size] : [])];
-			boxDir = must("agentbox", ensureArgs).split("\n").at(-1) ?? null;
-			args.push("--cloud", "local", `--sandbox=${box}`);
-		}
-		args.push(REPLAY_PREAMBLE + task.task);
-		log(`  [${i}] ${spec}: running${box ? ` in sandbox ${box}` : ""}`);
+		const args = [
+			"-p",
+			"--model",
+			model,
+			...(thinking ? ["--thinking", thinking] : []),
+			"--session-dir",
+			join(dir, "sessions"),
+			REPLAY_PREAMBLE + task.task,
+		];
+		log(`  [${i}] ${spec}: running`);
 		const started = Date.now();
 		const out = openSync(join(dir, "transcript.txt"), "w", 0o600);
 		const err = openSync(join(dir, "stderr.txt"), "w", 0o600);
@@ -178,18 +171,9 @@ export function replay(db: Database, task: ReplayTask, opts: ReplayOptions): str
 		const duration = Date.now() - started;
 		const status = r.error && /ETIMEDOUT/.test(String(r.error)) ? "timeout" : r.status === 0 ? "done" : "failed";
 
-		let diff = "";
-		let stat = "";
-		if (box && boxDir) {
-			const q = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
-			const sh = (c: string) => run("agentbox", ["exec", box!, "--", "bash", "-c", `cd ${q(boxDir!)} && git add -A && ${c}`]).stdout;
-			diff = sh(`git diff --cached ${q(base)}`);
-			stat = sh(`git diff --cached --stat ${q(base)}`).trim();
-		} else {
-			run("git", ["-C", checkout, "add", "-A"]);
-			diff = run("git", ["-C", checkout, "diff", "--cached", base]).stdout;
-			stat = run("git", ["-C", checkout, "diff", "--cached", "--stat", base]).stdout.trim();
-		}
+		run("git", ["-C", checkout, "add", "-A"]);
+		const diff = run("git", ["-C", checkout, "diff", "--cached", base]).stdout;
+		const stat = run("git", ["-C", checkout, "diff", "--cached", "--stat", base]).stdout.trim();
 		writeFileSync(join(dir, "diff.patch"), redact(diff), { mode: 0o600 });
 		const last = lastAssistantText(join(dir, "sessions"));
 		db.query(
@@ -204,7 +188,7 @@ export function replay(db: Database, task: ReplayTask, opts: ReplayOptions): str
 			opts.harness,
 			model,
 			thinking ?? null,
-			box ? `sandbox:${box}` : "clone",
+			"clone",
 			base,
 			dir,
 			status,

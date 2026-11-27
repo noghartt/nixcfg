@@ -7,15 +7,6 @@
   "maxWorkers": 6,
   "maxFixRounds": 2,
   "spillAt": 85,
-  "workers": {
-    "placement": "auto",
-    "envAllowed": {
-      "GH_TOKEN": "read-only GitHub API token for gh: issues, pull requests, and repository metadata; Git itself never needs it"
-    },
-    "allowOpenNet": false,
-    "net": "dev",
-    "size": "medium"
-  },
   "consultant": {
     "models": ["anthropic-subscription/claude-fable-5-1", "anthropic/claude-fable-5-1", "chatgpt-subscription/gpt-6-astra", "openai-codex/gpt-6-astra"],
     "thinking": "high",

@@ -20,7 +20,7 @@ const RULES: Rule[] = [
 	{ cls: "refactor", re: /\b(refactor|clean ?up|simplif|restructure|extract|deslop|modernize|reorganiz|dedupe)\w*/i, weight: 3 },
 	{ cls: "test", re: /\b(add (?:a |unit |more )?tests?|write (?:a |unit )?tests?|test coverage|flaky|e2e|unit tests?)\b/i, weight: 3 },
 	{ cls: "docs", re: /\b(readme|docs?|documentation|changelog|agents\.md|docstring|write[- ]?up)\b/i, weight: 2 },
-	{ cls: "infra", re: /\b(nix|nixos|flake|home[- ]manager|docker|systemd|launchd|deploy|kubernetes|k8s|terraform|ci|github actions|pipeline|rebuild|sandbox|agentbox|firewall|tailscale)\b/i, weight: 2 },
+	{ cls: "infra", re: /\b(nix|nixos|flake|home[- ]manager|docker|systemd|launchd|deploy|kubernetes|k8s|terraform|ci|github actions|pipeline|rebuild|sandbox|firewall|tailscale)\b/i, weight: 2 },
 	{ cls: "design", re: /\b(design|architecture|architect|propose|proposal|rfc|trade-?offs?|plan(?:ning)?|hyperplan)\b/i, weight: 2 },
 	{ cls: "mechanical-edit", re: /\b(rename|bump|typo|reformat|format|move .* to|replace all|update (?:the )?version|sort|reword)\b/i, weight: 2 },
 	{ cls: "feature", re: /\b(add|implement|build|create|support|introduce|new (?:feature|command|option)|enable|adiciona|implementa|cria)\w*/i, weight: 1 },

@@ -10,31 +10,10 @@ import { Type } from "typebox";
 import { type ConsultantConfig, consult, pickConsultant } from "./consult.ts";
 import { limitPressure, limitsId, spill } from "./limits.ts";
 import { appendOutcome, type OutcomeVerdict, outcomeRecord } from "./outcomes.ts";
-import {
-	defaultPlacement,
-	onPath,
-	type PlacementChoice,
-	type PlacementInput,
-	type PlacementMode,
-	resolveMode,
-	splitVars,
-	type WorkersConfig,
-} from "./placement.ts";
-import { type Exec, fetchBundle, publishRef } from "./publish.ts";
+import { type Cloud, fingerprints as cloudFingerprints, git as cloudGit, leaderCloud, workerEnv } from "./cloud.ts";
+import { type PlacementMode, placementMode } from "./placement.ts";
+import { type Exec, publishRef } from "./publish.ts";
 import { harnessInvocation, harnessName, RpcChild, type RpcEvent } from "./rpc.ts";
-import {
-	boxName,
-	bundle,
-	type Cloud,
-	collect,
-	fingerprints as sandboxFingerprints,
-	git as sandboxGit,
-	leaderCloud,
-	leaderPlace,
-	localCloud,
-	provision,
-	workerEnv,
-} from "./sandbox.ts";
 
 interface PoolEntry {
 	key: string;
@@ -64,7 +43,6 @@ interface Config {
 	spillAt: number;
 	// onRequest entries run only on nodes the leader assigns them to.
 	pool: (PoolEntry & { spill?: string[]; onRequest?: boolean })[];
-	workers: WorkersConfig;
 	consultant: ConsultantConfig;
 }
 
@@ -150,7 +128,7 @@ interface NodeSpec {
 	workdir?: string;
 	kind?: NodeKind;
 	fixes?: string;
-	// Another repository (absolute path; on the cloud host in cloud mode) instead of the leader's.
+	// Another local repository (absolute path) instead of the leader's.
 	repo?: string;
 	// An onRequest pool key the leader assigned to this node.
 	model?: string;
@@ -486,23 +464,15 @@ interface Worker {
 	cwd: string;
 	branch?: string;
 	worktree?: string;
-	// Set when the checkout is on the cloud host (leader in cloud mode): inside `box`, or the
-	// leader's host directory without one. `isolated` is false only for the shared checkout.
+	// Set when the checkout is the leader's directory on its cloud host (leader in cloud mode).
+	// `isolated` is false only for the shared checkout.
 	cloud?: Cloud;
-	box?: string;
 	isolated: boolean;
 	placement: PlacementMode;
-	placementNote: string;
-	// The sandbox's limits; for a shared checkout, those of the sandbox it shares.
-	net?: string;
-	size?: string;
-	env?: string[];
-	// Local repository root for host worktrees and this machine's sandboxes.
+	// Local repository root for host worktrees.
 	repoRoot?: string;
 	attemptStart: number;
 	session?: string;
-	// Refs last fetched from the worker's sandbox into the leader's repo.
-	collected?: string;
 	current: Resolved;
 	modelNote: string;
 	attempts: number;
@@ -537,31 +507,16 @@ interface Run {
 	waiting: number;
 }
 
-function workerPrompt(
-	name: string,
-	spec: NodeSpec,
-	isolated: boolean,
-	sandboxBranch?: string,
-	ownSandbox = false,
-): string {
+function workerPrompt(name: string, spec: NodeSpec, isolated: boolean): string {
 	const { acceptance } = spec;
 	const repo = spec.repo
 		? `Your checkout is the repository at ${spec.repo}, not the leader's: work there, and branch from its own HEAD.`
 		: undefined;
-	const sandbox = sandboxBranch
-		? spec.kind === "review"
-			? `You work in the agentbox sandbox of "${spec.workdir}", on its branch \`${sandboxBranch}\`, which holds the work under review.`
-			: spec.workdir && !ownSandbox
-				? `You work in the agentbox sandbox of "${spec.workdir}", on its branch \`${sandboxBranch}\`, which already holds its work. Build on it and commit on that branch (never push): only commits leave the sandbox.`
-				: spec.workdir
-					? `You work in your own agentbox sandbox, on branch \`${sandboxBranch}\` cut from the last commit of "${spec.workdir}", so it starts with that node's work. Commit your work on that branch as you go (never push): only commits leave the sandbox, and the orchestrator collects them for the leader when you finish.`
-					: `You work in your own agentbox sandbox, on branch \`${sandboxBranch}\` cut from the leader's commit. Commit your work on that branch as you go (never push): only commits leave the sandbox, and the orchestrator collects them for the leader when you finish.`
-		: undefined;
-	const checkout = sandbox ?? (spec.workdir
+	const checkout = spec.workdir
 		? `You work in the Git worktree of "${spec.workdir}", which already holds its uncommitted changes. Build on them; do not create another worktree and do not commit.`
 		: isolated
 			? "You work in a dedicated Git worktree. Do not create another worktree and do not commit."
-			: "You work in the shared checkout. Do not commit.");
+			: "You work in the shared checkout. Do not commit.";
 	const review =
 		spec.kind === "review"
 			? [
@@ -586,8 +541,6 @@ function workerPrompt(
 function registerLeader(pi: ExtensionAPI) {
 	let run: Run | undefined;
 	let lastCtx: ExtensionContext | undefined;
-	// Decided once per leader process: sandboxes need agentbox on this host and OmO's cloud-mode.
-	const placementMode = resolveMode(config.workers.placement, onPath("agentbox"), harnessName());
 
 	const changed = () => {
 		if (!run) return;
@@ -702,12 +655,7 @@ function registerLeader(pi: ExtensionAPI) {
 			task: worker.task,
 			criteria: worker.criteria,
 			repo: worker.repoRoot ?? worker.cloud?.hostDir ?? worker.start.root,
-			placement: {
-				mode: worker.placement,
-				box: worker.placement === "worktree" ? undefined : worker.box,
-				net: worker.net,
-				size: worker.size,
-			},
+			placement: { mode: worker.placement },
 			model: {
 				key: worker.current.entry.key,
 				ref: worker.current.ref,
@@ -795,16 +743,6 @@ function registerLeader(pi: ExtensionAPI) {
 		return { choice: spilled.choice, note: `Default worker model.${spilled.note}` };
 	};
 
-	// Catalog variables a worker's sandbox may get: in cloud mode the leader's own opt-ins,
-	// otherwise the configured list. The defaults never go beyond it.
-	const allowedEnv = (): string[] =>
-		leaderCloud() ? splitVars(process.env.OMO_CLOUD_ENV) : Object.keys(config.workers.envAllowed);
-
-	const pickPlacement = (input: PlacementInput): PlacementChoice & { note: string } => ({
-		...defaultPlacement(input, config.workers, allowedEnv()),
-		note: "",
-	});
-
 	const reopen = (target: Worker, text: string) => {
 		target.state = "running";
 		target.attempts = 1;
@@ -850,16 +788,16 @@ function registerLeader(pi: ExtensionAPI) {
 		return lines.length > limit ? [...lines.slice(0, limit), `(+${lines.length - limit} more)`].join("\n") : text;
 	};
 
-	// A checkout on the cloud host is reached over SSH (inside its sandbox, if any).
-	type Where = { cwd: string; box?: string; cloud?: Cloud };
-	const gitAt = (where: Where, args: string[]) => (where.cloud ? sandboxGit(where.cloud, where, args) : git(where.cwd, args));
+	// A checkout on the cloud host is reached over SSH.
+	type Where = { cwd: string; cloud?: Cloud };
+	const gitAt = (where: Where, args: string[]) => (where.cloud ? cloudGit(where.cloud, where.cwd, args) : git(where.cwd, args));
 
 	// Porcelain paths are relative to the repository root, quoted when unusual, and renames
 	// read `old -> new`.
 	const porcelainPath = (line: string): string => line.slice(3).split(" -> ").pop()!.replace(/^"|"$/g, "");
 
 	const fingerprints = async (where: Where, root: string, lines: string[]): Promise<string[]> => {
-		if (where.cloud) return sandboxFingerprints(where.cloud, where, root, lines.map(porcelainPath));
+		if (where.cloud) return cloudFingerprints(where.cloud, root, lines.map(porcelainPath));
 		return lines.map((line) => {
 			try {
 				const stat = statSync(join(root, porcelainPath(line)));
@@ -893,11 +831,9 @@ function registerLeader(pi: ExtensionAPI) {
 			!dirty.has(line) ? [line] : edited.has(line) ? [`${line} (already dirty at start, changed since)`] : [],
 		);
 		const commits = head ? await gitAt(worker, ["log", "--oneline", `${head}..HEAD`]) : undefined;
-		// Sandbox workers commit as they go, so their diff starts at the commit they began from.
-		const base = worker.box && worker.isolated && head ? head : "HEAD";
 		return {
 			changed_files: changed.length ? clipLines(changed.join("\n")) : "(no uncommitted changes since the worker started)",
-			diff_stat: clipLines((await gitAt(worker, ["diff", "--stat", base])) || "(none)"),
+			diff_stat: clipLines((await gitAt(worker, ["diff", "--stat", "HEAD"])) || "(none)"),
 			commits_since_start: head ? commits || "(none)" : "(unknown)",
 			tool_calls: tools.join("\n") || "(none)",
 		};
@@ -916,13 +852,6 @@ function registerLeader(pi: ExtensionAPI) {
 		await writeFile(join(run.dir, `${worker.name}.report-${worker.reports}.md`), worker.report);
 		const r = run;
 		const finish = async () => {
-			if (worker.kind === "work" && worker.box && worker.isolated && worker.cloud) {
-				try {
-					worker.collected = await collect(worker.cloud, worker, worker.name);
-				} catch (error) {
-					toInbox(`Collecting ${worker.name}'s branch from sandbox ${worker.box} failed: ${(error as Error).message}`);
-				}
-			}
 			for (const pending of worker.mailbox.splice(0)) toInbox(`Undelivered to ${worker.name} (${worker.state}): ${pending}`);
 			changed();
 			await schedule();
@@ -1097,24 +1026,14 @@ function registerLeader(pi: ExtensionAPI) {
 		const upstream = spec.workdir ? r.workers.get(spec.workdir) : undefined;
 		const inHerdr = process.env.HERDR_ENV === "1";
 		const leader = leaderCloud();
-		// sandbox.ts drives agentbox over SSH; an exe.dev leader (`--cloud exe`) has no host to reach.
-		if (leader?.dest === "exe") throw new Error("orchestrator workers do not support exe.dev sandboxes yet; run the leader without --cloud exe");
-		const upstreamSandbox = !!(upstream?.box && upstream.isolated && upstream.cloud);
-		const input: PlacementInput = {
-			kind: spec.kind ?? "work",
+		const mode = placementMode({
 			isolated: (spec.isolation ?? "worktree") === "worktree",
-			upstream: upstream ? { sandbox: upstreamSandbox } : undefined,
+			upstream: upstream !== undefined,
 			leaderCloud: leader !== undefined,
-			mode: placementMode.mode,
-		};
+		});
 		const { choice, note } = pickModel(pool, spec.model);
-		const placed = pickPlacement(input);
 
-		// A sandbox lives on the leader's cloud host when the leader runs in cloud mode, else on
-		// this machine, seeded from the repository itself. Either way the worker process stays
-		// local (and visible) with cloud-mode pointing its tools there. A node on another
-		// repository is seeded from that repository and collected back into it, never into the
-		// leader's checkout or sandbox.
+		// A node on another repository branches from that repository's HEAD.
 		const origin = upstream ? ctx.cwd : (spec.repo ?? ctx.cwd);
 		const toplevel = async (dir: string): Promise<string> => {
 			const root = await pi.exec("git", ["rev-parse", "--show-toplevel"], { cwd: dir, signal });
@@ -1126,42 +1045,19 @@ function registerLeader(pi: ExtensionAPI) {
 		let isolated = true;
 		let branch: string | undefined;
 		let worktree: string | undefined;
-		let box: string | undefined;
 		let pane: string | undefined;
 		let repoRoot: string | undefined;
-		let limits: { net?: string; size?: string; env?: string[] } = {};
-		if (placed.mode === "shared" && upstream) {
-			({ cwd, branch, worktree, box, cloud, isolated, repoRoot } = upstream);
-			limits = { net: upstream.net, size: upstream.size, env: upstream.env };
-		} else if (placed.mode === "shared") {
+		if (mode === "shared" && upstream) {
+			({ cwd, branch, worktree, cloud, isolated, repoRoot } = upstream);
+		} else if (mode === "shared") {
 			isolated = false;
 			// A host-side leader's shared node is a plain local worker without OMO_CLOUD, so
-			// destructive-guard keeps checking it like the leader itself.
+			// destructive-guard keeps checking it like the leader itself. A cloud-mode leader's
+			// shared node works in the leader's directory on the cloud host.
 			if (leader) {
-				if (spec.repo) throw new Error(`${name}: a node with \`repo\` in cloud mode needs worktree isolation (its own sandbox)`);
+				if (spec.repo) throw new Error(`${name}: a node with \`repo\` is unavailable while the leader runs in cloud mode`);
 				cloud = leader;
-				({ cwd, box } = await leaderPlace(cloud, signal));
-			}
-		} else if (placed.mode === "sandbox") {
-			if (upstream?.cloud) cloud = upstream.cloud;
-			else if (leader) cloud = spec.repo ? { dest: leader.dest, hostDir: spec.repo } : leader;
-			else cloud = localCloud((repoRoot = await toplevel(origin)));
-			repoRoot ??= upstream?.repoRoot;
-			branch = `orch/${r.id}-${name}`;
-			box = boxName(r.id, name);
-			limits = { net: placed.net, size: placed.size, env: placed.env };
-			const from = upstream?.box && upstreamSandbox ? { cwd: upstream.cwd, box: upstream.box } : undefined;
-			({ cwd } = await provision(cloud, box, branch, limits, signal, from));
-			if (inHerdr) {
-				// Without --workspace Herdr picks the focused one, which with a second client
-				// attached (an SSH login) need not be the leader's.
-				const workspace = process.env.HERDR_WORKSPACE_ID;
-				const created = await herdrJson<{ root_pane: { pane_id: string } }>(
-					["tab", "create", ...(workspace ? ["--workspace", workspace] : []), "--cwd", ctx.cwd, "--label", `orch ${name}`, "--no-focus"],
-					ctx.cwd,
-					signal,
-				);
-				pane = created.root_pane.pane_id;
+				cwd = leader.hostDir;
 			}
 		} else {
 			const repo = await toplevel(origin);
@@ -1198,7 +1094,7 @@ function registerLeader(pi: ExtensionAPI) {
 		}
 		// Nodes sharing an upstream checkout split its pane; shared-checkout nodes split the leader's.
 		// A remote host's paths do not exist here, so a cloud worker runs locally from the leader's cwd.
-		const localCwd = cloud ? (cloud.dest === "local" ? origin : ctx.cwd) : cwd;
+		const localCwd = cloud ? ctx.cwd : cwd;
 		if (inHerdr && !pane) {
 			const anchor = upstream?.pane ?? process.env.HERDR_PANE_ID;
 			const direction = upstream?.pane ? "right" : "down";
@@ -1211,7 +1107,7 @@ function registerLeader(pi: ExtensionAPI) {
 		}
 
 		// Taken before launch, so nothing the worker does can land in its own baseline.
-		const start = await snapshot({ cwd, box, cloud });
+		const start = await snapshot({ cwd, cloud });
 		const { provider, id } = splitRef(choice.ref);
 		const env: Record<string, string> = { ORCH_ROLE: "worker", ORCH_AGENT: name, ORCH_RUN_DIR: r.dir };
 		// destructive-guard treats this run-owned checkout as the worker's scratch space.
@@ -1219,7 +1115,7 @@ function registerLeader(pi: ExtensionAPI) {
 		// Started from a `/unsupervised` run (destructive-guard sets it): nobody answers this worker either.
 		const unsupervised = process.env.OMO_UNSUPERVISED === "1";
 		if (unsupervised) env.OMO_UNSUPERVISED = "1";
-		if (cloud) Object.assign(env, workerEnv(cloud, box, limits.env));
+		if (cloud) Object.assign(env, workerEnv(cloud));
 		const args = [
 			"--approve",
 			"--provider",
@@ -1236,7 +1132,7 @@ function registerLeader(pi: ExtensionAPI) {
 			"worktree_agents",
 		];
 		const prompt = [
-			workerPrompt(name, spec, isolated, cloud && isolated ? branch : undefined, placed.mode === "sandbox"),
+			workerPrompt(name, spec, isolated),
 			unsupervised
 				? 'The user is away for this run and nobody answers dialogs or questions. Take the option you would recommend and note it in your report; only the leader (mesh_send "leader") can decide for you. A command the destructive guard refuses was not run: skip that step and report it.'
 				: undefined,
@@ -1267,7 +1163,7 @@ function registerLeader(pi: ExtensionAPI) {
 				toInbox(`${name}: ${error.message}; its pane keeps its default label.`);
 			});
 			// The pane's own shell runs the script, so the pane returns to a prompt when the worker exits.
-			// `cwd` may be a path inside a sandbox, which does not exist here.
+			// `cwd` may be a path on the cloud host, which does not exist here.
 			await herdr(["pane", "run", pane, `sh ${shellQuote(script)}`], localCwd, signal);
 		} else {
 			child = new RpcChild(["--no-session", ...args, "--append-system-prompt", prompt], localCwd, env);
@@ -1283,11 +1179,8 @@ function registerLeader(pi: ExtensionAPI) {
 			branch,
 			worktree,
 			cloud,
-			box,
 			isolated,
-			placement: placed.mode,
-			placementNote: placed.note,
-			...limits,
+			placement: mode,
 			repoRoot,
 			attemptStart: Date.now(),
 			current: choice,
@@ -1332,12 +1225,9 @@ function registerLeader(pi: ExtensionAPI) {
 			worker.evidence
 				? `Changed files:\n${worker.evidence.changed_files}\nDiff stat:\n${worker.evidence.diff_stat}\nCommits since start:\n${worker.evidence.commits_since_start}`
 				: undefined,
-			worker.box && worker.isolated
-				? `Sandbox: ${worker.box} on ${worker.cloud?.dest}${worker.net || worker.size ? ` (net ${worker.net ?? "?"}, size ${worker.size ?? "?"}, env ${worker.env?.join(", ") || "none"})` : ""}\nBranch: ${worker.branch}${worker.collected ? `\nCollected into your repo: ${worker.collected.split("\n").join(", ")}` : ""}`
-				: worker.worktree
-					? `Worktree: ${worker.worktree}\nBranch: ${worker.branch}`
-					: `Checkout: ${worker.cwd}${worker.cloud ? ` on ${worker.cloud.dest}${worker.box ? ` (sandbox ${worker.box})` : ""}` : ""}`,
-			worker.placementNote ? `Placement: ${worker.placement}. ${worker.placementNote}` : undefined,
+			worker.worktree
+				? `Worktree: ${worker.worktree}\nBranch: ${worker.branch}`
+				: `Checkout: ${worker.cwd}${worker.cloud ? ` on ${worker.cloud.dest}` : ""}`,
 			worker.pane ? `Herdr pane: ${worker.pane}` : undefined,
 		];
 		if (worker.after.length) lines.splice(1, 0, `After: ${worker.after.join(", ")}`);
@@ -1422,8 +1312,8 @@ function registerLeader(pi: ExtensionAPI) {
 		"- Plan the work as a graph, not a flat list: orch_spawn accepts the whole graph at once. `after` makes a node wait until the named nodes are accepted, and the orchestrator starts it then (dependents of a failed node are skipped). `workdir` runs a node in an upstream node's worktree so it builds on those uncommitted changes.",
 		'- Add `kind: "review"` nodes for verification and code review, with `workdir` and `after` set to the node under review. With `fixes` naming that node, a `VERDICT: FAIL` sends the findings back to it and the reviewer re-checks once it settles, up to ' +
 			`${config.maxFixRounds} rounds. Make later nodes depend on the reviewer, not the reviewed node, so they start only on a passing review.`,
-		`- Placement: ${placementMode.note} In cloud mode isolated workers get sandboxes on your cloud host. A new sandbox gets the default network and size and every allowed catalog variable; review nodes always share the checkout they review.`,
-		"- A sandbox worker is branched from your last commit (commit first: uncommitted changes do not reach it). It commits there, and when it finishes its branches are fetched into your repo as `sandbox/<sandbox>/<branch>` (orch_status shows them); merge from those. Worktree workers do not commit: review and integrate their worktrees yourself, then validate the integrated result.",
+		'- Placement: isolated workers get their own Git worktree on this machine; review nodes and nodes with `workdir` share the checkout they build on. In cloud mode worktrees are unavailable: every node needs isolation "current" and works in your directory on the cloud host.',
+		"- Worktree workers do not commit: review and integrate their worktrees yourself, then validate the integrated result.",
 		"- orch_consult asks a stronger reasoning model (Fable, or GPT-6 Astra when Claude's limits run hot) one question with the context you give it; use it for hard design calls and when you doubt a plan or result. Its opinions are advice: weigh them, you decide.",
 		"- orch_publish pushes an accepted node's branch to origin under a name you pick by the repository's conventions (never the default branch, never forced) and can open a draft PR. Publish only when the goal asks for a push or PR.",
 	];
@@ -1622,7 +1512,7 @@ function registerLeader(pi: ExtensionAPI) {
 					isolation: Type.Optional(
 						StringEnum(["worktree", "current"] as const, {
 							description:
-								'Default "worktree": its own checkout, an agentbox sandbox where sandboxes are available, else a Git worktree. "current" shares the caller checkout; such nodes run one at a time.',
+								'Default "worktree": its own Git worktree (unavailable in cloud mode). "current" shares the caller checkout; such nodes run one at a time.',
 						}),
 					),
 					after: Type.Optional(
@@ -1642,7 +1532,7 @@ function registerLeader(pi: ExtensionAPI) {
 					repo: Type.Optional(
 						Type.String({
 							description:
-								"Absolute path of a different Git repository this node works on (on the sandbox host in cloud mode), branched from its own HEAD; default: the leader's checkout. Not with `workdir`.",
+								"Absolute path of a different Git repository this node works on, branched from its own HEAD (not in cloud mode); default: the leader's checkout. Not with `workdir`.",
 						}),
 					),
 					model: Type.Optional(
@@ -1915,7 +1805,7 @@ function registerLeader(pi: ExtensionAPI) {
 		name: "orch_publish",
 		label: "Orchestrator: Publish",
 		description:
-			"Push an accepted node's branch to origin with the user's GitHub login, optionally opening a draft PR. Sandbox nodes publish their collected `sandbox/<box>/<branch>`; worktree nodes their own branch once it has commits. Never force-pushes and refuses the default branch. Publish only when the goal asks for a push or PR.",
+			"Push an accepted node's branch to origin with the user's GitHub login, optionally opening a draft PR. Worktree nodes publish their own branch once it has commits. Never force-pushes and refuses the default branch. Publish only when the goal asks for a push or PR.",
 		promptSnippet: "Push an accepted node's branch (and open a draft PR)",
 		defaultActive: false,
 		parameters: Type.Object({
@@ -1950,32 +1840,12 @@ function registerLeader(pi: ExtensionAPI) {
 				}
 				return result.stdout.trim();
 			};
-			let repo: string;
-			let ref: string;
-			if (worker.box && worker.cloud) {
-				ref = `refs/remotes/sandbox/${worker.box}/${worker.branch}`;
-				if (worker.cloud.dest === "local" && !worker.cloud.box) {
-					// Collected into this machine's repository when it settled; again if that failed.
-					repo = worker.cloud.hostDir;
-					const present = await pi.exec("git", ["rev-parse", "--verify", "--quiet", ref], { cwd: repo, signal });
-					if (present.code !== 0) worker.collected = await collect(worker.cloud, worker, worker.name);
-				} else {
-					// Collected on the cloud host or into the leader's sandbox, so it travels here as a bundle.
-					repo = await exec("git", ["rev-parse", "--show-toplevel"], ctx.cwd).catch(() => {
-						throw new Error(`orch_publish needs a local clone of this repository at ${ctx.cwd}.`);
-					});
-					await fetchBundle(exec, repo, await bundle(worker.cloud, worker, worker.branch, signal), worker.branch, ref);
-				}
-			} else {
-				if (!worker.repoRoot) throw new Error(`${worker.name} has no local repository to publish from.`);
-				repo = worker.repoRoot;
-				ref = `refs/heads/${worker.branch}`;
-				const ahead = worker.start.head
-					? await exec("git", ["rev-list", "--count", `${worker.start.head}..${ref}`], repo)
-					: "0";
-				if (ahead === "0") {
-					throw new Error(`${worker.branch} has no commits: worktree workers do not commit. Commit or integrate the work in ${worker.worktree} first.`);
-				}
+			if (!worker.repoRoot) throw new Error(`${worker.name} has no local repository to publish from.`);
+			const repo = worker.repoRoot;
+			const ref = `refs/heads/${worker.branch}`;
+			const ahead = worker.start.head ? await exec("git", ["rev-list", "--count", `${worker.start.head}..${ref}`], repo) : "0";
+			if (ahead === "0") {
+				throw new Error(`${worker.branch} has no commits: worktree workers do not commit. Commit or integrate the work in ${worker.worktree} first.`);
 			}
 			const lines = await publishRef(exec, { repo, ref, name: params.as, pr: params.pr });
 			return { content: [{ type: "text", text: lines.join("\n") }], details: undefined };

@@ -14,7 +14,7 @@ const input: OutcomeInput = {
 	task: "Add the endpoint",
 	criteria: ["tests pass", "docs updated"],
 	repo: "/home/u/www/x",
-	placement: { mode: "sandbox", box: "oab12cd34-api", net: "dev", size: "medium" },
+	placement: { mode: "worktree" },
 	model: { key: "sonnet", ref: "anthropic-subscription/claude-sonnet-5-5", thinking: "medium", tier: 1 },
 	pickNote: " Default worker model. ",
 	attempt: 2,
@@ -39,15 +39,13 @@ describe("outcomeRecord", () => {
 		expect(record.leaderSession).toBeNull();
 		expect(record.criteriaScores).toEqual([]);
 	});
-	test("uses null for unknown placement parts, repo, and sessions", () => {
+	test("uses null for an unknown repo and sessions", () => {
 		const record = outcomeRecord({
 			...input,
 			repo: undefined,
-			placement: { mode: "worktree" },
 			workerSession: undefined,
 		});
 		expect(record.repo).toBeNull();
-		expect(record.placement).toEqual({ mode: "worktree", box: null, net: null, size: null });
 		expect(record.workerSession).toBeNull();
 	});
 });

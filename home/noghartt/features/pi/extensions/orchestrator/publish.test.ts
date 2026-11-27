@@ -31,13 +31,13 @@ describe("publishRef", () => {
 		const { exec, calls } = fakeExec({ "ls-remote": SYMREF, "pr create": "https://github.com/o/r/pull/1" });
 		const lines = await publishRef(exec, {
 			repo: "/repo",
-			ref: "refs/remotes/sandbox/obox/orch/run-api",
+			ref: "refs/heads/orch/run-api",
 			name: "feat/api",
 			pr: { title: "Add API", body: "Body" },
 		});
 		const push = calls.find((call) => call.includes("push"))!;
 		expect(push).toContain("url.git@github.com:.insteadOf=https://github.com/");
-		expect(push).toContain("refs/remotes/sandbox/obox/orch/run-api:refs/heads/feat/api");
+		expect(push).toContain("refs/heads/orch/run-api:refs/heads/feat/api");
 		expect(push.some((arg) => arg.startsWith("-f") || arg === "--force" || arg.startsWith("+"))).toBe(false);
 		const pr = calls.find((call) => call[0] === "gh")!;
 		expect(pr).toEqual(["gh", "pr", "create", "--draft", "--head", "feat/api", "--base", "main", "--title", "Add API", "--body", "Body"]);

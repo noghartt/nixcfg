@@ -1,8 +1,5 @@
-// Pushes a node's branch to GitHub from this machine, with the user's own keys: sandboxes hold
-// no write credentials. Adapted from cloud-mode's publish tool (cloud-mode/publish.ts).
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+// Pushes a node's branch to GitHub from this machine, with the user's own keys. Adapted
+// from cloud-mode's publish tool (cloud-mode/publish.ts).
 
 // Git goes over SSH, never HTTPS, even when a clone's origin is an HTTPS URL.
 export const GITHUB_OVER_SSH = ["-c", "url.git@github.com:.insteadOf=https://github.com/"];
@@ -18,18 +15,6 @@ export function refuseTarget(name: string, defaultBranch: string): string | unde
 	if (name === defaultBranch) return `refusing to push to the default branch ${defaultBranch}; publish a feature branch and open a PR.`;
 	if (name.startsWith("refs/") || name.startsWith("-")) return `"${name}" is not a plain branch name.`;
 	return undefined;
-}
-
-// A sandbox branch that is not in the repository yet lands at `ref` (refs/remotes/sandbox/...).
-export async function fetchBundle(exec: Exec, repo: string, data: Buffer, branch: string, ref: string): Promise<void> {
-	const dir = await mkdtemp(join(tmpdir(), "orch-publish-"));
-	try {
-		const file = join(dir, "branch.bundle");
-		await writeFile(file, data);
-		await exec("git", ["-c", "fetch.fsckObjects=true", "fetch", "-q", file, `+refs/heads/${branch}:${ref}`], repo);
-	} finally {
-		await rm(dir, { recursive: true, force: true });
-	}
 }
 
 export async function publishRef(

@@ -23,7 +23,7 @@ const USAGE = `aeval - evaluate agent sessions: ingest, label, classify, report,
   aeval export --format sft|preference --provider openai|anthropic [--out DIR] [--include-good-sessions]
                [--system summarize|strip] [--max-example-bytes N] [--max-total-bytes N] [--max-tool-chars N] [--limit N]
   aeval replay (--node RUN/NODE | --session ID) --models m1[:thinking],m2 [--harness omo|pi]
-               [--repo PATH] [--base REV] [--sandbox [--net PROFILE] [--size CLASS]] [--timeout 30m] [--dry-run]
+               [--repo PATH] [--base REV] [--timeout 30m] [--dry-run]
   aeval paths
 
 State: ${stateDir()}`;
@@ -48,7 +48,7 @@ function parseArgs(argv: string[]): { cmd: string; flags: Flags; rest: string[] 
 	return { cmd, flags, rest };
 }
 
-const BOOLEAN = new Set(["force", "include-sdk", "quiet", "all", "llm", "stdout", "include-good-sessions", "sandbox", "dry-run", "help"]);
+const BOOLEAN = new Set(["force", "include-sdk", "quiet", "all", "llm", "stdout", "include-good-sessions", "dry-run", "help"]);
 
 const flag = (f: Flags, k: string) => (typeof f[k] === "string" ? (f[k] as string) : undefined);
 const intFlag = (f: Flags, k: string) => {
@@ -160,9 +160,6 @@ async function main(argv: string[]): Promise<number> {
 					harness: oneOf(flag(flags, "harness"), ["omo", "pi"] as const, "harness") ?? "omo",
 					base: flag(flags, "base"),
 					repo: flag(flags, "repo"),
-					sandbox: !!flags.sandbox,
-					net: flag(flags, "net"),
-					size: flag(flags, "size"),
 					timeoutMs: duration(flag(flags, "timeout")),
 					dryRun: !!flags["dry-run"],
 					log: (l) => console.log(l),

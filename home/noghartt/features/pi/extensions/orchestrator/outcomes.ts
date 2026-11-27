@@ -16,7 +16,7 @@ export interface OutcomeRecord {
 	task: string;
 	criteria: string[];
 	repo: string | null;
-	placement: { mode: "sandbox" | "worktree" | "shared"; box: string | null; net: string | null; size: string | null };
+	placement: { mode: "worktree" | "shared" };
 	model: { key: string; ref: string; thinking: string; tier: number };
 	pickNote: string;
 	attempt: number;
@@ -37,7 +37,7 @@ export interface OutcomeInput {
 	task: string;
 	criteria: string[];
 	repo?: string;
-	placement: { mode: "sandbox" | "worktree" | "shared"; box?: string; net?: string; size?: string };
+	placement: { mode: "worktree" | "shared" };
 	model: { key: string; ref: string; thinking: string; tier: number };
 	pickNote: string;
 	attempt: number;
@@ -59,12 +59,7 @@ export function outcomeRecord(input: OutcomeInput): OutcomeRecord {
 		task: input.task,
 		criteria: input.criteria,
 		repo: input.repo ?? null,
-		placement: {
-			mode: input.placement.mode,
-			box: input.placement.box ?? null,
-			net: input.placement.net ?? null,
-			size: input.placement.size ?? null,
-		},
+		placement: { mode: input.placement.mode },
 		model: input.model,
 		pickNote: input.pickNote.trim(),
 		attempt: input.attempt,
