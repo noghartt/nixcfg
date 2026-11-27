@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { posix } from "node:path";
-import type { Context } from "@earendil-works/chord/context";
+import { BACKGROUND_CONTEXT, type Context, withAbortSignal } from "@earendil-works/chord/context";
 import {
 	type BinaryReader,
 	type DirReader,
@@ -52,6 +52,8 @@ const MAX_TIMEOUT_SECONDS = 2_147_483_647 / 1000;
 const SCRIPT_DEADLINE_MS = 5 * 60 * 1000;
 /** A command gets this long past its timeout (sbx's 10 s kill grace included) before the local wait gives up. */
 const EXEC_DEADLINE_GRACE_MS = 30_000;
+/** How long one spill write may take. */
+const SPILL_DEADLINE_MS = 10 * 60 * 1000;
 /** How long cleanup waits for the remote kills of running commands. */
 const CLEANUP_WAIT_MS = 5_000;
 /** Printed on stderr by a command that never started (missing cwd or program); never shown to the caller. */
@@ -389,11 +391,13 @@ export class SandboxExecutionEnv implements ExecutionEnv {
 		const source = this.resolve(sourcePath);
 		const s = quote(source);
 		const d = quote(this.resolve(destinationPath));
-		// rename(2), not mv: never moves into an existing directory; replaces an empty one with a directory.
+		// rename(2), not mv: never moves into an existing directory; replaces an empty one with a directory, and a
+		// symbolic link (even one to a directory, which mv would follow) with the source.
 		const out = await this.#script(
 			[
 				`[ -e ${s} ] || [ -L ${s} ] || e not_found`,
-				`if [ -d ${d} ] && [ ! -L ${d} ]; then`,
+				`if [ -L ${d} ]; then rm -f -- ${d} || e unknown`,
+				`elif [ -d ${d} ]; then`,
 				`  [ -d ${s} ] || e is_directory`,
 				`  rmdir -- ${d} 2>/dev/null || e unknown`,
 				`fi`,
@@ -615,12 +619,12 @@ class ChunkText {
 
 /**
  * Durable's spill on the sandbox: output is counted until it crosses a threshold, then the whole of it goes to a temp
- * file there, in appends of about a megabyte, so the model's `read` finds the file where it reads everything else.
+ * file there, in appends of about a megabyte, so the model's `read` finds the file where it reads everything else. The
+ * file holds the decoded text: sbx's exec streams strings, not bytes, so invalid UTF-8 arrives as U+FFFD.
  */
 class RemoteSpill {
 	readonly #env: SandboxExecutionEnv;
 	readonly #limits: { afterBytes: number; afterLines: number };
-	readonly #context: Context;
 	#prefix: string[] = [];
 	#bytes = 0;
 	#newlines = 0;
@@ -630,10 +634,16 @@ class RemoteSpill {
 	#chain: Promise<void> = Promise.resolve();
 	error: ExecutionError | undefined;
 
-	constructor(env: SandboxExecutionEnv, limits: { afterBytes: number; afterLines: number }, context: Context) {
+	constructor(env: SandboxExecutionEnv, limits: { afterBytes: number; afterLines: number }, _context: Context) {
 		this.#env = env;
 		this.#limits = limits;
-		this.#context = context;
+		// Its own bounded context, not the call's: an aborted or timed-out command's spill must still be completed, as
+		// Durable's Node environment completes it.
+	}
+
+	/** A fresh bounded context per write. */
+	#context(): Context {
+		return withAbortSignal(AbortSignal.timeout(SPILL_DEADLINE_MS), BACKGROUND_CONTEXT);
 	}
 
 	push(text: string): Promise<void> | undefined {
@@ -643,7 +653,7 @@ class RemoteSpill {
 			for (let i = text.indexOf("\n"); i !== -1; i = text.indexOf("\n", i + 1)) this.#newlines++;
 			const lines = this.#newlines + (text.endsWith("\n") ? 0 : 1);
 			if (this.#bytes <= this.#limits.afterBytes && lines <= this.#limits.afterLines) return undefined;
-			this.#path = this.#env.createTempFile({ prefix: "pi-output-", suffix: ".log" }, this.#context).then((made) => {
+			this.#path = this.#env.createTempFile({ prefix: "pi-output-", suffix: ".log" }, this.#context()).then((made) => {
 				if (made.ok) return made.value;
 				this.error = new ExecutionError("unknown", `Failed to preserve complete shell output: ${made.error.message}`);
 				return undefined;
@@ -666,7 +676,7 @@ class RemoteSpill {
 		this.#chain = this.#chain.then(async () => {
 			const path = await this.#path;
 			if (path === undefined || batch === "" || this.error !== undefined) return;
-			const written = await this.#env.appendFile(path, batch, this.#context);
+			const written = await this.#env.appendFile(path, batch, this.#context());
 			if (!written.ok) {
 				this.error = new ExecutionError("unknown", `Failed to preserve complete shell output: ${written.error.message}`);
 			}

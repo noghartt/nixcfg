@@ -89,6 +89,22 @@ export const Background = defineDoc<BackgroundState>({
 	checkpointWhen: () => false,
 });
 
+/**
+ * Which sandbox a conversation's tools run in, when it has its own. Unlike Identity, forks keep it, so a /tree branch
+ * of a sandbox subagent keeps working where the subagent did instead of falling back to the session or this machine.
+ */
+export type SandboxBindingState = { ref?: SandboxRef };
+
+export const SandboxBinding = defineDoc<SandboxBindingState>({
+	kind: "pi-durable.sandbox-binding",
+	version: 1,
+	scope: "conversation",
+	history: "latest",
+	fork: "current",
+	initial: () => ({}),
+	checkpointWhen: () => false,
+});
+
 /** The whole session's sandbox (`--sandbox`, `/sandbox`): every conversation without its own runs its tools there. */
 export type SessionSandboxState = {
 	ref?: SandboxRef;

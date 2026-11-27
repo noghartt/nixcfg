@@ -26,7 +26,7 @@ import { arr, bool, int, obj, opt, str } from "@earendil-works/pi-schema";
 import { AGY_SUBAGENT_TOOL } from "./antigravity.ts";
 import type { AgentProfile } from "./profiles.ts";
 import { DEFAULT_PARALLEL, type Host, MAX_PARALLEL, MAX_PARALLEL_TASKS } from "./host.ts";
-import { Background, Identity, type IdentityState, MESSAGE_KIND, REPORT_KIND } from "./state.ts";
+import { Background, Identity, type IdentityState, MESSAGE_KIND, REPORT_KIND, SandboxBinding } from "./state.ts";
 import { type Isolation, parseIsolation, type SandboxSummary, type Sandboxes, sandboxName, sandboxOf } from "./sandbox.ts";
 import { ensureWorktree, summarizeWorktree } from "./worktrees.ts";
 
@@ -180,6 +180,7 @@ export async function createChild(
 	const created = await tx.createConversation({ ownership: { kind: "task", taskId: ownerTask } });
 	await configure(tx, created.id, change);
 	Object.assign(await tx.doc(Identity, created.id), identity);
+	if (identity.sandbox !== undefined) (await tx.doc(SandboxBinding, created.id)).ref = identity.sandbox;
 	return created.id;
 }
 
@@ -635,6 +636,7 @@ export function createOrchestration(host: Host): { orchestration: Extension; tas
 			// Every profile is checked before anything starts.
 			const specs = args.tasks.map((item, index) => {
 				const agent = host.profiles.get(item.agent).name;
+				if (item.isolation !== undefined) parseIsolation(item.isolation);
 				return {
 					agent,
 					name: item.name?.trim() || `${agent}-${index + 1}`,

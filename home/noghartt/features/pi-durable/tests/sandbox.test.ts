@@ -38,7 +38,7 @@ import {
 } from "./sandbox.ts";
 import { SandboxExecutionEnv } from "./sandbox-env.ts";
 import { createSandboxTools } from "./sandbox-tools.ts";
-import { SessionSandbox } from "./state.ts";
+import { Identity, SandboxBinding, SessionSandbox } from "./state.ts";
 import { createOrchestration } from "./subagent.ts";
 
 const context = BACKGROUND_CONTEXT;
@@ -169,6 +169,38 @@ describe("sandbox ExecutionEnv", () => {
 		assert.ok(result.spillPath !== undefined);
 		assert.equal(getOrThrow(await env.readTextFile(result.spillPath, context)), streamed);
 		assert.equal((await box.exec(`test -f ${result.spillPath}`)).exitCode, 0, "the spill file is on the sandbox");
+	});
+
+	test("rename replaces a symbolic link to a directory instead of moving into it", async () => {
+		const env = await fresh();
+		getOrThrow(await env.createDir("dir", undefined, context));
+		getOrThrow(await env.writeFile("file.txt", "x", context));
+		getOrThrow(await env.exec("ln -s dir link", undefined, context));
+		getOrThrow(await env.renameFile("file.txt", "link", context));
+		assert.equal(getOrThrow(await env.fileInfo("link", context)).kind, "file");
+		assert.equal(getOrThrow(await env.exists("dir/file.txt", context)), false);
+	});
+
+	test("an aborted command's spill file is still complete", async () => {
+		const env = await fresh();
+		const controller = new AbortController();
+		let streamed = "";
+		const running = env.exec(
+			"i=0; while [ $i -lt 300 ]; do echo line-$i; i=$((i+1)); done; sleep 5",
+			{
+				spill: { afterBytes: 100, afterLines: 10 },
+				onOutput: (text) => {
+					streamed += text;
+					if (streamed.includes("line-299")) controller.abort();
+				},
+			},
+			withAbortSignal(controller.signal, context),
+		);
+		const result = await running;
+		assert.equal(result.ok ? undefined : result.error.code, "aborted");
+		const spillPath = result.ok ? undefined : result.error.spillPath;
+		assert.ok(spillPath !== undefined);
+		assert.equal(getOrThrow(await env.readTextFile(spillPath, context)), streamed);
 	});
 
 	test("a callback error stops the command and is reported as such", async () => {
@@ -407,6 +439,37 @@ describe("sandbox safety", () => {
 		// A pull after the sandbox is gone reports what an earlier pull left.
 		const again = await sandboxes.pull({ name: "pd-safe-big" }, work, []);
 		assert.deepEqual([again.gone, again.branches], [true, ["sbx/pd-safe-big/pi-durable/big"]]);
+	});
+
+	test("attaching a sandbox of another repository is refused", async () => {
+		const made = await sandboxes.ensure({ name: "pd-safe-other", repo: work, purpose: "session", owned: true });
+		const other = join(mkdtempSync(join(tmpdir(), "pi-durable-sbx-")), "other");
+		execFileSync("git", ["init", "-q", "-b", "main", other]);
+		await assert.rejects(sandboxes.attach("pd-safe-other", other), /holds repo, not this repository/u);
+		assert.equal((await sandboxes.attach("pd-safe-other", work)).workdir, made.ref.workdir);
+		await sandboxes.remove({ name: "pd-safe-other" });
+	});
+
+	test("a /tree fork of a sandbox subagent keeps its sandbox", async () => {
+		const made = await sandboxes.ensure({ name: "pd-safe-fork", repo: work, purpose: "subagent", owned: true });
+		const database = join(mkdtempSync(join(tmpdir(), "pi-durable-fork-")), "s.sqlite");
+		const harness = await Harness.open(await openNodeSqliteStorage(database), { models: createModels(), registry: createRegistry() }, context);
+		try {
+			await harness.root(context, { agent: { cwd: work } });
+			const child = await harness.createConversation({ ownership: { kind: "ownerless" }, agent: { cwd: work } }, context);
+			await harness.commit(async (tx) => {
+				(await tx.doc(Identity, child.id)).sandbox = made.ref;
+				(await tx.doc(SandboxBinding, child.id)).ref = made.ref;
+			}, context);
+			await child.submit({ type: "input", content: "hi", whenBusy: "followUp" }, context).catch(() => undefined);
+			const last = (await child.entries({ order: "descending" }, 1, undefined, context)).items[0];
+			assert.ok(last !== undefined);
+			const fork = await child.fork(last.id, { ownership: { kind: "ownerless" } }, context);
+			assert.equal((await sandboxOf(harness, fork.id, context))?.name, "pd-safe-fork");
+		} finally {
+			await harness.close(context);
+			await sandboxes.remove({ name: "pd-safe-fork" });
+		}
 	});
 
 	test("artifacts stay inside the checkout and the output directory", () => {

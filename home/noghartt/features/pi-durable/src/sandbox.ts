@@ -1,15 +1,16 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
-import { isAbsolute, join, posix, relative, resolve, sep } from "node:path";
+import { basename, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import type { Context } from "@earendil-works/chord/context";
 import type { DocumentReader, Harness } from "@earendil-works/pi-durable";
 import { createSandbox, loadConfig, pullBranches, Sbx } from "#sbx/index.ts";
 import type { KindSpec, Sandbox, SandboxProvider } from "#sbx/provider.ts";
+import { parseGithubRemote } from "#sbx/git.ts";
 import { quote } from "#sbx/shell.ts";
 import { SandboxExecutionEnv } from "./sandbox-env.ts";
-import { Identity, type SandboxRef, SessionSandbox, type SessionSandboxState } from "./state.ts";
+import { Identity, SandboxBinding, type SandboxRef, SessionSandbox, type SessionSandboxState } from "./state.ts";
 
 const run = promisify(execFile);
 
@@ -97,6 +98,8 @@ export type SandboxTarget =
 export async function sandboxTarget(read: DocumentReader, conversationId: number, context: Context): Promise<SandboxTarget> {
 	const identity = await read.snapshot(Identity, conversationId as never, context);
 	if (identity?.sandbox !== undefined) return { kind: "sandbox", ref: identity.sandbox };
+	const bound = (await read.snapshot(SandboxBinding, conversationId as never, context))?.ref;
+	if (bound !== undefined) return { kind: "sandbox", ref: bound };
 	if (identity?.worktree !== undefined) return { kind: "local" };
 	const session = await read.snapshot(SessionSandbox, context);
 	const problem = sessionSandboxProblem(session);
@@ -274,8 +277,15 @@ export class Sandboxes {
 	async attach(name: string, localCwd: string): Promise<SandboxRef> {
 		const box = await this.sbx.find(name);
 		if (box === undefined) throw new Error(`No sandbox named ${name}, and no sbx kind ${name} (kinds: ${this.kinds().join(", ")})`);
-		this.#boxes.set(box.name, box);
 		const top = await repoTop(localCwd);
+		// Paths map into its checkout and pulls land here, so it must hold this repository.
+		if (top !== undefined && box.info.repo !== undefined) {
+			const github = parseGithubRemote(await git(top, "remote", "get-url", "origin").catch(() => ""));
+			if (box.info.repo !== github && box.info.repo !== basename(top)) {
+				throw new Error(`Sandbox ${name} holds ${box.info.repo}, not this repository (${github ?? basename(top)}); attach it from that one.`);
+			}
+		}
+		this.#boxes.set(box.name, box);
 		return this.#describeBox(box, box.provider, {
 			...(top === undefined ? {} : { localRoot: top }),
 			purpose: "session",

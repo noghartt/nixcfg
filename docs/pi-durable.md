@@ -433,7 +433,10 @@ everything else built on the environment land in the VM:
   context's abort to sbx's cancellation (which kills the remote process group), and tells a
   timeout (sbx's 124/137 with the clock past the limit) from the command's own exit code. Output
   streams to the caller; past the spill thresholds it is appended to a temp file on the sandbox
-  in 1 MiB batches, returned to sbx as backpressure. A throwing output callback is a
+  in 1 MiB batches, returned to sbx as backpressure. The spill writes use their own bounded
+  context, so an aborted or timed-out command's file is still complete; it holds decoded text
+  (sbx streams strings), so invalid UTF-8 is U+FFFD there. `renameFile` behaves like rename(2):
+  a symbolic link at the destination is replaced, never followed. A throwing output callback is a
   `callback_error` and stops the command.
 - `watch` is `not_supported` (nothing here watches its environment; resources load from the
   local checkout) and the optional `listFiles` is absent. Durable's own `ExecutionEnv`
@@ -483,7 +486,10 @@ which tools still run locally.
   aborted, its work comes back and its sandbox goes. When the session closes, idle background
   subagents' sandboxes go the same way (one still at work keeps it, as its run resumes on the next
   open); any that could not be removed are named on stderr.
-- Antigravity profiles cannot use sandbox isolation (agy runs locally).
+- Antigravity profiles cannot use sandbox isolation (agy runs locally). Isolation strings are
+  checked before anything starts, for `subagent` and for each `parallel` task.
+- The sandbox is also in `pi-durable.sandbox-binding`, a conversation document that forks keep
+  (Identity does not), so a `/tree` branch of a sandbox subagent keeps working in its sandbox.
 
 **In a sandboxed session**, isolated children stay in the session's sandbox: `worktree` and
 `sandbox[:kind]` isolation, and swarm members (whose sandbox profiles join with a worktree), get a
@@ -501,7 +507,8 @@ machine. Its prompt says it works in a worktree inside the sandbox the main agen
 tools in a sandbox. `/sandbox <kind>` makes (or reattaches) the session's sandbox of that kind,
 named `pd-<session hash>-session-<kind>` and seeded from the session directory's repository;
 `<kind>:<name>` uses that name; any other word attaches an existing sandbox by name (`sbx ls`);
-bare `/sandbox` shows it and `/sandbox off` detaches it (the sandbox is kept). The choice is the
+bare `/sandbox` shows it and `/sandbox off` detaches it (the sandbox is kept). Attaching one
+seeded from another repository is refused, since paths map into its checkout and pulls land here. The choice is the
 session document `pi-durable.sandbox`, so `--continue` and `/resume` reattach by name. Every
 conversation without its own sandbox or worktree uses it: main, branches, non-isolated subagents.
 
