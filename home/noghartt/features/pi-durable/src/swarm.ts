@@ -262,6 +262,15 @@ async function memberModel(reader: DocumentReader, member: Readonly<SwarmMember>
 }
 
 /** How to reach a member outside the board: its conversation, or its agy conversation. */
+/** A member's own branch, local or in the session's sandbox, and where it is. */
+function memberBranch(member: Readonly<SwarmMember>): { branch: string; at: string } | undefined {
+	if (member.worktree !== undefined) return { branch: member.worktree.branch, at: member.worktree.path };
+	if (member.sandboxWorktree !== undefined) {
+		return { branch: member.sandboxWorktree.branch, at: `${member.sandboxWorktree.path} in sandbox ${member.sandboxWorktree.sandbox}` };
+	}
+	return undefined;
+}
+
 function memberWhere(member: Readonly<SwarmMember>): string {
 	if (member.agy === undefined) return `conversation #${member.conversationId}`;
 	return `Antigravity${member.agy.conversation === undefined ? "" : `, agy conversation ${member.agy.conversation}`}`;
@@ -281,7 +290,7 @@ async function statusText(reader: DocumentReader, swarm: Readonly<SwarmState>, c
 			state,
 			`profile ${member.profile}`,
 			await memberModel(reader, member, context),
-			member.worktree === undefined ? "shares the main checkout" : `branch ${member.worktree.branch} at ${member.worktree.path}`,
+			memberBranch(member) === undefined ? "shares the main checkout" : `branch ${memberBranch(member)!.branch} at ${memberBranch(member)!.at}`,
 			`read through #${member.lastRead}${unread > 0 ? ` (${unread} unread)` : ""}`,
 			memberWhere(member),
 		].filter(Boolean);
@@ -775,6 +784,16 @@ export function createSwarm(host: Host, orchestration: Extension): { extension: 
 						profile: profile.name,
 						createdBy: api.taskId,
 						...(item.worktree === undefined ? {} : { worktree: item.worktree }),
+						...(item.child?.identity.sandbox?.worktreeOf === undefined
+							? {}
+							: {
+									sandboxWorktree: {
+										path: item.child.identity.sandbox.workdir!,
+										branch: item.child.identity.sandbox.branch!,
+										base: item.child.identity.sandbox.base ?? "",
+										sandbox: item.child.identity.sandbox.name,
+									},
+								}),
 					};
 					if (item.child === undefined) {
 						// Its first run is given the posts after lastRead: the brief onwards.
@@ -829,7 +848,8 @@ export function createSwarm(host: Host, orchestration: Extension): { extension: 
 		const model = agy ? `antigravity/${agyModel}` : await modelOfProfile(api, profile, args.thinking, context);
 		const lines = started.map((member) => {
 			const record = latest?.members[member.name];
-			const where = record?.worktree === undefined ? "main checkout" : `branch ${record.worktree.branch}`;
+			const own = record === undefined ? undefined : memberBranch(record);
+			const where = own === undefined ? "main checkout" : `branch ${own.branch}`;
 			const who = record === undefined ? "" : `${memberWhere(record)}, `;
 			const access = agy ? (record?.agy?.allowWrites === true ? ", may write" : ", read-only") : "";
 			return `- ${member.name} (${who}${profile.name} on ${model}${access}, ${where}), briefed in #${member.post.seq}`;
@@ -1049,7 +1069,7 @@ export async function endSwarm(harness: Harness): Promise<string> {
 	// /swarm added the tools to an unset filter; unset again, the deferred swarm tools are no longer offered.
 	await (await harness.conversation(swarm.coordinator, context))?.configure({ modelTools: null }, context);
 	const branches = Object.entries(swarm.members).flatMap(([name, member]) =>
-		member.worktree === undefined ? [] : [`${name}: ${member.worktree.branch}`],
+		memberBranch(member) === undefined ? [] : [`${name}: ${memberBranch(member)!.branch}`],
 	);
 	return `Ended the swarm${stopped.length > 0 ? `, stopping ${stopped.join(", ")}` : ""}.${branches.length > 0 ? ` Branches kept: ${branches.join("; ")}.` : ""}`;
 }
@@ -1094,7 +1114,7 @@ export async function loadSwarmBoard(harness: Harness): Promise<SwarmBoardView |
 			profile: member.profile,
 			state: await memberState(harness, member, context),
 			...(model === undefined ? {} : { model }),
-			...(member.worktree === undefined ? {} : { branch: member.worktree.branch }),
+			...(memberBranch(member) === undefined ? {} : { branch: memberBranch(member)!.branch }),
 			lastRead: member.lastRead,
 			finished: done !== undefined && (briefed === undefined || done.seq > briefed.seq),
 		});

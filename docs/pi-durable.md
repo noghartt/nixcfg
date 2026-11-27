@@ -474,49 +474,60 @@ which tools still run locally.
   creating commit wraps up the workspace no child holds.
 - Every ending wraps up the workspace: an answer, an ending without one (stopped, failed), and an
   abort of the call while it waits (the tool's `cancel`, so also an aborted `parallel`).
-  Uncommitted changes are committed in the sandbox (files over 10 MB stay behind and are named),
-  its branch is pulled with `pullBranches` into the parent's repository as
-  `sbx/<sandbox>/pi-durable/<key>` (only commits after the seed travel), and the result names that
-  branch with a diff stat and how to merge it, as worktree isolation names its branch. Then the
-  sandbox is removed unless kept. A rerun after the removal reports the branch already pulled. A
-  failed pull keeps the sandbox and says how to inspect it (`sbx shell`), pull again
-  (`sandbox_pull`) and remove it (`sbx rm`).
+  Uncommitted changes are committed in the sandbox, and every branch of its checkout is pulled
+  with `pullBranches` into the parent's repository as `sbx/<sandbox>/<branch>` (only commits after
+  the seed travel): the subagent's own `pi-durable/<key>`, which the result names with a diff stat
+  and how to merge it, and any other it made (listed); commits on a detached HEAD get a
+  `pi-durable/detached-<sha>` branch first. Then the sandbox is removed unless kept. Leftover files
+  over 10 MB are not committed; they are named, and the sandbox is kept for them. A rerun after the
+  removal reports the branch already pulled. A failed pull keeps the sandbox and says how to
+  inspect it (`sbx shell`), pull again (`sandbox_pull`) and remove it (`sbx rm`). Wrap-ups and
+  worktree changes are serialized per sandbox, so concurrent ones never race on a checkout.
 - A background subagent's branch is pulled again with each answer and its sandbox is kept, since
-  it may get more messages. Once it is stopped (`agents stop`, an abort) or its reporter task is
-  aborted, its work comes back and its sandbox goes. When the session closes, idle background
-  subagents' sandboxes go the same way (one still at work keeps it, as its run resumes on the next
-  open); any that could not be removed are named on stderr.
+  it may get more messages; Esc in its conversation or a withdrawn message changes nothing. A stop
+  for good (`agents stop`, `/stop`) marks it stopped, and its work comes back and its sandbox goes
+  at once (it takes no more work); so does its reporter task being aborted. When the session
+  closes, idle background subagents' sandboxes go the same way, all at once within 60 s, skipping
+  those already wrapped up (one still at work keeps it, as its run resumes on the next open); any
+  that could not be removed are named on stderr.
 - Antigravity profiles cannot use sandbox isolation (agy runs locally). Isolation strings are
   checked before anything starts, for `subagent` and for each `parallel` task.
 - The sandbox is also in `pi-durable.sandbox-binding`, a conversation document that forks keep
   (Identity does not), so a `/tree` branch of a sandbox subagent keeps working in its sandbox.
 
-**In a sandboxed session**, isolated children stay in the session's sandbox: `worktree` and
+**In a sandboxed session**, isolated children stay in the parent's sandbox: `worktree` and
 `sandbox[:kind]` isolation, and swarm members (whose sandbox profiles join with a worktree), get a
 git worktree of the sandbox's checkout at `~/.pi-durable/worktrees/<session hash>-<key>` on branch
-`pi-durable/<session start>-<key>`, made once and found again by a rerun. Their commits are commits
-of the repository the parent works in, so nothing travels between VMs or through this machine
-(the alternative, bundling from the parent VM to a child VM through the local repository, needs
-two transfers per child and a second VM for no gain). When the child ends, its leftovers are
-committed and the worktree is removed; the branch stays in the sandbox's checkout for the parent
-to merge there, and is deleted when it holds nothing new. A different kind asked for
-(`sandbox:job` in a `dev` session) is noted in the result, not honoured: the session chose its
-machine. Its prompt says it works in a worktree inside the sandbox the main agent works in.
+`pi-durable/<session hash>-<key>`, started from the parent's HEAD (its own worktree's, when the
+parent works in one). The start commit is recorded before the worktree is added, so a rerun after
+a crash completes it. Their commits are commits of the repository the parent works in, so nothing
+travels between VMs or through this machine (the alternative, bundling from the parent VM to a
+child VM through the local repository, needs two transfers per child and a second VM for no
+gain). When the child ends, its leftovers are committed and the worktree is removed; the branch
+stays in the sandbox's checkout for the parent to merge there, and is deleted only when it surely
+holds nothing new (an unknown start or a failed count keeps it). Sandbox isolation turned into
+such a worktree is noted in the result as a warning, with the kind asked for: the session chose
+its machine. Its prompt says it works in a worktree inside the sandbox the main agent works in,
+and the swarm board, status and end report name members' branches there.
 
 **Session sandbox.** `pi-durable --sandbox[=kind[:name]]` or `/sandbox` puts the whole session's
 tools in a sandbox. `/sandbox <kind>` makes (or reattaches) the session's sandbox of that kind,
 named `pd-<session hash>-session-<kind>` and seeded from the session directory's repository;
 `<kind>:<name>` uses that name; any other word attaches an existing sandbox by name (`sbx ls`);
 bare `/sandbox` shows it and `/sandbox off` detaches it (the sandbox is kept). Attaching one
-seeded from another repository is refused, since paths map into its checkout and pulls land here. The choice is the
-session document `pi-durable.sandbox`, so `--continue` and `/resume` reattach by name. Every
-conversation without its own sandbox or worktree uses it: main, branches, non-isolated subagents.
+seeded from another repository is refused, since paths map into its checkout and pulls land here.
+The choice is the session document `pi-durable.sandbox`, so `--continue` and `/resume` reattach
+by name. Every conversation without its own sandbox or worktree uses it: main, branches,
+non-isolated subagents. The saved sandbox is never replaced, only reattached.
 
-It fails closed. While the sandbox is being made the document is `pending`, and a failure is
-recorded as `failed`; either way the environment refuses to run tools (an error result, never
-the local machine) and prompts are not sent, until `/sandbox <kind>` succeeds or `/sandbox off`.
-`--sandbox` writes `pending` before interrupted work resumes; a session reopened with a pending
-or failed sandbox says so. Prompts sent while it is being made wait in the command queue.
+It fails closed. The argument is checked first (the kind exists, the sandbox to attach exists), so
+a typo changes nothing. While a new sandbox is being made the document is `pending`: tools wait
+for it (up to 15 minutes), never running on this machine meanwhile. If making it fails, the
+session stays in its current sandbox when it had another; otherwise the failure is recorded as
+`failed`, and tools return errors and prompts are not sent until `/sandbox <kind>` succeeds or
+`/sandbox off`. `--sandbox` writes `pending` before interrupted work resumes, unless it names the
+healthy current sandbox (`--continue --sandbox` with the same kind blocks nothing). A `pending`
+left by a process that died becomes `failed` on the next open, so tools do not wait for nobody.
 
 **Tools.** `sandbox_run` runs one command in a fresh sandbox (kind `job` by default), optionally
 seeded with the repository, streams its output, downloads `artifacts` (relative paths inside the
@@ -525,26 +536,31 @@ the sandbox unless `keep`, also when the command fails. Its name derives from th
 after a crash reuses the sandbox and runs the command again. `sandbox_pull` fetches a sandbox's
 branches (the conversation's own by default, or any by name) into the local repository as
 `sbx/<sandbox>/<branch>`; a rerun after the sandbox is gone reports the branches an earlier pull
-left. With `remove: true` it removes the sandbox afterwards (and detaches the session from it); a
-sandbox this session did not make, or one marked to keep, goes only when the user approves
-(through `src/approvals.ts`), and a subagent's own goes when the subagent finishes. Both are
-offered everywhere.
+left. With `remove: true` it removes the sandbox afterwards. The session's own sandbox, one this
+session did not make, or one marked to keep goes only when the user approves (through
+`src/approvals.ts`); after the session's own goes, the session is `failed` (blocked), not quietly
+back on this machine. A subagent's own goes when the subagent finishes. Both are offered
+everywhere.
 
 **Deadlines.** sbx enforces a command's timeout on the sandbox; locally, a command with a timeout
 gives up 30 s past it (a sandbox that stopped answering is a timeout, said as such), and each file
-script after 5 minutes. Closing the environment aborts running commands, which makes sbx kill
-their remote process groups, and waits up to 5 s for those kills.
+script after 5 minutes. A bash call without a timeout has no local deadline, as on this machine:
+Esc stops it (and sbx kills its remote process group). Closing the environment aborts running
+commands and waits up to 5 s for those kills.
 
 Tests (`tests/sandbox.test.ts`) run on sbx's fake provider: the conformance suite, cancellation
-that stops the remote command, spill files on the sandbox, the subagent lifecycle (made once,
-reused, pulled back, removed or kept, failures kept, big leftovers left), a half-seeded sandbox
-replaced and an unmarked one not ours reused, removal after a failure past creation, refusal
-outside a repository, artifact containment, a pending or failed session sandbox blocking tools,
+that stops the remote command, spill files on the sandbox (complete after an abort), rename over a
+link and onto itself, the subagent lifecycle (made once, reused, pulled back, removed or kept,
+failures kept, big leftovers keeping the sandbox, other branches and detached commits pulled), a
+half-seeded sandbox replaced and an unmarked one not ours reused, removal after a failure past
+creation, refusal outside a repository and of another repository's sandbox, artifact containment,
+nested worktrees and an uncertain base, a pending session sandbox waited for and a stale one
+failed, a failed or mistyped `/sandbox` keeping the current one, a fork keeping its sandbox,
 `sandbox_run`, a session sandbox across a Harness reopen, and Harness runs with a scripted faux
 model: a `sandbox:dev` subagent whose bash commits in the VM, one stopped before answering, an
-aborted `parallel` whose child is cancelled, a stopped background subagent, a worktree subagent in
-a sandboxed session, and `sandbox_run` plus `sandbox_pull` (an unapproved removal refused). What
-only exe.dev can show is in TASK.md.
+aborted `parallel` whose child is cancelled, a background subagent kept through Esc and removed by
+a stop, a worktree subagent in a sandboxed session, and `sandbox_run` plus `sandbox_pull` (an
+unapproved removal refused, the session left blocked). What only exe.dev can show is in TASK.md.
 
 ## Rex
 

@@ -16,7 +16,10 @@ import type { ModelRuntime } from "#pi/core/model-runtime.js";
 import type { SettingsManager } from "#pi/core/settings-manager.js";
 import { createPiPrompt } from "./prompt.ts";
 import type { PiResources } from "./resources.ts";
-import { type Sandboxes, sandboxOf } from "./sandbox.ts";
+import { type Sandboxes, sandboxTarget } from "./sandbox.ts";
+
+/** How long a tool waits for the session's sandbox while it is being made. */
+const PENDING_WAIT_MS = 15 * 60 * 1000;
 
 /** pi's HTTP setup: proxy, idle timeouts, and one undici for fetch. Without it, some provider streams break off. */
 export function configureHarnessHttp(settingsManager: SettingsManager): void {
@@ -77,8 +80,15 @@ export class ExecutionEnvs {
 	readonly env = async (target: EnvTarget, context: Context): Promise<ExecutionEnv> => {
 		const cwd = target.cwd ?? this.#defaultCwd;
 		if (this.#sandboxes !== undefined) {
-			const ref = await sandboxOf(target.read, target.conversationId, context);
-			if (ref !== undefined) return this.#sandboxes.env(ref, cwd);
+			// While the session's sandbox is being made, tools wait for it (bounded); a failed one fails them. Never local.
+			const deadline = Date.now() + PENDING_WAIT_MS;
+			for (;;) {
+				const found = await sandboxTarget(target.read, target.conversationId, context);
+				if (found.kind === "sandbox") return this.#sandboxes.env(found.ref, cwd);
+				if (found.kind === "local") break;
+				if (!found.pending || Date.now() > deadline || context.abortSignal?.aborted === true) throw new Error(found.reason);
+				await new Promise((resolve) => setTimeout(resolve, 1000));
+			}
 		}
 		return this.local(cwd);
 	};

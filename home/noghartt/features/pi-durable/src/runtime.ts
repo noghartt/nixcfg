@@ -67,7 +67,9 @@ import {
 	writeMeta,
 } from "./sessions.ts";
 import {
+	failStalePending,
 	markSessionSandboxPending,
+	needsPending,
 	parseSandboxArgument,
 	Sandboxes,
 	sandboxTarget,
@@ -77,7 +79,7 @@ import {
 import { createSandboxTools } from "./sandbox-tools.ts";
 import { Background, Identity, Labels, SessionSandbox } from "./state.ts";
 import { loadStatus, type StatusReport, usageSince } from "./status.ts";
-import { closeBackgroundSandboxes, createOrchestration } from "./subagent.ts";
+import { closeBackgroundSandboxes, createOrchestration, finishStopped, markStopped } from "./subagent.ts";
 import { createSwarm, endSwarm, loadSwarmBoard, startSwarm, type SwarmBoardView, swarmActivity, swarmInput } from "./swarm.ts";
 import { createSpillExtension } from "./spill.ts";
 import { createWatchExtension } from "./watch.ts";
@@ -756,9 +758,9 @@ export async function openDurable(options: OpenDurableOptions): Promise<OpenDura
 		const controller: DurableController = {
 			submit: (text, whenBusy) =>
 				command(async () => {
-					// Fail closed: with the session's sandbox pending or failed, the prompt is not sent at all.
+					// Fail closed: with the session's sandbox failed, the prompt is not sent at all (a pending one is waited for).
 					const target = await sandboxTarget(opened, current.id, context);
-					if (target.kind === "blocked") throw new Error(`Not sent. ${target.reason}`);
+					if (target.kind === "blocked" && !target.pending) throw new Error(`Not sent. ${target.reason}`);
 					const expanded = REFERENCE_HINT.test(text)
 						? await expandReferences(resources.expandInput(text), host)
 						: resources.expandInput(text);
@@ -901,7 +903,11 @@ export async function openDurable(options: OpenDurableOptions): Promise<OpenDura
 				command(async () => {
 					if (item.taskId !== undefined) await opened.abortTask(item.taskId, context);
 					else if (item.conversationId !== undefined) {
+						// A background subagent in a sandbox is stopped for good, as with agents stop.
+						const final = await markStopped(opened, item.conversationId, context);
 						await (await opened.conversation(item.conversationId, context))?.abort(context);
+						const wrapped = final ? await finishStopped(opened, sandboxes, item.conversationId, context) : undefined;
+						if (wrapped !== undefined) notice("info", wrapped);
 					}
 					notice("info", `Stopped ${item.label}.`);
 					requestActivity();
@@ -1055,12 +1061,18 @@ export async function openDurable(options: OpenDurableOptions): Promise<OpenDura
 			try {
 				startSandbox = options.sandbox || sandboxes.sbx.config.defaultKind;
 				const target = parseSandboxArgument(startSandbox, sandboxes.kinds(), location.id);
-				await markSessionSandboxPending(opened, target.name, target.kind, context);
+				// Reattaching the healthy current sandbox blocks nothing; anything else waits for it.
+				if (needsPending(await opened.snapshot(SessionSandbox, context), target.name)) {
+					await markSessionSandboxPending(opened, target.name, target.kind, context);
+				}
 			} catch (error) {
 				fail(error);
 				startSandbox = undefined;
 			}
-		} else {
+		}
+		if (startSandbox === undefined) {
+			// Nobody is making a sandbox left pending by a process that died: tools fail instead of waiting for it.
+			await failStalePending(opened, context);
 			const problem = sessionSandboxProblem(await opened.snapshot(SessionSandbox, context));
 			if (problem !== undefined) notice("warning", problem);
 		}

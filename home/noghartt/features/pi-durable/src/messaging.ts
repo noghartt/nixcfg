@@ -27,7 +27,7 @@ import { bool, int, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
 import { type Host, oneLine, requireHarness } from "./host.ts";
 import { isSessionOpen, listAllSessions, readMeta, type SessionListing } from "./sessions.ts";
 import { Background, Identity, Labels, MESSAGE_KIND, type NoteData, REPORT_KIND } from "./state.ts";
-import { answerText, Reporter, type ReporterInput } from "./subagent.ts";
+import { answerText, finishStopped, markStopped, Reporter, type ReporterInput } from "./subagent.ts";
 
 const context = BACKGROUND_CONTEXT;
 /** Characters of transcript a read returns by default, newest kept. */
@@ -277,8 +277,15 @@ function createAgentsTool(host: Host) {
 				if (await isAncestor(harness, api.conversationId, target.id)) {
 					throw new Error(`${target.label} is this conversation or one that started it; it cannot be stopped from here`);
 				}
+				// A background subagent in a sandbox is stopped for good: its work comes back and its sandbox goes.
+				const final = await markStopped(api, target.id, context);
 				await (await api.conversation(target.id, context))!.abort(context);
-				return text(`Stopped the current work of ${target.label}; it keeps its transcript and takes new messages.`);
+				const wrapped = final ? await finishStopped(api, host.sandboxes, target.id, context) : undefined;
+				return text(
+					final
+						? `Stopped ${target.label} for good; it takes no more work (start a new subagent).${wrapped === undefined ? "" : `\n${wrapped}`}`
+						: `Stopped the current work of ${target.label}; it keeps its transcript and takes new messages.`,
+				);
 			}
 			// send
 			if (!args.message) throw new Error("send needs a message");

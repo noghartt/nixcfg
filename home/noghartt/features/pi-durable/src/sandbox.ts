@@ -88,7 +88,7 @@ export function sessionSandboxProblem(state: SessionSandboxState | undefined): s
 export type SandboxTarget =
 	| { readonly kind: "local" }
 	| { readonly kind: "sandbox"; readonly ref: SandboxRef }
-	| { readonly kind: "blocked"; readonly reason: string };
+	| { readonly kind: "blocked"; readonly reason: string; readonly pending: boolean };
 
 /**
  * A conversation's own sandbox (a sandbox-isolated subagent) wins; a local worktree runs locally; otherwise the
@@ -103,7 +103,7 @@ export async function sandboxTarget(read: DocumentReader, conversationId: number
 	if (identity?.worktree !== undefined) return { kind: "local" };
 	const session = await read.snapshot(SessionSandbox, context);
 	const problem = sessionSandboxProblem(session);
-	if (problem !== undefined) return { kind: "blocked", reason: problem };
+	if (problem !== undefined) return { kind: "blocked", reason: problem, pending: session?.failed === undefined };
 	return session?.ref === undefined ? { kind: "local" } : { kind: "sandbox", ref: session.ref };
 }
 
@@ -160,6 +160,8 @@ export class Sandboxes {
 	readonly #envs = new Map<string, SandboxExecutionEnv>();
 	/** When each sandbox was last recorded as used. */
 	readonly #touched = new Map<string, number>();
+	/** The tail of each sandbox's queue of checkout operations (wrap-ups, worktrees). */
+	readonly #locks = new Map<string, Promise<void>>();
 
 	constructor(load: () => Sbx = () => new Sbx(loadConfig())) {
 		this.#load = load;
@@ -337,32 +339,41 @@ export class Sandboxes {
 	}
 
 	/**
-	 * A subagent's place inside its parent's sandbox: a git worktree of the parent's checkout on its own branch, made
-	 * once (`key` names it, so a rerun finds it). Commits there are commits of the parent's repository in the sandbox, so
-	 * nothing has to travel between VMs or through this machine.
+	 * A subagent's place inside its parent's sandbox: a git worktree of the sandbox's checkout on its own branch, started
+	 * from the parent's HEAD (its own worktree's, when the parent is in one), made once (`key` names it, so a rerun finds
+	 * it). Commits there are commits of the repository the parent works in, so nothing has to travel between VMs or
+	 * through this machine. The start commit is recorded before the worktree is added, so a crash between the two leaves
+	 * a record a rerun completes.
 	 */
-	async worktreeIn(parent: SandboxRef, sessionId: string, key: string): Promise<SandboxRef> {
-		const main = parent.worktreeOf ?? parent.workdir;
-		if (main === undefined) {
-			throw new Error(`The session's sandbox ${parent.name} has no repository checkout, so it cannot hold an isolated subagent.`);
-		}
-		const box = await this.#box(parent);
-		const path = posix.join(parent.home, ".pi-durable", "worktrees", `${sessionHash(sessionId)}-${key}`);
-		const branch = `pi-durable/${sessionId.slice(0, 13)}-${key}`;
-		const script = [
-			`cd ${quote(main)} || exit 1`,
-			`if [ ! -d ${quote(path)} ]; then`,
-			`  mkdir -p ${quote(posix.dirname(path))} || exit 1`,
-			`  if git rev-parse -q --verify ${quote(`refs/heads/${branch}`)} >/dev/null; then git worktree add -q ${quote(path)} ${quote(branch)} || exit 1`,
-			`  else git worktree add -q -b ${quote(branch)} ${quote(path)} HEAD || exit 1; fi`,
-			`  git -C ${quote(path)} rev-parse HEAD > ${quote(`${path}.base`)}`,
-			`fi`,
-			`cat ${quote(`${path}.base`)}`,
-		].join("\n");
-		const result = await box.exec(script);
-		if (result.exitCode !== 0) throw new Error(`Making a worktree in sandbox ${box.name} failed: ${result.stderr.trim()}`);
-		const { keep: _keep, ...rest } = parent;
-		return { ...rest, workdir: path, branch, base: result.stdout.trim(), purpose: "subagent", worktreeOf: main };
+	worktreeIn(parent: SandboxRef, sessionId: string, key: string): Promise<SandboxRef> {
+		return this.#serial(parent.name, async () => {
+			const main = parent.worktreeOf ?? parent.workdir;
+			if (main === undefined || parent.workdir === undefined) {
+				throw new Error(`The session's sandbox ${parent.name} has no repository checkout, so it cannot hold an isolated subagent.`);
+			}
+			const box = await this.#box(parent);
+			const id = `${sessionHash(sessionId)}-${key}`;
+			const path = posix.join(parent.home, ".pi-durable", "worktrees", id);
+			const branch = `pi-durable/${id}`;
+			const base = `${path}.base`;
+			const script = [
+				`cd ${quote(main)} || exit 1`,
+				`mkdir -p ${quote(posix.dirname(path))} || exit 1`,
+				`[ -s ${quote(base)} ] || git -C ${quote(parent.workdir)} rev-parse HEAD > ${quote(base)} || exit 1`,
+				`if [ ! -d ${quote(path)} ]; then`,
+				`  if git rev-parse -q --verify ${quote(`refs/heads/${branch}`)} >/dev/null; then git worktree add -q ${quote(path)} ${quote(branch)} || exit 1`,
+				`  else git worktree add -q -b ${quote(branch)} ${quote(path)} "$(cat ${quote(base)})" || exit 1; fi`,
+				`fi`,
+				`cat ${quote(base)}`,
+			].join("\n");
+			const result = await box.exec(script);
+			const start = result.stdout.trim();
+			if (result.exitCode !== 0 || !/^[0-9a-f]{40,64}$/u.test(start)) {
+				throw new Error(`Making a worktree in sandbox ${box.name} failed: ${result.stderr.trim() || `no start commit (${start})`}`);
+			}
+			const { keep: _keep, ...rest } = parent;
+			return { ...rest, workdir: path, branch, base: start, purpose: "subagent", worktreeOf: main };
+		});
 	}
 
 	/** Where a local directory is on the sandbox: the same place below the checkout, else the checkout, else home. */
@@ -442,14 +453,37 @@ export class Sandboxes {
 	}
 
 	/**
-	 * Commits what the agent left uncommitted, brings its branch back and, with `remove` (and no `keep`), removes what it
-	 * worked in. For its own sandbox: the branch is pulled into the local repository as `sbx/<name>/<branch>` and the
-	 * sandbox removed. For a worktree inside its parent's sandbox: the branch stays there and the worktree is removed
-	 * (with the branch too when it holds nothing new). Replay-safe: pulling again is a no-op, and once removed a rerun
-	 * reports what an earlier run left. A failure keeps everything for inspection and says so.
+	 * Commits what the agent left uncommitted, brings its work back and, with `remove` (and no `keep`), removes what it
+	 * worked in. For its own sandbox: every branch of its checkout (its own, and any its worktree children or it made;
+	 * commits on a detached HEAD get a branch first) is pulled into the local repository as `sbx/<name>/<branch>`, then
+	 * the sandbox removed. For a worktree inside its parent's sandbox: the branch stays there and the worktree is removed
+	 * (with the branch too when it surely holds nothing new). Leftover files too big to commit keep the sandbox (or
+	 * worktree), so they are not lost. Replay-safe: pulling again is a no-op, and once removed a rerun reports what an
+	 * earlier run left. A failure keeps everything for inspection and says so. Serialized per sandbox, so concurrent
+	 * wrap-ups never race on one checkout's index.
 	 */
-	async bringBack(ref: SandboxRef, options: { remove: boolean; signal?: AbortSignal }): Promise<SandboxSummary> {
-		if (ref.worktreeOf !== undefined) return this.#bringBackWorktree(ref, options);
+	bringBack(ref: SandboxRef, options: { remove: boolean; signal?: AbortSignal }): Promise<SandboxSummary> {
+		return this.#serial(ref.name, () =>
+			ref.worktreeOf !== undefined ? this.#bringBackWorktree(ref, options) : this.#bringBackSandbox(ref, options),
+		);
+	}
+
+	/** Runs `operation` after every earlier one on the same sandbox. */
+	#serial<T>(name: string, operation: () => Promise<T>): Promise<T> {
+		const previous = this.#locks.get(name) ?? Promise.resolve();
+		const run = previous.then(operation, operation);
+		const settled = run.then(
+			() => undefined,
+			() => undefined,
+		);
+		this.#locks.set(name, settled);
+		void settled.then(() => {
+			if (this.#locks.get(name) === settled) this.#locks.delete(name);
+		});
+		return run;
+	}
+
+	async #bringBackSandbox(ref: SandboxRef, options: { remove: boolean; signal?: AbortSignal }): Promise<SandboxSummary> {
 		const localRef = ref.branch === undefined ? undefined : `sbx/${ref.name}/${ref.branch}`;
 		const keepHint = `Inspect it with \`sbx shell ${ref.name}\`, pull again with sandbox_pull, remove it with \`sbx rm ${ref.name}\`.`;
 		try {
@@ -467,26 +501,40 @@ export class Sandboxes {
 			}
 			let text: string;
 			let branch: string | undefined;
+			let skipped: string[] = [];
 			if (ref.workdir === undefined || ref.localRoot === undefined || ref.branch === undefined) {
 				text = `Sandbox ${ref.name} has no checkout to bring back.`;
 			} else {
-				const skipped = await commitLeftovers(box, ref, options.signal);
-				const pulled = await pullBranches(box, ref.localRoot, [ref.branch], {
+				skipped = await commitLeftovers(box, ref, options.signal);
+				// All branches, not just the agent's: removing the sandbox must not lose any of them.
+				const pulled = await pullBranches(box, ref.localRoot, [], {
 					...(options.signal === undefined ? {} : { signal: options.signal }),
 				});
 				if (pulled.fetched || (await hasBranch(ref.localRoot, localRef!))) {
 					branch = localRef;
 					text = await this.#describeBranch(ref, localRef!);
 				} else text = `No changes were made in sandbox ${ref.name}.`;
+				// Branches with something past the seed commit; the seeded branch itself, unchanged, is not news.
+				const others = (
+					await git(ref.localRoot, "for-each-ref", "--format=%(objectname) %(refname:short)", `refs/heads/sbx/${ref.name}/`).catch(
+						() => "",
+					)
+				)
+					.split("\n")
+					.map((line) => line.split(" "))
+					.filter(([sha, name]) => name && name !== localRef && sha !== ref.base)
+					.map(([, name]) => name!);
+				if (others.length > 0) text += `\nIts other branches came back too: ${others.join(", ")}.`;
 				if (skipped.length > 0) text += `\n${skippedNote(skipped)}`;
 			}
-			if (options.remove && ref.keep !== true) {
+			if (options.remove && ref.keep !== true && skipped.length === 0) {
 				await this.providerOf(ref).remove(box);
 				this.forget(ref.name);
 				return { text: `${text}\nSandbox ${ref.name} was removed.`, ...(branch ? { ref: branch } : {}), removed: true, failed: false };
 			}
 			await box.touch().catch(() => undefined);
-			return { text: `${text}\nSandbox ${ref.name} is kept. ${keepHint}`, ...(branch ? { ref: branch } : {}), removed: false, failed: false };
+			const why = skipped.length > 0 && options.remove ? " (for the files not committed)" : "";
+			return { text: `${text}\nSandbox ${ref.name} is kept${why}. ${keepHint}`, ...(branch ? { ref: branch } : {}), removed: false, failed: false };
 		} catch (error) {
 			return {
 				text:
@@ -506,38 +554,49 @@ export class Sandboxes {
 			const signal = options.signal === undefined ? {} : { signal: options.signal };
 			const present = (await box.exec(`test -d ${quote(ref.workdir!)}`, signal)).exitCode === 0;
 			const skipped = present ? await commitLeftovers(box, ref, options.signal) : [];
-			const counted = await box.exec(
-				`cd ${quote(ref.worktreeOf!)} && git rev-list --count ${quote(`${ref.base}..refs/heads/${ref.branch}`)} 2>/dev/null && git diff --stat ${quote(ref.base!)} ${quote(`refs/heads/${ref.branch}`)} 2>/dev/null`,
-				signal,
-			);
-			const [count = "", ...stat] = counted.stdout.trim().split("\n");
-			const commits = counted.exitCode === 0 ? Number(count) : 0;
+			const validBase = ref.base !== undefined && /^[0-9a-f]{40,64}$/u.test(ref.base);
+			const counted = validBase
+				? await box.exec(
+						`cd ${quote(ref.worktreeOf!)} && git rev-list --count ${quote(`${ref.base}..refs/heads/${ref.branch}`)} && git diff --stat ${quote(ref.base!)} ${quote(`refs/heads/${ref.branch}`)}`,
+						signal,
+					)
+				: undefined;
+			const [count = "", ...stat] = counted?.stdout.trim().split("\n") ?? [];
+			// Only a count that surely worked may say "nothing new"; anything uncertain keeps the branch.
+			const known = counted?.exitCode === 0 && /^\d+$/u.test(count);
+			const commits = known ? Number(count) : undefined;
 			let text =
-				commits > 0
-					? [
-							`Its work is on branch ${ref.branch} in ${where} (${commits} commit${commits === 1 ? "" : "s"} since ${ref.base!.slice(0, 10)}).`,
+				commits === 0
+					? `No changes were made in ${where}.`
+					: [
+							`Its work is on branch ${ref.branch} in ${where}${commits === undefined ? "" : ` (${commits} commit${commits === 1 ? "" : "s"} since ${ref.base!.slice(0, 10)})`}.`,
 							stat.join("\n"),
 							`Merge it there with \`git merge ${ref.branch}\`; sandbox_pull brings it home as sbx/${ref.name}/${ref.branch}.`,
 						]
 							.filter(Boolean)
-							.join("\n")
-					: `No changes were made in ${where}.`;
+							.join("\n");
 			if (skipped.length > 0) text += `\n${skippedNote(skipped)}`;
-			if (options.remove && present) {
+			if (options.remove && present && skipped.length === 0) {
 				// The branch keeps the commits; the worktree only held the files.
 				const removed = await box.exec(
 					[
 						`cd ${quote(ref.worktreeOf!)} || exit 1`,
 						`git worktree remove --force ${quote(ref.workdir!)} || exit 1`,
 						`rm -f ${quote(`${ref.workdir}.base`)}`,
-						...(commits > 0 ? [] : [`git branch -q -D ${quote(ref.branch!)} 2>/dev/null || true`]),
+						...(commits === 0 ? [`git branch -q -D ${quote(ref.branch!)} 2>/dev/null || true`] : []),
 					].join("\n"),
 					signal,
 				);
 				if (removed.exitCode !== 0) throw new Error(removed.stderr.trim());
 				text += "\nIts worktree was removed.";
-			} else if (!present && options.remove) text += "\nIts worktree was already removed.";
-			return { text, ...(commits > 0 ? { ref: ref.branch! } : {}), removed: options.remove, failed: false };
+			} else if (options.remove && skipped.length > 0) text += `\nIts worktree ${ref.workdir} is kept for the files not committed.`;
+			else if (!present && options.remove) text += "\nIts worktree was already removed.";
+			return {
+				text,
+				...(commits !== 0 ? { ref: ref.branch! } : {}),
+				removed: options.remove && skipped.length === 0,
+				failed: false,
+			};
 		} catch (error) {
 			return {
 				text: `Could not wrap up the worktree ${ref.workdir} in ${where}: ${error instanceof Error ? error.message : String(error)}. It is kept for inspection.`,
@@ -623,6 +682,8 @@ async function commitLeftovers(box: Sandbox, ref: SandboxRef, signal?: AbortSign
 		`  if [ -f "$f" ] && [ "$(wc -c < "$f" | tr -d ' ')" -gt ${MAX_LEFTOVER_BYTES} ]; then git reset -q -- "$f"; echo "skipped:$f"; fi`,
 		"done",
 		`git diff --cached --quiet || git commit -q -m ${quote(`pi-durable: uncommitted work left in ${ref.name}`)} || exit 1`,
+		// Commits on a detached HEAD that no branch holds would be lost with the sandbox: give them a branch.
+		`if ! git symbolic-ref -q HEAD >/dev/null && [ -z "$(git for-each-ref --contains HEAD refs/heads/ 2>/dev/null)" ]; then git branch -f "pi-durable/detached-$(git rev-parse --short HEAD)" HEAD || exit 1; fi`,
 	].join("\n");
 	const result = await box.exec(script, { ...(signal === undefined ? {} : { signal }) });
 	if (result.exitCode !== 0) throw new Error(`committing leftovers failed: ${result.stderr.trim()}`);
@@ -633,7 +694,7 @@ async function commitLeftovers(box: Sandbox, ref: SandboxRef, signal?: AbortSign
 }
 
 function skippedNote(files: readonly string[]): string {
-	return `Not committed (over ${MAX_LEFTOVER_BYTES / 1024 / 1024} MB, left in the sandbox): ${files.join(", ")}.`;
+	return `Not committed (over ${MAX_LEFTOVER_BYTES / 1024 / 1024} MB): ${files.join(", ")}; they are still in the sandbox, which is kept for them.`;
 }
 
 async function hasBranch(repo: string, branch: string): Promise<boolean> {
@@ -671,9 +732,32 @@ export async function markSessionSandboxPending(harness: SessionDocs, name: stri
 }
 
 /**
+ * Whether making `target` the session's sandbox has to block tools meanwhile: not when it is the healthy current one
+ * (`--continue --sandbox` with the same kind just reattaches), since resumed work would fail for nothing.
+ */
+export function needsPending(state: SessionSandboxState | undefined, name: string): boolean {
+	return !(state?.ref?.name === name && state.pending === undefined && state.failed === undefined);
+}
+
+/**
+ * A pending creation left by a process that died: nobody is making it any more, so tools must fail (not wait).
+ * Called on open when this process will not make it itself.
+ */
+export async function failStalePending(harness: SessionDocs, context: Context): Promise<void> {
+	await harness.commit(async (tx) => {
+		const doc = await tx.doc(SessionSandbox);
+		if (doc.pending === undefined) return;
+		doc.failed = `making sandbox ${doc.pending.name} was cut short when pi-durable stopped`;
+		delete doc.pending;
+	}, context);
+}
+
+/**
  * `/sandbox` and `--sandbox`: shows, detaches, or makes/attaches the session's sandbox, kept in a session document so
- * a reopen reattaches by name. While it is being made the document is pending, and a failure is recorded, so tools
- * refuse to run (`sandboxTarget`) instead of running on this machine.
+ * a reopen reattaches by name. The argument is checked first (kind known, sandbox to attach exists), so a typo changes
+ * nothing. While a new one is being made the document is pending (tools wait for it, `ExecutionEnvs`). If that fails,
+ * the current sandbox stays when it was another one; otherwise the failure is recorded and tools refuse to run rather
+ * than run on this machine. A saved sandbox is never replaced, only reattached.
  */
 export async function setSessionSandbox(
 	harness: SessionDocs,
@@ -705,33 +789,46 @@ export async function setSessionSandbox(
 		return current === undefined ? "No session sandbox; tools run on this machine." : `Tools run on this machine again. ${kept(current)}`;
 	}
 	const target = parseSandboxArgument(argument, sandboxes.kinds(), options.sessionId);
-	await markSessionSandboxPending(harness, target.name, target.kind, context);
+	// Checked before anything changes: an unknown kind or a missing sandbox leaves the session as it was.
+	if (target.kind !== undefined) sandboxes.kind(target.kind);
+	else if ((await sandboxes.find({ name: target.name })) === undefined) {
+		throw new Error(`No sandbox named ${target.name}, and no sbx kind ${target.name} (kinds: ${sandboxes.kinds().join(", ")})`);
+	}
+	const isCurrent = current?.name === target.name;
+	if (needsPending(state, target.name)) await markSessionSandboxPending(harness, target.name, target.kind, context);
 	let ref: SandboxRef;
 	try {
 		if (target.kind === undefined) ref = await sandboxes.attach(target.name, options.cwd);
 		else {
-			if (current?.name !== target.name) {
-				options.notice("info", `Getting sandbox ${target.name} (kind ${target.kind}) ready; prompts wait for it.`);
-			}
+			if (!isCurrent) options.notice("info", `Getting sandbox ${target.name} (kind ${target.kind}) ready; prompts wait for it.`);
 			({ ref } = await sandboxes.ensure({
 				name: target.name,
 				kind: target.kind,
 				repo: options.cwd,
 				purpose: "session",
-				// The session's current sandbox is never replaced, only reattached.
-				owned: target.owned && current?.name !== target.name,
+				// The session's saved sandbox is never replaced, only reattached.
+				owned: target.owned && !isCurrent,
 				onProgress: (message) => options.notice(/warning/iu.test(message) ? "warning" : "info", message),
 			}));
 		}
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
+		const keepCurrent = current !== undefined && !isCurrent;
 		await harness.commit(async (tx) => {
 			const doc = await tx.doc(SessionSandbox);
 			delete doc.pending;
-			delete doc.ref;
-			doc.failed = message;
+			if (keepCurrent) delete doc.failed;
+			else {
+				// The current sandbox itself failed (or there was none): nothing safe to run on.
+				delete doc.ref;
+				doc.failed = message;
+			}
 		}, context);
-		throw new Error(`${message}. Tools will not run until /sandbox <kind> succeeds or /sandbox off.`);
+		throw new Error(
+			keepCurrent
+				? `${message}. The session stays in sandbox ${current.name}.`
+				: `${message}. Tools will not run until /sandbox <kind> succeeds or /sandbox off.`,
+		);
 	}
 	await harness.commit(async (tx) => {
 		const doc = await tx.doc(SessionSandbox);

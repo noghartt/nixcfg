@@ -79,11 +79,15 @@ export function createSandboxTools(host: Host, approvals?: Approvals): Extension
 		execute: async (args, api, context) => {
 			const sandboxes = host.sandboxes;
 			const own = await sandboxOf(api, api.conversationId, context);
+			// The session's sandbox gone: the session is blocked (fail closed), never quietly back on this machine.
 			const detach = (gone: string) =>
 				api.commit(async (tx) => {
 					const doc = await tx.doc(SessionSandbox);
-					if (doc.ref?.name === gone) delete doc.ref;
+					if (doc.ref?.name !== gone) return;
+					delete doc.ref;
+					doc.failed = `sandbox ${gone} was removed by sandbox_pull`;
 				}, context);
+			const isSession = async (candidate: string) => (await api.snapshot(SessionSandbox, context))?.ref?.name === candidate;
 			const name = args.sandbox?.trim() || own?.name;
 			if (name === undefined) throw new Error("This conversation runs in no sandbox; name one (sbx ls lists them).");
 			const ref = own !== undefined && own.name === name ? own : { name };
@@ -114,25 +118,26 @@ export function createSandboxTools(host: Host, approvals?: Approvals): Extension
 					lines.push("Not removed: a subagent's sandbox is removed when it finishes.");
 				} else if (box === undefined) {
 					// A rerun after the removal: the session may still name it.
-					if (own?.name === name) await detach(name);
+					if (await isSession(name)) await detach(name);
 					lines.push(`${name} was already removed.`);
 				} else if (
-					(foreign || kept) &&
+					(foreign || kept || (await isSession(name))) &&
 					!(await approvals?.request(
 						{
 							title: `Remove sandbox ${name}?`,
-							message: `${foreign ? "This session did not make it" : "It is marked to keep"}; its pulled branches stay.`,
+							message: `${(await isSession(name)) ? "It is this session's sandbox; tools stop until /sandbox <kind> or /sandbox off" : foreign ? "This session did not make it" : "It is marked to keep"}; its pulled branches stay.`,
 						},
 						context,
 					))
 				) {
-					lines.push(`Not removed: ${name} ${foreign ? "was not made by this session" : "is marked to keep"} and the user did not approve.`);
+					const why = (await isSession(name)) ? "is this session's sandbox" : foreign ? "was not made by this session" : "is marked to keep";
+					lines.push(`Not removed: ${name} ${why} and the user did not approve.`);
 				} else {
+					const wasSession = await isSession(name);
 					await sandboxes.remove(ref);
-					if (own?.name === name) {
-						// The session's sandbox is gone, so the session goes back to this machine.
+					if (wasSession) {
 						await detach(name);
-						lines.push(`Removed ${name}; this session's tools run on the local machine again.`);
+						lines.push(`Removed ${name}. The session ran in it, so its tools stop until /sandbox <kind> makes a new one or /sandbox off runs them on this machine.`);
 					} else lines.push(`Removed ${name}.`);
 				}
 			}

@@ -4,6 +4,7 @@ import {
 	type AgentChange,
 	AssistantEntry,
 	type ConversationId,
+	type DocumentReader,
 	type Harness,
 	LiveDoc,
 	configure,
@@ -82,8 +83,11 @@ export async function prepareChild(
 	const parentSandbox = await sandboxOf(api, api.conversationId, context);
 	if (isolation.mode !== "none" && parentSandbox !== undefined) {
 		sandbox = await host.sandboxes.worktreeIn(parentSandbox, host.sessionId, key);
-		if (isolation.kind !== undefined && isolation.kind !== parentSandbox.kind) {
-			warnings.push(`isolation ${isolation.mode}:${isolation.kind} ran in a worktree of the session's sandbox ${parentSandbox.name} (kind ${parentSandbox.kind})`);
+		if (isolation.mode === "sandbox") {
+			warnings.push(
+				`isolation ${isolation.kind === undefined ? "sandbox" : `sandbox:${isolation.kind}`} ran in a git worktree of the ` +
+					`session's sandbox ${parentSandbox.name} (kind ${parentSandbox.kind}), not in a VM of its own`,
+			);
 		}
 	} else if (isolation.mode === "worktree") {
 		({ worktree, cwd } = await ensureWorktree(cwd, host.sessionDir, host.sessionId, key));
@@ -212,6 +216,44 @@ export async function wrapUp(sandboxes: Sandboxes | undefined, identity: Identit
 }
 
 /**
+ * Marks a background subagent as stopped for good, before its work is aborted, so its reporter wraps up its sandbox.
+ * Only for one with a sandbox: a stop otherwise keeps it taking messages, as it always did.
+ */
+export async function markStopped(
+	committer: { commit<T>(operation: (tx: Tx) => Promise<T>, context: Context): Promise<T> },
+	conversationId: ConversationId,
+	context: Context,
+): Promise<boolean> {
+	return committer.commit(async (tx) => {
+		const identity = await tx.doc(Identity, conversationId);
+		if (identity.sandbox === undefined || identity.background !== true) return false;
+		identity.stopped = true;
+		return true;
+	}, context);
+}
+
+/**
+ * After a stop for good (`markStopped`, then the abort): its work comes back and its sandbox goes now, also when it was
+ * idle and no reporter is waiting on it. A reporter that sees the same stop finds it wrapped up. Returns what happened.
+ */
+export async function finishStopped(
+	harness: { commit<T>(operation: (tx: Tx) => Promise<T>, context: Context): Promise<T> } & DocumentReader,
+	sandboxes: Sandboxes,
+	conversationId: ConversationId,
+	context: Context,
+): Promise<string | undefined> {
+	const identity = await harness.snapshot(Identity, conversationId, context);
+	if (identity?.stopped !== true || identity.sandbox === undefined || identity.wrappedUp === true) return undefined;
+	const summary = await sandboxes.bringBack(identity.sandbox, { remove: true });
+	if (summary.removed) {
+		await harness.commit(async (tx) => {
+			(await tx.doc(Identity, conversationId)).wrappedUp = true;
+		}, context);
+	}
+	return summary.text;
+}
+
+/**
  * The sandboxes of the open session, for the Reporter: task definitions are module-level, and one process holds one
  * session at a time (`createOrchestration` sets this for each).
  */
@@ -270,22 +312,25 @@ export const Reporter = defineTask<ReporterInput, ReporterState, null>({
 			const state = await runtime.readSignal(SubmissionSettled, "answered", context);
 			const settled = state !== undefined && "value" in state ? state.value : undefined;
 			const identity = await runtime.snapshot(Identity, conversationId, context);
-			// A background subagent may get more messages, so its sandbox stays and each answer pulls its branch again; once
-			// it is stopped (aborted), its work comes back and its sandbox goes.
-			const stopped = settled?.status === "unanswered" && settled.reason === "aborted";
+			// A background subagent may get more messages, so its sandbox stays and each answer pulls its branch again. Only
+			// an explicit stop (agents stop, /stop: `markStopped`) ends it: its work comes back and its sandbox goes. Esc in
+			// its conversation or a withdrawn message also ends a submission as aborted, and leaves everything as it was.
+			const stopped = settled?.status === "unanswered" && settled.reason === "aborted" && identity?.stopped === true;
+			const done = identity?.wrappedUp === true;
 			const worktree =
-				identity === undefined
+				identity === undefined || done
 					? undefined
 					: identity.sandbox !== undefined
 						? await wrapUp(reporterSandboxes.current, identity, stopped)
 						: await wrapUp(reporterSandboxes.current, identity, false);
 			await runtime.commit(async (tx) => {
+				if (stopped && identity?.sandbox !== undefined) (await tx.doc(Identity, conversationId)).wrappedUp = true;
 				const next = (report?: string) => ({ status: "running", checkpoint: { phase: "report", report } }) as const;
 				if (settled === undefined) return next(`[subagent ${name} never answered]`);
 				// Stopped, or withdrawn while queued: nothing to report.
 				if (settled.status === "unanswered") {
 					// Stopped: nothing to report but where its work went.
-					if (settled.reason === "aborted") return next(identity?.sandbox === undefined ? undefined : `[subagent ${name} stopped]\n${worktree}`);
+					if (settled.reason === "aborted") return next(stopped && worktree !== undefined ? `[subagent ${name} stopped]\n${worktree}` : undefined);
 					return next(`[subagent ${name} failed: ${settled.reason}]${worktree === undefined ? "" : `\n\n${worktree}`}`);
 				}
 				if (settled.type !== "input") return next();
@@ -326,8 +371,14 @@ export const Reporter = defineTask<ReporterInput, ReporterState, null>({
 	// Aborted (its conversation ended or was stopped for good): the subagent's sandbox goes, after its work comes back.
 	abort: async (task, runtime, context) => {
 		const identity = await runtime.snapshot(Identity, task.input.conversationId, context);
-		if (identity?.sandbox !== undefined) await wrapUp(reporterSandboxes.current, identity, true).catch(() => undefined);
-		await runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), context);
+		const removed =
+			identity?.sandbox !== undefined && identity.wrappedUp !== true
+				? await reporterSandboxes.current?.bringBack(identity.sandbox, { remove: true }).catch(() => undefined)
+				: undefined;
+		await runtime.commit(async (tx) => {
+			if (removed?.removed === true) (await tx.doc(Identity, task.input.conversationId)).wrappedUp = true;
+			return { status: "terminal", outcome: { status: "aborted" } };
+		}, context);
 	},
 });
 
@@ -742,7 +793,8 @@ export function createOrchestration(host: Host): { orchestration: Extension; tas
 /**
  * When the session closes, idle background subagents' sandboxes go, after their work comes back: their answers were
  * reported, and a VM nobody is using would only wait for the reaper. One still at work keeps its sandbox, since its run
- * resumes on the next open. Returns a line for each sandbox it could not remove, naming it.
+ * resumes on the next open; one already wrapped up is skipped. All at once, within one overall bound. Returns a line for
+ * each sandbox it could not remove, naming it.
  */
 export async function closeBackgroundSandboxes(
 	harness: Harness,
@@ -750,21 +802,41 @@ export async function closeBackgroundSandboxes(
 	conversations: readonly ConversationId[],
 	context: Context,
 ): Promise<string[]> {
-	const problems: string[] = [];
+	const work: { name: string; conversationId: ConversationId; identity: IdentityState }[] = [];
 	for (const id of conversations) {
 		const background = await harness.snapshot(Background, id, context);
 		for (const [name, agent] of Object.entries(background?.agents ?? {})) {
 			const identity = await harness.snapshot(Identity, agent.conversationId, context);
-			if (identity?.sandbox === undefined) continue;
+			if (identity?.sandbox === undefined || identity.wrappedUp === true) continue;
 			if ((await harness.snapshot(LiveDoc, agent.conversationId, context))?.run !== undefined) continue;
-			const where = identity.sandbox.worktreeOf === undefined ? `sandbox ${identity.sandbox.name}` : `worktree ${identity.sandbox.workdir} in sandbox ${identity.sandbox.name}`;
-			const summary = await Promise.race([
-				sandboxes.bringBack(identity.sandbox, { remove: true }),
-				new Promise<undefined>((resolve) => void setTimeout(() => resolve(undefined), 30_000).unref()),
-			]);
-			if (summary === undefined) problems.push(`The ${where} of background subagent ${name} did not answer; remove it with sbx rm ${identity.sandbox.name}.`);
-			else if (summary.failed && !summary.removed) problems.push(`The ${where} of background subagent ${name} was kept: ${summary.text}`);
+			work.push({ name, conversationId: agent.conversationId, identity });
+		}
+	}
+	const problems: string[] = [];
+	const where = (identity: IdentityState) =>
+		identity.sandbox!.worktreeOf === undefined
+			? `sandbox ${identity.sandbox!.name}`
+			: `worktree ${identity.sandbox!.workdir} in sandbox ${identity.sandbox!.name}`;
+	const finished = new Set<ConversationId>();
+	const all = Promise.all(
+		work.map(async ({ name, conversationId, identity }) => {
+			const summary = await sandboxes.bringBack(identity.sandbox!, { remove: true });
+			finished.add(conversationId);
+			if (summary.removed) {
+				await harness.commit(async (tx) => {
+					(await tx.doc(Identity, conversationId)).wrappedUp = true;
+				}, context);
+			} else problems.push(`The ${where(identity)} of background subagent ${name} was kept: ${summary.text}`);
+		}),
+	);
+	await Promise.race([all, new Promise((resolve) => void setTimeout(resolve, CLOSE_WAIT_MS).unref())]);
+	for (const { name, conversationId, identity } of work) {
+		if (!finished.has(conversationId)) {
+			problems.push(`The ${where(identity)} of background subagent ${name} did not answer; remove it with sbx rm ${identity.sandbox!.name}.`);
 		}
 	}
 	return problems;
 }
+
+/** How long closing the session waits, in all, for background sandboxes to be wrapped up. */
+const CLOSE_WAIT_MS = 60_000;

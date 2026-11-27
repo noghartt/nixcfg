@@ -46,6 +46,10 @@ export type IdentityState = {
 	worktree?: WorktreeInfo;
 	/** Notes from making its workspace (uncommitted local changes left behind, a kind not honoured), for its result. */
 	warnings?: string[];
+	/** A background subagent stopped for good (agents stop, /stop): its reporter wraps up its sandbox. */
+	stopped?: boolean;
+	/** Its sandbox (or worktree in one) was wrapped up and removed; nothing is left to clean up. */
+	wrappedUp?: boolean;
 	/** Its own sandbox (isolation `sandbox[:kind]`): its tools run there. */
 	sandbox?: SandboxRef;
 	/** A swarm member: it talks through the board, and its answers go nowhere. */
@@ -163,6 +167,8 @@ export type SwarmMember = {
 	/** The newest post it has read (or was woken with). */
 	lastRead: number;
 	worktree?: WorktreeInfo;
+	/** Its git worktree inside the session's sandbox, in a sandboxed session. */
+	sandboxWorktree?: WorktreeInfo & { sandbox: string };
 	killed?: boolean;
 };
 

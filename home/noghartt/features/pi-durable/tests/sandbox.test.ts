@@ -27,7 +27,9 @@ import type { AgentProfiles } from "./profiles.ts";
 import { SANDBOX_SECTION } from "./prompt.ts";
 import {
 	artifactPaths,
+	failStalePending,
 	markSessionSandboxPending,
+	needsPending,
 	parseIsolation,
 	runInSandbox,
 	Sandboxes,
@@ -39,7 +41,7 @@ import {
 import { SandboxExecutionEnv } from "./sandbox-env.ts";
 import { createSandboxTools } from "./sandbox-tools.ts";
 import { Identity, SandboxBinding, SessionSandbox } from "./state.ts";
-import { createOrchestration } from "./subagent.ts";
+import { closeBackgroundSandboxes, createOrchestration, finishStopped, markStopped } from "./subagent.ts";
 
 const context = BACKGROUND_CONTEXT;
 
@@ -424,7 +426,7 @@ describe("sandbox safety", () => {
 		assert.equal(await provider.get("pd-safe-norepo"), undefined);
 	});
 
-	test("big leftovers stay behind and are named; uncommitted-change warnings come back", async () => {
+	test("big leftovers keep the sandbox and are named; uncommitted-change warnings come back", async () => {
 		execFileSync("sh", ["-c", `echo dirty >> "${work}/file.txt"`]);
 		const made = await sandboxes.ensure({ name: "pd-safe-big", repo: work, branch: "pi-durable/big", purpose: "subagent", owned: true });
 		execFileSync("git", ["-C", work, "checkout", "-q", "--", "file.txt"]);
@@ -432,13 +434,31 @@ describe("sandbox safety", () => {
 		const env = await sandboxes.env(made.ref, work);
 		getOrThrow(await env.writeFile("small.txt", "small", context));
 		getOrThrow(await env.exec("dd if=/dev/zero of=huge.bin bs=1048576 count=11 2>/dev/null", undefined, context));
+		// Another branch, and a commit on a detached HEAD, must come back too before the VM goes.
+		getOrThrow(await env.exec("git branch side && git -c core.hooksPath=/dev/null commit -q --allow-empty -m on-side --no-verify 2>/dev/null; git checkout -q side && git commit -q --allow-empty -m side && git checkout -q pi-durable/big", undefined, context));
 		const summary = await sandboxes.bringBack(made.ref, { remove: true });
 		assert.match(summary.text, /Not committed .*huge\.bin/u);
+		assert.equal(summary.removed, false, "kept for the file not committed");
+		assert.notEqual(await provider.get("pd-safe-big"), undefined);
 		assert.equal(git(work, "show", "sbx/pd-safe-big/pi-durable/big:small.txt"), "small");
 		assert.throws(() => git(work, "cat-file", "-e", "sbx/pd-safe-big/pi-durable/big:huge.bin"));
+		assert.match(git(work, "log", "-1", "--format=%s", "sbx/pd-safe-big/side"), /^side$/u);
+		await sandboxes.remove({ name: "pd-safe-big" });
 		// A pull after the sandbox is gone reports what an earlier pull left.
 		const again = await sandboxes.pull({ name: "pd-safe-big" }, work, []);
-		assert.deepEqual([again.gone, again.branches], [true, ["sbx/pd-safe-big/pi-durable/big"]]);
+		assert.equal(again.gone, true);
+		assert.ok(again.branches.includes("sbx/pd-safe-big/pi-durable/big"), again.branches.join(" "));
+	});
+
+	test("a detached HEAD's commits get a branch before the sandbox goes", async () => {
+		const made = await sandboxes.ensure({ name: "pd-safe-detached", repo: work, branch: "pi-durable/d", purpose: "subagent", owned: true });
+		const env = await sandboxes.env(made.ref, work);
+		getOrThrow(await env.exec("git checkout -q --detach && git commit -q --allow-empty -m loose", undefined, context));
+		const loose = (await made.box.exec(`git -C ${made.ref.workdir} rev-parse HEAD`)).stdout.trim();
+		const summary = await sandboxes.bringBack(made.ref, { remove: true });
+		assert.equal(summary.removed, true, summary.text);
+		const kept = git(work, "for-each-ref", "--format=%(objectname)", "refs/heads/sbx/pd-safe-detached/pi-durable/");
+		assert.ok(kept.split("\n").includes(loose), kept);
 	});
 
 	test("attaching a sandbox of another repository is refused", async () => {
@@ -482,6 +502,84 @@ describe("sandbox safety", () => {
 		}
 	});
 
+	test("a failed /sandbox keeps the current sandbox, a typo changes nothing, and reattaching blocks nothing", async () => {
+		const flaky = parseConfig({
+			defaultKind: "dev",
+			providers: { fake: {} },
+			kinds: { dev: { provider: "fake" }, broken: { provider: "fake", setup: "exit 1" } },
+		});
+		const local = new Sandboxes(() => new Sbx(flaky, { factories: new Map([["fake", () => provider]]) }));
+		const database = join(mkdtempSync(join(tmpdir(), "pi-durable-keep-")), "s.sqlite");
+		const harness = await Harness.open(await openNodeSqliteStorage(database), { models: createModels(), registry: createRegistry() }, context);
+		const options = { sessionId: "keep", cwd: work, notice: () => {} };
+		try {
+			await harness.root(context, { agent: { cwd: work } });
+			await setSessionSandbox(harness, local, "dev", options, context);
+			const current = (await harness.snapshot(SessionSandbox, context))?.ref;
+			assert.ok(current !== undefined);
+			await assert.rejects(setSessionSandbox(harness, local, "no-such-thing", options, context), /No sandbox named/u);
+			assert.deepEqual(await harness.snapshot(SessionSandbox, context), { ref: current }, "a typo changes nothing");
+			await assert.rejects(setSessionSandbox(harness, local, "broken", options, context), /stays in sandbox/u);
+			assert.deepEqual(await harness.snapshot(SessionSandbox, context), { ref: current }, "a failure keeps the current one");
+			assert.equal(needsPending(await harness.snapshot(SessionSandbox, context), current.name), false);
+			assert.equal(needsPending(await harness.snapshot(SessionSandbox, context), "other"), true);
+			await setSessionSandbox(harness, local, "off", options, context);
+			await local.remove(current);
+		} finally {
+			await harness.close(context);
+		}
+	});
+
+	test("tools wait for a sandbox being made, and a pending one left by a dead process fails them", async () => {
+		const database = join(mkdtempSync(join(tmpdir(), "pi-durable-wait-")), "s.sqlite");
+		const harness = await Harness.open(await openNodeSqliteStorage(database), { models: createModels(), registry: createRegistry() }, context);
+		const envs = new ExecutionEnvs(work, sandboxes);
+		const env = () => envs.env({ conversationId: ROOT_CONVERSATION_ID, cwd: work, read: harness }, context);
+		try {
+			await harness.root(context, { agent: { cwd: work } });
+			await markSessionSandboxPending(harness, "pd-wait-session-dev", "dev", context);
+			const waiting = env();
+			const { ref } = await sandboxes.ensure({ name: "pd-wait-session-dev", repo: work, purpose: "session", owned: true });
+			await harness.commit(async (tx) => {
+				const doc = await tx.doc(SessionSandbox);
+				delete doc.pending;
+				doc.ref = ref;
+			}, context);
+			assert.ok((await waiting) instanceof SandboxExecutionEnv, "the waiting tool got the sandbox");
+			await markSessionSandboxPending(harness, "pd-wait-other", "dev", context);
+			await failStalePending(harness, context);
+			await assert.rejects(env(), /cut short/u);
+			await sandboxes.remove(ref);
+		} finally {
+			await harness.close(context);
+			await envs.cleanup(context);
+		}
+	});
+
+	test("a nested worktree starts from its parent's HEAD, and an uncertain base keeps the branch", async () => {
+		const { ref, box } = await sandboxes.ensure({ name: "pd-safe-nest", repo: work, purpose: "session", owned: true });
+		const outer = await sandboxes.worktreeIn(ref, "nest", "t1");
+		await box.exec(`cd ${outer.workdir} && git commit -q --allow-empty -m outer`);
+		const outerHead = (await box.exec(`git -C ${outer.workdir} rev-parse HEAD`)).stdout.trim();
+		const inner = await sandboxes.worktreeIn(outer, "nest", "t2");
+		assert.equal(inner.base, outerHead);
+		assert.equal(inner.worktreeOf, ref.workdir);
+		assert.equal((await sandboxes.worktreeIn(outer, "nest", "t2")).base, outerHead, "a rerun finds it");
+		const summary = await sandboxes.bringBack({ ...inner, base: "" }, { remove: true });
+		assert.equal(summary.removed, true, summary.text);
+		assert.equal((await box.exec(`git -C ${ref.workdir} rev-parse -q --verify refs/heads/${inner.branch}`)).exitCode, 0, "branch kept");
+		await sandboxes.remove(ref);
+	});
+
+	test("renaming a path onto itself does nothing", async () => {
+		const { ref } = await sandboxes.ensure({ name: "pd-safe-self", purpose: "session", owned: true });
+		const env = await sandboxes.env(ref, work);
+		getOrThrow(await env.writeFile("same.txt", "x", context));
+		getOrThrow(await env.renameFile("same.txt", "same.txt", context));
+		assert.equal(getOrThrow(await env.readTextFile("same.txt", context)), "x");
+		await sandboxes.remove(ref);
+	});
+
 	test("a pending or failed session sandbox blocks tools instead of running them here", async () => {
 		const broken = parseConfig({
 			defaultKind: "dev",
@@ -496,8 +594,11 @@ describe("sandbox safety", () => {
 		try {
 			await harness.root(context, { agent: { cwd: work } });
 			await markSessionSandboxPending(harness, "pd-x-session-dev", "dev", context);
-			await assert.rejects(env(), /not ready/u);
-			assert.equal((await sandboxTarget(harness, ROOT_CONVERSATION_ID, context)).kind, "blocked");
+			// Pending: blocked (tools wait for it, see below), never local.
+			assert.deepEqual(
+				await sandboxTarget(harness, ROOT_CONVERSATION_ID, context).then((found) => [found.kind, "pending" in found && found.pending]),
+				["blocked", true],
+			);
 			const options = { sessionId: "blocked", cwd: work, notice: () => {} };
 			await assert.rejects(setSessionSandbox(harness, local, "broken", options, context), /setup failed/u);
 			await assert.rejects(env(), /sandbox failed/u);
@@ -544,7 +645,7 @@ async function harnessWith(
 	provider: FakeProvider,
 	work: string,
 	script: { main: Step[]; child: Step[] },
-	approve = false,
+	approve: (title: string) => boolean = () => false,
 ) {
 	const sandboxes = setup(provider);
 	const faux = fauxProvider();
@@ -560,7 +661,7 @@ async function harnessWith(
 		harness: undefined,
 	};
 	const approvals = new Approvals();
-	approvals.handle(async () => approve);
+	approvals.handle(async (request) => approve(request.title));
 	const registry = createRegistry();
 	registry.install(CodingTools);
 	registry.install(defineExtension({ name: "sandbox-prompt", sections: [SANDBOX_SECTION] }));
@@ -674,22 +775,35 @@ describe("sandboxes through a Harness", () => {
 		}
 	});
 
-	test("a stopped background subagent's sandbox goes, after its work comes back", async () => {
+	test("Esc in a background subagent keeps its sandbox; a stop removes it after its work comes back; close skips it", async () => {
 		const provider = await fakeProvider();
 		const work = repository();
 		const stall = never();
+		const again = never();
 		const h = await harnessWith(provider, work, {
 			main: [call("subagent", { task: "work", isolation: "sandbox", background: true }), fauxAssistantMessage("started")],
-			child: [commitInBash("bg"), stall.step],
+			child: [commitInBash("bg"), stall.step, again.step],
 		});
 		try {
 			h.harness.resume();
 			await (await h.root.submit({ type: "input", content: "go" }, context)).wait(context);
 			await stall.reached;
 			const child = (await h.harness.commit((tx) => tx.scanConversations({}, 10), context)).items.find((c) => c.id !== ROOT_CONVERSATION_ID)!;
-			await (await h.harness.conversation(child.id, context))!.abort(context);
+			const handle = (await h.harness.conversation(child.id, context))!;
+			// Esc: the answer is aborted, nothing more.
+			await handle.abort(context);
+			await new Promise((resolve) => setTimeout(resolve, 500));
+			assert.equal((await provider.list()).length, 1, "Esc keeps the sandbox");
+			await handle.submit({ type: "input", content: "more", whenBusy: "followUp" }, context);
+			await again.reached;
+			// An explicit stop: marked, then aborted.
+			assert.equal(await markStopped(h.harness, child.id, context), true);
+			await handle.abort(context);
+			assert.match((await finishStopped(h.harness, h.sandboxes, child.id, context)) ?? "", /was removed/u);
 			await waitFor(async () => (await provider.list()).length === 0);
 			assert.match(git(work, "for-each-ref", "--format=%(refname:short)", "refs/heads/sbx/"), /pi-durable\/bg/u);
+			await waitFor(async () => (await h.harness.snapshot(Identity, child.id, context))?.wrappedUp === true);
+			assert.deepEqual(await closeBackgroundSandboxes(h.harness, h.sandboxes, [ROOT_CONVERSATION_ID], context), []);
 		} finally {
 			await h.close();
 			await provider.cleanup();
@@ -713,7 +827,7 @@ describe("sandboxes through a Harness", () => {
 			assert.equal((await (await h.root.submit({ type: "input", content: "go" }, context)).wait(context)).status, "done");
 			assert.equal((await provider.list()).length, 1, "no second VM");
 			const branches = (await box.exec(`git -C ${ref.workdir} for-each-ref --format='%(refname:short)' refs/heads/pi-durable/`)).stdout.trim();
-			assert.match(branches, /^pi-durable\/1795802865031-t\d+$/u);
+			assert.match(branches, /^pi-durable\/[0-9a-f]{10}-t\d+$/u);
 			assert.equal((await box.exec(`git -C ${ref.workdir} show ${branches}:wt.txt`)).stdout.trim(), "wt");
 			assert.equal((await box.exec(`ls ${ref.home}/.pi-durable/worktrees | wc -l`)).stdout.trim(), "0", "its worktree was removed");
 			assert.equal(git(work, "for-each-ref", "refs/heads/"), git(work, "for-each-ref", "refs/heads/main"), "nothing new locally");
@@ -737,7 +851,7 @@ describe("sandboxes through a Harness", () => {
 				fauxAssistantMessage("ok"),
 			],
 			child: [],
-		});
+		}, (title) => title.includes("session-dev"));
 		try {
 			const name = sandboxName(h.host.sessionId, "session-dev");
 			const { ref } = await h.sandboxes.ensure({ name, repo: work, purpose: "session", owned: true });
@@ -755,7 +869,9 @@ describe("sandboxes through a Harness", () => {
 			assert.match(own ?? "", new RegExp(`sbx/${name}/feature`, "u"));
 			assert.equal(git(work, "show", `sbx/${name}/feature:x.txt`), "x");
 			assert.equal(await provider.get(name), undefined, "removed after the pull");
-			assert.equal((await h.harness.snapshot(SessionSandbox, context))?.ref, undefined, "the session is local again");
+			const session = await h.harness.snapshot(SessionSandbox, context);
+			assert.equal(session?.ref, undefined);
+			assert.match(session?.failed ?? "", /removed by sandbox_pull/u, "the session is blocked, not local");
 		} finally {
 			await h.close();
 			await provider.cleanup();

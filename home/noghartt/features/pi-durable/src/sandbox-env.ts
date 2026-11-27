@@ -389,6 +389,12 @@ export class SandboxExecutionEnv implements ExecutionEnv {
 
 	async renameFile(sourcePath: string, destinationPath: string, context: Context): Promise<Result<void, FileError>> {
 		const source = this.resolve(sourcePath);
+		// rename(2) of a path onto itself does nothing; the link handling below would delete it.
+		if (source === this.resolve(destinationPath)) {
+			const there = await this.exists(source, context);
+			if (!there.ok) return there;
+			return there.value ? ok(undefined) : err(new FileError("not_found", "No such file", source));
+		}
 		const s = quote(source);
 		const d = quote(this.resolve(destinationPath));
 		// rename(2), not mv: never moves into an existing directory; replaces an empty one with a directory, and a
