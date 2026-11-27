@@ -10,6 +10,16 @@ whenever it feels like a checkpoint.
 
 ### Added
 
+- **home/noghartt/pi-durable**: sbx sandboxes. A sandbox `ExecutionEnv` on the sbx library (one
+  round trip per operation, binary-safe, remote cancellation and timeouts, spill files on the VM;
+  passes Durable's env conformance suite) runs read/write/edit/bash in a VM. `isolation:
+  "sandbox[:<kind>]"` on `subagent`, `parallel` and profiles gives a child its own sandbox seeded
+  from the parent's repository; its commits come back as `sbx/<sandbox>/<branch>` and the sandbox
+  is removed unless `keepSandbox` (failures keep it). `pi-durable --sandbox[=kind[:name]]` and
+  `/sandbox [kind|name|off]` put a whole session in a sandbox, reattached on resume, with a prompt
+  section on network, ports and what comes back. New `sandbox_run` and `sandbox_pull` tools. All
+  replay-safe through deterministic sandbox names, and provider-agnostic (capabilities only).
+  sbx now exports its fake provider (`src/testing.ts`) for consumers' tests (`docs/pi-durable.md`).
 - **home/noghartt/sandbox**: `sbx`, sandboxes behind a provider interface (capabilities, reusable
   contract tests) with exe.dev as the first provider on the official `@exedev/sdk`. VM kinds set
   egress, size, integrations and setup (`dev`, `agent` with no public internet, `job` for one-off

@@ -8,7 +8,7 @@ import { type OpenDurableResult, openDurable } from "./runtime.ts";
 import type { SessionTarget } from "./sessions.ts";
 import { runDashboard, runDurableTui } from "./tui.ts";
 
-const USAGE = `Usage: pi-durable [--continue | --session <dir>]
+const USAGE = `Usage: pi-durable [--continue | --session <dir>] [--sandbox[=kind[:name]]]
        pi-durable agents
        pi-durable accounts list | login <name> | remove <name>
 
@@ -19,10 +19,16 @@ prompt templates); Pi extensions are not loaded.
 
   -c, --continue        Reopen the newest session for the current directory
   -s, --session <dir>   Open the session in <dir> (as /resume lists them)
+  --sandbox[=kind[:name]]
+                        Run the session's tools in an sbx sandbox (default kind; reattached
+                        on resume); /sandbox changes it
   agents                Every session and its agents, by project; enter opens one
   accounts              Claude accounts to fall back on at a usage limit (accounts --help)
   -h, --help            Show this help
   -v, --version         Show the Pi/Durable version`;
+
+/** `--sandbox[=kind[:name]]`, for the first session opened. */
+let sandbox: string | undefined;
 
 function parseArgs(argv: readonly string[]): SessionTarget | "agents" {
 	if (argv[0] === "agents" || argv[0] === "--dashboard") return "agents";
@@ -30,6 +36,7 @@ function parseArgs(argv: readonly string[]): SessionTarget | "agents" {
 	for (let index = 0; index < argv.length; index++) {
 		const arg = argv[index]!;
 		if (arg === "--continue" || arg === "-c") target = { kind: "continue" };
+		else if (arg === "--sandbox" || arg.startsWith("--sandbox=")) sandbox = arg.slice("--sandbox=".length);
 		else if (arg === "--session" || arg === "-s") {
 			const directory = argv[++index];
 			if (directory === undefined) {
@@ -65,7 +72,9 @@ if (process.argv[2] === "accounts") process.exit(await runAccounts(process.argv.
 const parsed = parseArgs(process.argv.slice(2));
 let target: SessionTarget | undefined = parsed === "agents" ? await runDashboard() : parsed;
 while (target !== undefined) {
-	durable = await openDurable({ target });
+	durable = await openDurable({ target, ...(sandbox === undefined ? {} : { sandbox }) });
+	// /new and /resume open sessions as they are; /sandbox changes them.
+	sandbox = undefined;
 	try {
 		target = await runDurableTui(durable);
 	} finally {

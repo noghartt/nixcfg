@@ -1,5 +1,6 @@
 import type { Harness } from "@earendil-works/pi-durable";
 import type { AgentProfiles } from "./profiles.ts";
+import type { Sandboxes } from "./sandbox.ts";
 
 /** Fan-out bounds: the default number of subagents one `parallel` call runs at once, and the most it may ask for. */
 export const DEFAULT_PARALLEL = 4;
@@ -17,6 +18,8 @@ export interface Host {
 	readonly sessionDir: string;
 	readonly cwd: string;
 	readonly profiles: AgentProfiles;
+	/** sbx sandboxes: sandbox-isolated subagents, the session's sandbox, sandbox_run. */
+	readonly sandboxes: Sandboxes;
 	harness: Harness | undefined;
 }
 

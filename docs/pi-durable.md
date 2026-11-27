@@ -43,7 +43,7 @@ is shown as Pi's collapsed skill card; the expand key opens it, as it does tool 
 Any other `/...` text goes to the model.
 
 Commands: `/model`, `/thinking`, `/tree`, `/fork`, `/clone`, `/agents`, `/stop`, `/profiles`,
-`/dashboard`, `/btw`, `/status`, `/accounts`, `/swarm`, `/research`, `/label`, `/tasks`, `/notices`, `/compact`, `/new`, `/resume`, `/name`, `/session`, `/copy`,
+`/dashboard`, `/btw`, `/status`, `/accounts`, `/swarm`, `/research`, `/sandbox`, `/label`, `/tasks`, `/notices`, `/compact`, `/new`, `/resume`, `/name`, `/session`, `/copy`,
 `/reload`, `/trust`, `/quit`. Enter prompts when idle and steers when busy; the follow-up key
 queues; Esc aborts; Shift+Tab cycles thinking.
 
@@ -327,8 +327,8 @@ keeps no copy; only bash writes its complete output to a file. An `afterTool` ho
 last, gives every other model-issued result the same treatment: text over the limits is written
 to a temp file (`pi-tool-output-*.txt`) and the result gains `[info] Full output: <path> (read
 with offset/limit)` next to the Harness's truncation warning. The file is made through the
-conversation's `ExecutionEnv`, not `node:fs`, so with a remote environment (cloud mode) it lands
-where the model's `read` looks. Files live in the OS temp dir, as bash's do, and are never
+conversation's `ExecutionEnv`, not `node:fs`, so with a remote environment (a sandbox, see
+Sandboxes) it lands where the model's `read` looks. Files live in the OS temp dir, as bash's do, and are never
 cleaned up by pi-durable. Output a tool streams with `api.output()` is already bounded before
 the hook runs, so such a tool must write its own file, as bash does.
 
@@ -372,7 +372,8 @@ read from `<agent dir>/agents/`, `~/.agents/agents/`, and, in trusted projects, 
 and `.pi/agents/` from the repository root down; a later file replaces a profile of the same
 name. Fields: `name`, `description`, `model` (`provider/model` or an ID, resolved like
 `pi --model`), `thinking`, `tools` (offered coding tools; `agents` and `sessions` are always
-kept), `isolation` (`worktree` or `none`), `maxTurns`; the body becomes the subagent's
+kept), `isolation` (`worktree`, `none`, `sandbox` or `sandbox:<kind>`, see Sandboxes),
+`keepSandbox`, `maxTurns`; the body becomes the subagent's
 instructions. Built in: `general`, `explore` and `reviewer` (read-only tools), `worker` (own
 worktree). `/profiles` lists them; `/reload` re-reads them.
 
@@ -403,8 +404,103 @@ makes through bash. Its result names the branch with a diff stat and how to merg
 that changed nothing has its worktree and branch removed.
 
 State lives in Durable documents (`src/state.ts`): `pi-durable.identity` per child (name,
-profile, parent, worktree), `pi-durable.background` per conversation (background subagents by
-name, watchers), and the session-wide `pi-durable.labels` and `pi-durable.swarm`.
+profile, parent, worktree or sandbox), `pi-durable.background` per conversation (background
+subagents by name, watchers), and the session-wide `pi-durable.labels`, `pi-durable.swarm` and
+`pi-durable.sandbox` (the session's sandbox).
+
+## Sandboxes
+
+pi-durable runs tools in `sbx` sandboxes (`docs/sandbox.md`): VMs made through the sbx library
+and its provider interface, never a particular provider, with kinds and providers from
+`$XDG_CONFIG_HOME/sbx/config.json` as for the `sbx` CLI. Code: `src/sandbox-env.ts` (the
+environment), `src/sandbox.ts` (lifecycle), `src/sandbox-tools.ts` (tools).
+
+**The environment.** `SandboxExecutionEnv` implements Durable's `ExecutionEnv` on
+`Sandbox.exec`, `readFile` and `writeFile`, so read, write, edit, bash, spill files and
+everything else built on the environment land in the VM:
+
+- Every operation is one round trip: stat, listings, renames, appends and the like are one
+  POSIX sh script (GNU or BSD tools) that classifies its own errors (`sbx-err:<code>` on stderr,
+  mapped to Durable's `FileError` codes); a failed `readFile`/`writeFile` costs a second one to
+  say why. Paths are resolved locally against the environment's cwd (POSIX, `~` is the sandbox's
+  home), so scripts only see absolute paths.
+- A binary reader's open returns files up to 1 MiB inline (one round trip for most `read`s);
+  larger ones are hard-linked (else copied) to a snapshot, read in 4 MiB base64 chunks with a
+  small cache, and the snapshot is removed on close, so the reader keeps reading the file it
+  opened, as a descriptor would. Text line readers sit on the binary reader.
+- `exec` runs strings through bash (sh where there is none) and argv without a shell, reports a
+  missing cwd or program as `spawn_error` (a marker line the caller never sees), maps the
+  context's abort to sbx's cancellation (which kills the remote process group), and tells a
+  timeout (sbx's 124/137 with the clock past the limit) from the command's own exit code. Output
+  streams to the caller; past the spill thresholds it is appended to a temp file on the sandbox
+  in 1 MiB batches, returned to sbx as backpressure. A throwing output callback is a
+  `callback_error` and stops the command.
+- `watch` is `not_supported` (nothing here watches its environment; resources load from the
+  local checkout) and the optional `listFiles` is absent. Durable's own `ExecutionEnv`
+  conformance suite runs against it (watch cases aside) in the tests.
+
+`ExecutionEnvs` picks the environment per call: a conversation's own sandbox (a
+sandbox-isolated subagent), none for a worktree-isolated one, else the session's sandbox, else
+the local directory. The agent's `cwd` stays local; the environment maps a directory below the
+seeding repository to the same place in the sandbox's checkout (else the checkout, else its
+home), so detaching needs no change to the conversation. Tools that run local programs (`watch`,
+`antigravity`, the research tools) use the local cwd. While a conversation works in a sandbox,
+pi-durable records use (`touch`) at most hourly, since sbx's reaper does not count commands.
+
+**Prompt.** A `sandbox` section tells such a conversation that its tools run on another machine,
+the kind's network policy (`all`: internet; `integrations`: only the provider's services and
+attached integrations), the checkout path, branch and seed commit (and that uncommitted local
+changes did not travel), how ports are reachable (`Sandbox.url(port)` when the provider has the
+`httpsUrl` capability, otherwise that they are not), that only committed work comes back, and
+which tools still run locally.
+
+**Sandbox-isolated subagents.** `isolation: "sandbox"` or `"sandbox:<kind>"` on `subagent`,
+`parallel` tasks or a profile (`keepSandbox: true` to keep it; the default profiles keep
+`worktree` and say in a comment how to opt in) gives the child its own sandbox:
+
+- Named `pd-<session hash>-<key>` from the session and the call (`t<task>`, `bg<task>`), made
+  with sbx's `createSandbox` from the parent's repository (its committed HEAD; local commits
+  travel as a bundle), on a new branch `pi-durable/<key>`, with the local git identity set in
+  the checkout. A rerun after a crash looks the name up first and reuses it; one whose seeding
+  a crash cut short (the seed commit missing) is replaced.
+- When it answers, uncommitted changes are committed in the sandbox, its branch is pulled with
+  `pullBranches` into the parent's repository as `sbx/<sandbox>/pi-durable/<key>` (only commits
+  after the seed travel), and the result names that branch with a diff stat and how to merge it,
+  as worktree isolation names its branch. Then the sandbox is removed unless kept. A rerun after
+  the removal reports the branch already pulled. A failed pull keeps the sandbox and says how to
+  inspect it (`sbx shell`), pull again (`sandbox_pull`) and remove it (`sbx rm`).
+- A background subagent's branch is pulled again with each answer and its sandbox is kept,
+  since it may get more messages; `sandbox_pull` with `remove: true` (from the parent) or
+  `sbx rm` removes it, and the reaper does after a week unused.
+- Antigravity profiles cannot use sandbox isolation (agy runs locally); a swarm member whose
+  profile asks for a sandbox joins in a worktree, since members hand work over through local
+  branches.
+
+**Session sandbox.** `pi-durable --sandbox[=kind[:name]]` or `/sandbox` puts the whole session's
+tools in a sandbox. `/sandbox <kind>` makes (or reattaches) the session's sandbox of that kind,
+named `pd-<session hash>-session-<kind>` and seeded from the session directory's repository;
+`<kind>:<name>` uses that name; any other word attaches an existing sandbox by name (`sbx ls`);
+bare `/sandbox` shows it and `/sandbox off` detaches it (the sandbox is kept). The choice is the
+session document `pi-durable.sandbox`, so `--continue` and `/resume` reattach by name. Prompts
+sent while it is being made wait for it (it runs in the command queue). Every conversation
+without its own sandbox or worktree uses it: main, branches, non-isolated subagents.
+
+**Tools.** `sandbox_run` runs one command in a fresh sandbox (kind `job` by default), optionally
+seeded with the repository, streams its output, downloads `artifacts` (relative to the checkout)
+to `out` (default `$TMPDIR/sbx-artifacts/<sandbox>/`), and removes the sandbox unless `keep`,
+also when the command fails. Its name derives from the call, so a rerun after a crash reuses the
+sandbox and runs the command again. `sandbox_pull` fetches a sandbox's branches (the
+conversation's own by default, or any by name) into the local repository as
+`sbx/<sandbox>/<branch>`; with `remove: true` it removes the sandbox afterwards (and detaches the
+session from it), except a subagent's own, which goes when the subagent finishes. Both are
+offered everywhere.
+
+Tests (`tests/sandbox.test.ts`) run on sbx's fake provider: the conformance suite, cancellation
+that stops the remote command, spill files on the sandbox, the subagent lifecycle (made once,
+reused, pulled back, removed or kept, failures kept), a half-seeded sandbox replaced,
+`sandbox_run`, a session sandbox across a Harness reopen, and Harness runs with a scripted faux
+model (a `sandbox:dev` subagent whose bash commits in the VM, and `sandbox_run` plus
+`sandbox_pull` on a session sandbox). What only exe.dev can show is in TASK.md.
 
 ## Rex
 
@@ -415,8 +511,9 @@ session-start context as a `rex` prompt section (`src/rex.ts`). See `docs/rex.md
 ## How it is built
 
 `package.nix` runs the source against the nixpkgs Pi package: Node 24 strips the
-TypeScript, bare imports resolve through Pi's `node_modules` and `#pi/*` (package.json
-`imports`) through Pi's `dist`, both by symlink. There is no npm build, and Durable is always
+TypeScript, bare imports resolve through Pi's `node_modules`, `#pi/*` (package.json
+`imports`) through Pi's `dist` and `#sbx/*` through the sbx package's `lib/sbx` (its vendored SDK
+included), all by symlink. There is no npm build, and Durable is always
 the copy shipped with `pi`. The install check runs `--version` and imports every module,
 which links each import against Pi's exports, then runs `tests/*.test.ts` with `node --test` beside
 the installed modules (linked, so they resolve Pi the same way) on a throwaway agent dir. Tests are

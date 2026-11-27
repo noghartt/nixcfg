@@ -5,6 +5,30 @@ import { defineDoc } from "@earendil-works/pi-durable";
 export type WorktreeInfo = { path: string; branch: string; base: string };
 
 /**
+ * An sbx sandbox a conversation's tools run in (`src/sandbox.ts`). Found again by `name` on `provider` (a provider id from
+ * the sbx config), so a reopened session reattaches to it.
+ */
+export type SandboxRef = {
+	name: string;
+	provider: string;
+	kind: string;
+	/** Absolute home directory on the sandbox. */
+	home: string;
+	/** Absolute path of the checkout on the sandbox; absent without one. */
+	workdir?: string;
+	/** The local repository it was seeded from: local paths below it map into `workdir`, and pulls land in it. */
+	localRoot?: string;
+	/** The commit it was seeded at. */
+	base?: string;
+	/** The branch the agent works on there. */
+	branch?: string;
+	/** Whose it is: the whole session's, a subagent's (pulled back when it answers), or one the user attached by name. */
+	purpose: "session" | "subagent";
+	/** Kept after its work is pulled back. */
+	keep?: boolean;
+};
+
+/**
  * Who a conversation is, written by the commit that creates it. Absent for main and for branches (forks start from the
  * initial value, so a branch of a subagent is not that subagent).
  */
@@ -15,6 +39,8 @@ export type IdentityState = {
 	parent?: number;
 	background?: boolean;
 	worktree?: WorktreeInfo;
+	/** Its own sandbox (isolation `sandbox[:kind]`): its tools run there. */
+	sandbox?: SandboxRef;
 	/** A swarm member: it talks through the board, and its answers go nowhere. */
 	swarm?: boolean;
 };
@@ -53,6 +79,17 @@ export const Background = defineDoc<BackgroundState>({
 	history: "latest",
 	fork: "initial",
 	initial: () => ({ agents: {}, watchers: {} }),
+	checkpointWhen: () => false,
+});
+
+/** The whole session's sandbox (`--sandbox`, `/sandbox`): every conversation without its own runs its tools there. */
+export type SessionSandboxState = { ref?: SandboxRef };
+
+export const SessionSandbox = defineDoc<SessionSandboxState>({
+	kind: "pi-durable.sandbox",
+	version: 1,
+	scope: "session",
+	initial: () => ({}),
 	checkpointWhen: () => false,
 });
 

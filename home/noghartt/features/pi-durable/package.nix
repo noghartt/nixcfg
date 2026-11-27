@@ -1,7 +1,8 @@
 # pi-durable runs against the installed Pi package itself: Node 24 strips the
 # TypeScript, bare imports resolve through Pi's node_modules and `#pi/*`
 # (package.json `imports`) through Pi's dist, both by symlink, so there is no
-# npm build and Durable is always the copy shipped with `pi`.
+# npm build and Durable is always the copy shipped with `pi`. The sbx library
+# (`features/sandbox`) is linked the same way, as `#sbx/*`.
 {
   lib,
   stdenvNoCC,
@@ -11,6 +12,9 @@
   ripgrep,
   fd,
   git-twig,
+  sbx,
+  git,
+  openssh,
 }:
 let
   pi = "${pi-coding-agent}/lib/node_modules/pi-monorepo";
@@ -48,6 +52,9 @@ let
     "accounts"
     "accounts-view"
     "accounts-cli"
+    "sandbox"
+    "sandbox-env"
+    "sandbox-tools"
   ];
 in
 stdenvNoCC.mkDerivation {
@@ -69,6 +76,8 @@ stdenvNoCC.mkDerivation {
     # Symlinks, so Node's realpath module cache shares one copy of every module with pi.
     ln -s ${pi}/node_modules "$lib/node_modules"
     ln -s ${pi}/dist "$lib/pi"
+    # sbx's own tree, vendored SDK included; a symlink, so its modules resolve their imports there.
+    ln -s ${sbx}/lib/sbx "$lib/sbx"
 
     makeWrapper ${lib.getExe nodejs_24} "$out/bin/pi-durable" \
       --add-flags "--disable-warning=ExperimentalWarning $lib/main.ts" \
@@ -77,6 +86,12 @@ stdenvNoCC.mkDerivation {
           ripgrep
           fd
           git-twig
+        ]
+      } \
+      --suffix PATH : ${
+        lib.makeBinPath [
+          git
+          openssh
         ]
       } \
       --set-default PI_SKIP_VERSION_CHECK 1 \
@@ -102,6 +117,8 @@ stdenvNoCC.mkDerivation {
     mkdir -p "$check"
     ln -s "$out"/lib/pi-durable/* "$check/"
     cp ${./tests}/*.test.ts "$check/"
+    # The sandbox tests seed and pull real git repositories through sbx's fake provider.
+    export PATH="$PATH:${lib.makeBinPath [ git ]}" XDG_CONFIG_HOME="$TMPDIR/config"
     PI_CODING_AGENT_DIR="$TMPDIR/agent" ${lib.getExe nodejs_24} --disable-warning=ExperimentalWarning \
       --test "$check"/*.test.ts
     runHook postInstallCheck

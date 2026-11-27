@@ -7,6 +7,7 @@ import { writeToolSystemPromptContribution } from "#pi/core/tools/write.js";
 import { antigravitySystemPromptContribution } from "./antigravity.ts";
 import type { PiResources } from "./resources.ts";
 import { createRexContext } from "./rex.ts";
+import { SandboxExecutionEnv } from "./sandbox-env.ts";
 
 const CONTRIBUTIONS = {
 	read: readToolSystemPromptContribution,
@@ -31,6 +32,14 @@ const CONTRIBUTIONS = {
 		guidelines: [
 			"Use parallel instead of consecutive subagent calls when tasks do not depend on each other; give subagents that change files isolation worktree.",
 		],
+	},
+	sandbox_run: {
+		snippet: "Run one command in a fresh sandbox VM (default kind job), optionally seeded with the repo, and download artifacts",
+		guidelines: [],
+	},
+	sandbox_pull: {
+		snippet: "Bring a sandbox's git branches into the local repository as sbx/<sandbox>/<branch>",
+		guidelines: [],
 	},
 	watch: {
 		snippet: "Start a background watcher (command exit or output match, file changes, timer) that wakes you with a message",
@@ -58,6 +67,11 @@ const AGENCY = [
 	"Do not end a turn with an offer like \"Should I ...?\" or \"Want me to ...?\" for work you can do: do it, or end because you are done or blocked on the user, and say which.",
 	"Repository and user rules that restrict actions (no autonomous system switches, no PR replies without permission) still apply.",
 ].join("\n");
+
+/** For conversations whose tools run in a sandbox: what it is, its network, ports, and what comes back. */
+export const SANDBOX_SECTION = section("sandbox", (input) =>
+	input.env instanceof SandboxExecutionEnv ? input.env.describe() : undefined,
+);
 
 /** pi's section order; `buildSystemPromptSections()` omits the ones without content. */
 const KEYS = ["preamble", "tools", "rules", "docs", "project_context", "skills", "cwd"] as const;
@@ -110,6 +124,8 @@ export function createPiPrompt(resources: PiResources) {
 				const piSection = section(key, (input) => build(input)[key], { tag: false });
 				return key === "rules" ? [piSection, section("agency", () => AGENCY)] : [piSection];
 			}),
+			// In a sandbox (`src/sandbox.ts`): that the tools run on another machine, its network, ports, and what comes back.
+			SANDBOX_SECTION,
 			// Inside a Rex terminal: which Rex session and pane this is, and how to drive Rex (`src/rex.ts`).
 			...(rex === undefined ? [] : [section("rex", rex)]),
 		],

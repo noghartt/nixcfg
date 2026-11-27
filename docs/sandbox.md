@@ -26,11 +26,12 @@ command starts, because exe.dev's API has no stdin: it suits files and prompts, 
 interactive streams.
 
 Seeding a checkout and pulling branches back are core (`src/core.ts`), built on `exec`,
-`writeFile` and `readFile`, so every provider gets them. `src/index.ts` exports the library,
-so pi-durable can later run subagents or a remote execution environment on top.
+`writeFile` and `readFile`, so every provider gets them. `src/index.ts` exports the library;
+pi-durable is its first consumer (see Consumers).
 
 `tests/contract.ts` is the suite every provider must pass. It runs against a local fake
-(`tests/fake-provider.ts`, also the smallest example of a provider), against the exe.dev
+(`src/testing.ts`, also the smallest example of a provider, exported so consumers' tests run on
+it; it keeps the checkout metadata `create` gets, so seeding and pulls work on it), against the exe.dev
 provider on a fake client, and, with `SBX_LIVE=1`, against exe.dev itself
 (`tests/live.test.ts`, which creates and removes real VMs). `tests/sdk-client.test.ts` drives
 the real SDK adapter against a stubbed `fetch` and pins the exact exe.dev command lines.
@@ -144,6 +145,18 @@ factory in `src/builtin.ts`, add a provider entry and kinds for it in `default.n
 environment variable). Keep metadata on the backend rather than locally, make `exec`
 cancellation stop the remote process, and offer `gitRemote` if the backend has credential-free
 GitHub access.
+
+## Consumers
+
+- **pi-durable** (`docs/pi-durable.md`, Sandboxes) imports the library as `#sbx/*` (its
+  `package.nix` links this package's `lib/sbx`) and reads the same `config.json` and kinds. It
+  implements Durable's `ExecutionEnv` on `Sandbox.exec`/`readFile`/`writeFile`, so its coding tools
+  run in a sandbox; seeds sandbox-isolated subagents and session sandboxes with `createSandbox` and
+  brings their work back with `pullBranches`; and runs `sandbox_run` like `sbx run`. It uses the
+  provider interface and capabilities only (`httpsUrl` decides whether its prompt offers port
+  URLs), so a new provider works there unchanged. Its tests run on `src/testing.ts`. Names it
+  makes start with `pd-` (session hash and key), so a rerun after a crash finds its sandbox;
+  it records use with `touch` at most hourly while a conversation works in one.
 
 ## Development
 

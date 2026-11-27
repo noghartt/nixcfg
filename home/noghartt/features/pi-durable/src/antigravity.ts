@@ -10,6 +10,7 @@ import type { Usage } from "@earendil-works/pi-ai";
 import { defineExtension, defineTool, type Extension, type ToolExecutionApi } from "@earendil-works/pi-durable";
 import { bool, obj, opt, str } from "@earendil-works/pi-schema";
 import type { Approvals } from "./approvals.ts";
+import { localEnvCwd } from "./sandbox-env.ts";
 
 export const DEFAULT_MODEL = "gemini-4-neon-high";
 
@@ -265,7 +266,7 @@ export function createAntigravity(approvals: Approvals): Extension {
 				// conversation ID is already in the details, so the model can continue it.
 
 				async execute(params, api, context) {
-					const baseCwd = api.env?.cwd ?? (await api.agent(context)).cwd ?? process.cwd();
+					const baseCwd = localEnvCwd(api.env) ?? (await api.agent(context)).cwd ?? process.cwd();
 					const model = params.model?.trim() || DEFAULT_MODEL;
 					const cwd = params.cwd ? resolve(baseCwd, params.cwd.replace(/^@/, "")) : baseCwd;
 					const allowWrites = params.allowWrites === true;

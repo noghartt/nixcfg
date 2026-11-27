@@ -13,6 +13,8 @@ let
   chrome = config.programs.google-chrome;
   durable = pkgs.callPackage ./package.nix {
     git-twig = pkgs.callPackage ../git-twig/package.nix { };
+    # The same sbx the sandbox feature installs: sandbox subagents, sessions and tools (docs/pi-durable.md).
+    sbx = pkgs.callPackage ../sandbox/package.nix { };
   };
   # A port checked against another Pi is left out with a warning instead of
   # failing the host's build.

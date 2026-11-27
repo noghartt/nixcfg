@@ -7,6 +7,7 @@ import {
 	type ModelRef,
 	type Registry,
 } from "@earendil-works/pi-durable";
+import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { CodingTools } from "@earendil-works/pi-durable/tools";
 import { applyHttpProxySettings, configureHttpDispatcher } from "#pi/core/http-dispatcher.js";
@@ -15,6 +16,7 @@ import type { ModelRuntime } from "#pi/core/model-runtime.js";
 import type { SettingsManager } from "#pi/core/settings-manager.js";
 import { createPiPrompt } from "./prompt.ts";
 import type { PiResources } from "./resources.ts";
+import { type Sandboxes, sandboxOf } from "./sandbox.ts";
 
 /** pi's HTTP setup: proxy, idle timeouts, and one undici for fetch. Without it, some provider streams break off. */
 export function configureHarnessHttp(settingsManager: SettingsManager): void {
@@ -57,28 +59,44 @@ export function createCodingRegistry(resources: PiResources): Registry {
 	return registry;
 }
 
-/** One execution environment per directory, shared by every conversation in it. */
+/**
+ * One execution environment per directory, shared by every conversation in it. A conversation in a sandbox (its own, or
+ * the session's) gets the sandbox's environment instead, at the place its local directory maps to there
+ * (`src/sandbox.ts`); its agent `cwd` stays local, so detaching the sandbox needs no change to the conversation.
+ */
 export class ExecutionEnvs {
 	readonly #defaultCwd: string;
 	readonly #envs = new Map<string, NodeExecutionEnv>();
+	readonly #sandboxes: Sandboxes | undefined;
 
-	constructor(defaultCwd: string) {
+	constructor(defaultCwd: string, sandboxes?: Sandboxes) {
 		this.#defaultCwd = defaultCwd;
+		this.#sandboxes = sandboxes;
 	}
 
-	readonly env = ({ cwd = this.#defaultCwd }: EnvTarget): NodeExecutionEnv => {
+	readonly env = async (target: EnvTarget, context: Context): Promise<ExecutionEnv> => {
+		const cwd = target.cwd ?? this.#defaultCwd;
+		if (this.#sandboxes !== undefined) {
+			const ref = await sandboxOf(target.read, target.conversationId, context);
+			if (ref !== undefined) return this.#sandboxes.env(ref, cwd);
+		}
+		return this.local(cwd);
+	};
+
+	local(cwd: string): NodeExecutionEnv {
 		let env = this.#envs.get(cwd);
 		if (env === undefined) {
 			env = new NodeExecutionEnv({ cwd });
 			this.#envs.set(cwd, env);
 		}
 		return env;
-	};
+	}
 
 	async cleanup(context: Context): Promise<void> {
 		const envs = [...this.#envs.values()];
 		this.#envs.clear();
 		for (const env of envs) await env.cleanup(context);
+		await this.#sandboxes?.cleanup(context);
 	}
 }
 

@@ -150,7 +150,8 @@ Working checklist for the nixcfg rebuild. Keep this file updated as items land.
 - [x] `sbx`: provider interface + contract tests, VM kinds (dev/agent/job), exe.dev provider on `@exedev/sdk`, git seed/pull via the GitHub integration, archive-then-reap (`features/sandbox`, `docs/sandbox.md`)
 - [ ] exe.dev setup: `sbx auth setup` (tag-scoped token), link GitHub on the Integrations page, `sbx github add <owner/repo>` per repo, attach printed integrations by tag
 - [ ] Live-verify `sbx` (`SBX_LIVE=1`): tag syntax and `tag --d`, `cp` of a paused template, tag-scoped token inheritance, `integrations attach` by tag, setup scripts with sudo, push through `github.int.exe.xyz`, remote kill on cancel; build `sbx` on Mellon (x86_64 tests not run yet)
-- [ ] pi-durable: sandbox `ExecutionEnv`, `isolation: "sandbox:<kind>"` for subagent/parallel, `--sandbox`/`/sandbox` sessions, `sandbox_run` tool
+- [x] pi-durable: sandbox `ExecutionEnv` (Durable's env conformance on the fake provider), `isolation: "sandbox[:<kind>]"` for subagent/parallel/profiles with pull-back as `sbx/<sandbox>/<branch>`, `--sandbox`/`/sandbox` sessions, `sandbox_run` and `sandbox_pull` tools (`docs/pi-durable.md` Sandboxes)
+- [ ] Live-verify pi-durable sandboxes on exe.dev: a `sandbox:dev` subagent end to end (seed, bash/edit in the VM, commit, pull-back branch, removal), Esc during a long bash kills the remote group, a large `read` (snapshot chunks) and a spill file over the network, `--sandbox` then `--continue` reattaching, `/sandbox agent` (no internet; the prompt says so), the port URL in the prompt, `sandbox_run` artifacts, latency of the per-call round trips
 - [ ] Measure exe.dev usage for a few weeks before deciding on standalone (metered) VMs
 - [ ] Mellon provider: self-hosted runner implementing the `sbx` provider interface (passes `tests/contract.ts`)
 

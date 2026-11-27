@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "imports": {
-    "#pi/*": "./pi/*"
+    "#pi/*": "./pi/*",
+    "#sbx/*": "./sbx/*"
   }
 }

@@ -9,6 +9,7 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { Context } from "@earendil-works/chord/context";
 import { defineExtension, defineTool, type Extension } from "@earendil-works/pi-durable";
 import { arr, bool, int, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
+import { localEnvCwd } from "./sandbox-env.ts";
 
 const API_AGENT = "pi-durable-research/1.0";
 // Sites serve a stripped or blocked page to unknown agents; a browser's string gets the article.
@@ -1097,7 +1098,7 @@ export function createResearch(defaultCwd: string): Extension {
 		}),
 		replay: "safe",
 		execute: async (args, api, context) => {
-			const cwd = api.env?.cwd ?? (await api.agent(context)).cwd ?? defaultCwd;
+			const cwd = localEnvCwd(api.env) ?? (await api.agent(context)).cwd ?? defaultCwd;
 			const target = resolve(cwd, expandHome(args.path.replace(/^@/u, "")));
 			const files = await notesFiles(target);
 			const base = (await stat(target)).isFile() ? dirname(target) : target;

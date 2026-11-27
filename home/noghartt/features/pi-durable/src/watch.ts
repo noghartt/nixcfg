@@ -13,6 +13,7 @@ import {
 } from "@earendil-works/pi-durable";
 import { bool, int, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
 import { oneLine } from "./host.ts";
+import { localEnvCwd } from "./sandbox-env.ts";
 import { Background, REPORT_KIND } from "./state.ts";
 
 export type WatchInput = {
@@ -246,7 +247,7 @@ export function createWatchExtension(defaultCwd: string): Extension {
 		// The keyed task makes a rerun find the watcher it started.
 		replay: "safe",
 		execute: async (args, api, context) => {
-			const cwd = api.env?.cwd ?? (await api.agent(context)).cwd ?? defaultCwd;
+			const cwd = localEnvCwd(api.env) ?? (await api.agent(context)).cwd ?? defaultCwd;
 			if (args.kind === "command" && !args.command) throw new Error("kind command needs command");
 			if (args.kind === "file" && !args.path) throw new Error("kind file needs path");
 			if (args.kind === "timer" && !(args.seconds !== undefined && args.seconds > 0)) {

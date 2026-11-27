@@ -20,11 +20,12 @@ import {
 	type Tx,
 } from "@earendil-works/pi-durable";
 import type { JsonValue } from "@earendil-works/chord/json";
-import { arr, bool, int, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
+import { arr, bool, int, obj, opt, str } from "@earendil-works/pi-schema";
 import { AGY_SUBAGENT_TOOL } from "./antigravity.ts";
 import type { AgentProfile } from "./profiles.ts";
 import { DEFAULT_PARALLEL, type Host, MAX_PARALLEL, MAX_PARALLEL_TASKS } from "./host.ts";
 import { Background, Identity, type IdentityState, MESSAGE_KIND, REPORT_KIND } from "./state.ts";
+import { type Isolation, parseIsolation, type Sandboxes, sandboxName } from "./sandbox.ts";
 import { ensureWorktree, summarizeWorktree } from "./worktrees.ts";
 
 /** Tools a subagent keeps whatever its profile offers: talking to other agents is how it reports mid-task. */
@@ -41,7 +42,9 @@ async function answerOf(tx: Tx, id: EntryId): Promise<string> {
 export interface ChildSpec {
 	readonly name: string;
 	readonly agent?: string;
-	readonly isolation?: "worktree" | "none";
+	readonly isolation?: Isolation;
+	/** Sandbox isolation: keep the sandbox after its work is pulled back (default: the profile's choice). */
+	readonly keepSandbox?: boolean;
 	readonly background: boolean;
 	/** A swarm member: it works through the board, so its instructions say so and its answers go nowhere. */
 	readonly swarm?: boolean;
@@ -66,10 +69,25 @@ export async function prepareChild(
 ): Promise<{ change: AgentChange; identity: IdentityState }> {
 	const profile = host.profiles.get(spec.agent);
 	const parent = await api.agent(context);
-	const isolation = spec.isolation ?? profile.isolation;
+	const isolation = parseIsolation(spec.isolation ?? profile.isolation);
 	let cwd = parent.cwd ?? host.cwd;
 	let worktree: IdentityState["worktree"];
-	if (isolation === "worktree") ({ worktree, cwd } = await ensureWorktree(cwd, host.sessionDir, host.sessionId, key));
+	let sandbox: IdentityState["sandbox"];
+	if (isolation.mode === "worktree") ({ worktree, cwd } = await ensureWorktree(cwd, host.sessionDir, host.sessionId, key));
+	if (isolation.mode === "sandbox") {
+		// Seeded from the local repository's commits (also when the parent itself works in the session's sandbox); its
+		// conversation keeps the local cwd, which the environment maps into the sandbox's checkout.
+		const keep = spec.keepSandbox ?? profile.keepSandbox;
+		({ ref: sandbox } = await host.sandboxes.ensure({
+			name: sandboxName(host.sessionId, key),
+			...(isolation.kind === undefined ? {} : { kind: isolation.kind }),
+			repo: cwd,
+			branch: `pi-durable/${key}`,
+			purpose: "subagent",
+			...(keep === true ? { keep } : {}),
+			...(context.abortSignal === undefined ? {} : { signal: context.abortSignal }),
+		}));
+	}
 	const extra = spec.extraTools ?? [];
 	const offered =
 		profile.tools === undefined
@@ -99,6 +117,12 @@ export async function prepareChild(
 				(spec.swarm === true
 					? "commit your work on your branch before you report it done: the coordinator reviews and merges the branch."
 					: "commit your work on your branch before you answer: the main agent reviews and merges the branch."),
+		sandbox === undefined
+			? undefined
+			: `You work in your own sandbox VM ${sandbox.name}` +
+				(sandbox.workdir === undefined ? "" : `, in its checkout ${sandbox.workdir} on branch ${sandbox.branch}`) +
+				"; the sandbox section of your instructions says what it can reach. Commit your work on your branch before you " +
+				`answer: it comes back to the main agent as branch sbx/${sandbox.name}/${sandbox.branch}, which it reviews and merges.`,
 		profile.instructions || undefined,
 	]
 		.filter(Boolean)
@@ -118,6 +142,7 @@ export async function prepareChild(
 		parent: api.conversationId,
 		background: spec.background,
 		...(worktree === undefined ? {} : { worktree }),
+		...(sandbox === undefined ? {} : { sandbox }),
 		...(spec.swarm === true ? { swarm: true } : {}),
 	};
 	return { change, identity };
@@ -147,6 +172,12 @@ export const Anchor = defineTask<null, { phase: "done" }, null>({
 	abort: (_task, runtime, context) =>
 		runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), context),
 });
+
+/**
+ * The sandboxes of the open session, for the Reporter: task definitions are module-level, and one process holds one
+ * session at a time (`createOrchestration` sets this for each).
+ */
+const reporterSandboxes: { current?: Sandboxes } = {};
 
 export type ReporterInput = {
 	/** The subagent's name, as reports show it. */
@@ -201,8 +232,13 @@ export const Reporter = defineTask<ReporterInput, ReporterState, null>({
 			const state = await runtime.readSignal(SubmissionSettled, "answered", context);
 			const settled = state !== undefined && "value" in state ? state.value : undefined;
 			const identity = await runtime.snapshot(Identity, conversationId, context);
+			// A background subagent may get more messages, so its sandbox stays; each answer pulls its branch again.
 			const worktree =
-				identity?.worktree === undefined ? undefined : await summarizeWorktree(identity.worktree, false);
+				identity?.worktree !== undefined
+					? await summarizeWorktree(identity.worktree, false)
+					: identity?.sandbox !== undefined && reporterSandboxes.current !== undefined
+						? (await reporterSandboxes.current.bringBack(identity.sandbox, { remove: false })).text
+						: undefined;
 			await runtime.commit(async (tx) => {
 				const next = (report?: string) => ({ status: "running", checkpoint: { phase: "report", report } }) as const;
 				if (settled === undefined) return next(`[subagent ${name} never answered]`);
@@ -254,10 +290,13 @@ const SubagentParameters = obj({
 	agent: opt(str({ description: "Profile name (see agent_profiles); default general" })),
 	name: opt(str({ description: "A short name for it, unique among background subagents" })),
 	isolation: opt(
-		oneOf(["worktree", "none"], {
-			description: "worktree: its own git worktree and branch (default: the profile's choice)",
+		str({
+			description:
+				"none | worktree (own git worktree and branch) | sandbox or sandbox:<kind> (own sbx sandbox VM; its commits " +
+				"come back as branch sbx/<sandbox>/<branch>). Default: the profile's choice",
 		}),
 	),
+	keepSandbox: opt(bool({ description: "Sandbox isolation: keep the sandbox after its work is pulled back" })),
 	background: opt(
 		bool({
 			description:
@@ -272,7 +311,8 @@ const ParallelParameters = obj({
 			task: str({ description: "The complete task for this subagent" }),
 			agent: opt(str({ description: "Profile name; default general" })),
 			name: opt(str({ description: "A short name for it" })),
-			isolation: opt(oneOf(["worktree", "none"])),
+			isolation: opt(str({ description: "none | worktree | sandbox | sandbox:<kind>" })),
+			keepSandbox: opt(bool()),
 		}),
 		{ description: `1 to ${MAX_PARALLEL_TASKS} independent tasks` },
 	),
@@ -295,6 +335,7 @@ type ChildStatus = {
 export function createOrchestration(host: Host): { orchestration: Extension; tasks: Extension } {
 	// eslint-disable-next-line prefer-const -- the tools refer to their own extension, defined below them.
 	let orchestration: Extension;
+	reporterSandboxes.current = host.sandboxes;
 
 	const subagent = defineTool({
 		name: "subagent",
@@ -303,7 +344,8 @@ export function createOrchestration(host: Host): { orchestration: Extension; tas
 			"instructions (see agent_profiles). It does not see this conversation, so give it everything it needs. " +
 			"By default this waits and returns its final answer; with background: true it returns at once and the answer " +
 			"arrives later as a message, while you keep working. Isolated subagents (isolation worktree, or the worker " +
-			"profile) change files in their own git worktree and branch, which you then review and merge. " +
+			"profile) change files in their own git worktree and branch, which you then review and merge; isolation " +
+			"sandbox[:kind] runs one in its own sandbox VM, and its commits come back as a local branch. " +
 			"For several independent tasks at once, use parallel.",
 		parameters: SubagentParameters,
 		// A rerun after a crash finds the child, worktree, and submission it already made.
@@ -313,6 +355,8 @@ export function createOrchestration(host: Host): { orchestration: Extension; tas
 			if (state !== undefined) {
 				return finish(api, "value" in state ? state.value : undefined, context);
 			}
+			// A bad isolation fails before anything is made.
+			if (args.isolation !== undefined) parseIsolation(args.isolation);
 			const profile = host.profiles.get(args.agent);
 			if (profile.runner === "antigravity") {
 				if (args.background === true) {
@@ -326,7 +370,8 @@ export function createOrchestration(host: Host): { orchestration: Extension; tas
 			const spec: ChildSpec = {
 				name,
 				agent: profile.name,
-				...(args.isolation === undefined ? {} : { isolation: args.isolation }),
+				...(args.isolation === undefined ? {} : { isolation: args.isolation as Isolation }),
+				...(args.keepSandbox === undefined ? {} : { keepSandbox: args.keepSandbox }),
 				background: args.background === true,
 			};
 			if (args.background === true) return startBackground(api, spec, args.task, context);
@@ -359,11 +404,15 @@ export function createOrchestration(host: Host): { orchestration: Extension; tas
 	async function runAntigravity(
 		api: ToolExecutionApi,
 		profile: AgentProfile,
-		args: { task: string; name?: string; isolation?: "worktree" | "none" },
+		args: { task: string; name?: string; isolation?: string },
 		context: Context,
 	) {
 		const name = args.name?.trim() || profile.name;
 		const isolation = args.isolation ?? profile.isolation;
+		// agy runs on this machine; it has no way into a sandbox.
+		if (parseIsolation(isolation).mode === "sandbox") {
+			throw new Error(`Profile ${profile.name} runs on Antigravity, which cannot use sandbox isolation; use worktree.`);
+		}
 		let cwd = (await api.agent(context)).cwd ?? host.cwd;
 		let worktree: IdentityState["worktree"];
 		if (isolation === "worktree") {
@@ -436,8 +485,13 @@ export function createOrchestration(host: Host): { orchestration: Extension; tas
 		}
 		const answer = await api.commit((tx) => answerOf(tx, settled.answer), context);
 		// A finished isolated subagent that changed nothing leaves no worktree behind.
+		// A finished sandbox-isolated one: its work is committed, pulled back, and the sandbox removed unless kept.
 		const worktree =
-			identity?.worktree === undefined ? undefined : await summarizeWorktree(identity.worktree, true);
+			identity?.worktree !== undefined
+				? await summarizeWorktree(identity.worktree, true)
+				: identity?.sandbox !== undefined
+					? (await host.sandboxes.bringBack(identity.sandbox, { remove: true })).text
+					: undefined;
 		const text = [answer || "(no text in its answer)", worktree, `[${label}]`].filter(Boolean).join("\n\n");
 		return { output: [{ type: "text" as const, text }] };
 	}
@@ -510,6 +564,7 @@ export function createOrchestration(host: Host): { orchestration: Extension; tas
 						agent,
 						name: item.name?.trim() || `${agent}-${index + 1}`,
 						...(item.isolation === undefined ? {} : { isolation: item.isolation }),
+						...(item.keepSandbox === undefined ? {} : { keepSandbox: item.keepSandbox }),
 					} as JsonObject,
 				};
 			});
@@ -592,7 +647,8 @@ export function createOrchestration(host: Host): { orchestration: Extension; tas
 					`${host.profiles.describe()}\n` +
 					"Delegate work that is self-contained or can run alongside yours; keep work that needs this conversation's " +
 					"context. Run independent tasks with parallel rather than one subagent after another. Subagents that " +
-					"change files at the same time need isolation worktree.",
+					"change files at the same time need isolation worktree (or sandbox[:kind], for work that needs its own " +
+					"machine: installs, services, long builds, or untrusted code).",
 			),
 		],
 	});

@@ -7,6 +7,7 @@ import { parseFrontmatter } from "#pi/index.js";
 import { resolveCliModel } from "#pi/core/model-resolver.js";
 import type { ModelRuntime } from "#pi/core/model-runtime.js";
 import type { PiResources } from "./resources.ts";
+import { type Isolation, isIsolation, parseIsolation } from "./sandbox.ts";
 
 /**
  * A specialized subagent: a model, the tools it is offered, how it is isolated, and instructions. Defined in markdown
@@ -19,6 +20,7 @@ import type { PiResources } from "./resources.ts";
  *   thinking: high
  *   tools: read, bash                    # coding tools it is offered; default all
  *   isolation: worktree                  # its own git worktree and branch; default none
+ *                                        # sandbox[:kind]: its own sbx sandbox VM; keepSandbox: true keeps it
  *   maxTurns: 40
  *   ---
  *   You review changes. ...
@@ -34,7 +36,9 @@ export interface AgentProfile {
 	readonly thinking?: ModelThinkingLevel;
 	/** Tool names offered to the model; undefined offers every tool the parent has. */
 	readonly tools?: readonly string[];
-	readonly isolation: "worktree" | "none";
+	readonly isolation: Isolation;
+	/** Sandbox isolation: keep the sandbox after its work is pulled back. */
+	readonly keepSandbox?: boolean;
 	readonly maxTurns?: number;
 	/** Where the task runs: a Pi conversation, or an `agy` run. */
 	readonly runner: "pi" | "antigravity";
@@ -110,13 +114,19 @@ function parseProfile(path: string): AgentProfile | string {
 	const thinking = meta.thinking === undefined ? undefined : String(meta.thinking);
 	if (thinking !== undefined && !THINKING.has(thinking)) return `${path}: unknown thinking level "${thinking}"`;
 	const isolation = String(meta.isolation ?? "none");
-	if (isolation !== "worktree" && isolation !== "none") return `${path}: isolation must be worktree or none`;
+	if (!isIsolation(isolation)) return `${path}: isolation must be worktree, none, sandbox or sandbox:<kind>`;
+	const keepSandbox =
+		meta.keepSandbox === undefined ? undefined : meta.keepSandbox === true || meta.keepSandbox === "true";
 	const maxTurns = meta.maxTurns === undefined ? undefined : Number(meta.maxTurns);
 	if (maxTurns !== undefined && !(Number.isInteger(maxTurns) && maxTurns >= 1)) {
 		return `${path}: maxTurns must be a positive integer`;
 	}
 	const runner = String(meta.runner ?? "pi");
 	if (runner !== "pi" && runner !== "antigravity") return `${path}: runner must be pi or antigravity`;
+	// agy runs on this machine; it has no way into a sandbox.
+	if (runner === "antigravity" && parseIsolation(isolation).mode === "sandbox") {
+		return `${path}: runner antigravity cannot use sandbox isolation`;
+	}
 	const allowWrites = meta.allowWrites === undefined ? undefined : meta.allowWrites === true || meta.allowWrites === "true";
 	if (allowWrites === true && (runner !== "antigravity" || isolation !== "worktree")) {
 		return `${path}: allowWrites needs runner antigravity and isolation worktree`;
@@ -129,6 +139,7 @@ function parseProfile(path: string): AgentProfile | string {
 		...(thinking === undefined ? {} : { thinking: thinking as ModelThinkingLevel }),
 		...(tools === undefined ? {} : { tools }),
 		isolation,
+		...(keepSandbox === undefined ? {} : { keepSandbox }),
 		...(maxTurns === undefined ? {} : { maxTurns }),
 		runner,
 		...(allowWrites === undefined ? {} : { allowWrites }),
@@ -229,6 +240,9 @@ export class AgentProfiles {
 					agy ? (profile.allowWrites === true ? "may write files" : "read-only") : undefined,
 					agy ? "no background subagent; joins swarms" : undefined,
 					profile.isolation === "worktree" ? "own git worktree" : undefined,
+					profile.isolation.startsWith("sandbox")
+						? `own sandbox VM${profile.isolation.includes(":") ? ` (kind ${profile.isolation.slice(8)})` : ""}`
+						: undefined,
 				].filter(Boolean);
 				return `- ${profile.name}: ${profile.description}${traits.length > 0 ? ` (${traits.join("; ")})` : ""}`;
 			})

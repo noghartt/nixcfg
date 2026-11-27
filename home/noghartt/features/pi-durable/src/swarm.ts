@@ -702,7 +702,13 @@ export function createSwarm(host: Host, orchestration: Extension): { extension: 
 		const profile = host.profiles.get(args.agent.trim());
 		const agy = profile.runner === "antigravity";
 		const agyModel = agyModelFor(profile.model ?? AGY_DEFAULT_MODEL, args.thinking);
-		const isolation = args.workspace === "worktree" ? "worktree" : args.workspace === "inherit" ? "none" : undefined;
+		// Members hand work over through local branches the coordinator merges, so a sandbox profile joins in a worktree.
+		const isolation =
+			args.workspace === "worktree" || (args.workspace === undefined && profile.isolation.startsWith("sandbox"))
+				? "worktree"
+				: args.workspace === "inherit"
+					? "none"
+					: undefined;
 		const cwd = (await api.agent(context)).cwd ?? host.cwd;
 		type Prepared = {
 			name: string;

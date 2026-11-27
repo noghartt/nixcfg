@@ -1308,6 +1308,16 @@ export async function runDurableTui(durable: OpenDurableResult): Promise<Session
 					{ value: "--deep", label: "--deep", description: "Double budgets, up to three rounds" },
 				].filter((item) => item.value.startsWith(prefix)),
 		},
+		{
+			name: "sandbox",
+			description: "Run this session's tools in an sbx sandbox VM: a kind makes one, a name attaches one, off detaches",
+			argumentHint: "[kind | kind:name | name | off]",
+			getArgumentCompletions: (prefix) =>
+				[
+					...controller.sandboxKinds().map((kind) => ({ value: kind, label: kind, description: "sbx kind" })),
+					{ value: "off", label: "off", description: "Run tools on this machine again (the sandbox is kept)" },
+				].filter((item) => item.value.startsWith(prefix)),
+		},
 		{ name: "label", description: "Label the newest entry (refer to it with @label:<text>)", argumentHint: "<text>" },
 		{ name: "tasks", description: "Show or hide the live task graph" },
 		{
@@ -1381,6 +1391,8 @@ export async function runDurableTui(durable: OpenDurableResult): Promise<Session
 					return controller.notify("error", "The research skill is not loaded (pi/agent/skills/research); /reload after installing it");
 				}
 				return void controller.submit(`/skill:research ${args}`, "steer");
+			case "sandbox":
+				return void controller.sandbox(args);
 			case "label":
 				if (!args) return controller.notify("info", "Usage: /label <text>; /tree edits any entry's label");
 				return void controller.labelLatest(args);

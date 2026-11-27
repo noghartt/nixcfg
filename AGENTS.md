@@ -33,14 +33,14 @@ home/<user>/features/desktop/ portable desktop default + platform-specific modul
 home/<user>/features/herdr/  standalone Herdr feature: native HM settings + pinned package
 home/<user>/features/pi/     previous Pi setup: settings + packaged extensions OmO inherits; no longer installs `pi`
 home/<user>/features/pi-next/ `pi` on a hand-managed agent dir (`~/.config/pi/agent`); Nix links only extensions/ (antigravity, rex) and skills/ (cli/agents/skills.nix)
-home/<user>/features/pi-durable/ `pi-durable`: durable (SQLite) agent with pi's TUI, skills and /tree, built on Pi's Durable library; subagent profiles, parallel fan-out, /swarm (coordinator + workers on any profile, Antigravity included, on a shared board), worktrees, watchers, cross-session messaging, dashboard, /btw side questions, /status (limits, daily usage), Claude multi-account fallback on usage limits (`pi-durable accounts`, `/accounts` also signs in to other providers); src/ + tests/ + package.nix + agents/ (per-model subagent profiles, incl. Antigravity runner) (all hosts)
+home/<user>/features/pi-durable/ `pi-durable`: durable (SQLite) agent with pi's TUI, skills and /tree, built on Pi's Durable library; subagent profiles, parallel fan-out, /swarm (coordinator + workers on any profile, Antigravity included, on a shared board), worktrees, sbx sandboxes (sandbox-isolated subagents, `--sandbox`/`/sandbox` sessions, `sandbox_run`/`sandbox_pull`; links the sbx library as `#sbx/*`), watchers, cross-session messaging, dashboard, /btw side questions, /status (limits, daily usage), Claude multi-account fallback on usage limits (`pi-durable accounts`, `/accounts` also signs in to other providers); src/ + tests/ + package.nix + agents/ (per-model subagent profiles, incl. Antigravity runner) (all hosts)
 home/<user>/features/omo/    standalone OmO Native (`omo`) feature: own agent dir, model chains, memory guards (palantir, mithril, mellon)
 home/<user>/features/vscode/ standalone VS Code feature: marketplace extensions + live settings.json
 home/<user>/features/cua/    standalone Cua Driver feature: pinned app + daemon, skill and docs MCP for harnesses (palantir, mithril)
 home/<user>/features/darwin/  shared Mac composition (apps, agent stack, Ghostty+Herdr) imported by palantir.nix and mithril.nix
 home/<user>/features/hashcards/ standalone hashcards (spaced repetition) CLI, built from source; bump package.nix (all hosts)
 home/<user>/features/git-twig/  standalone `git twig` (CoW linked worktrees), built from source; skill linked into every harness, every worktree creator goes through it (all hosts)
-home/<user>/features/sandbox/ standalone `sbx`: provider-agnostic sandboxes (provider interface + contract tests, VM kinds, git seed/pull), exe.dev provider on @exedev/sdk, hourly reaper (all hosts)
+home/<user>/features/sandbox/ standalone `sbx`: provider-agnostic sandboxes (provider interface + contract tests, VM kinds, git seed/pull), exe.dev provider on @exedev/sdk, hourly reaper; `src/testing.ts` exports the fake provider for consumers' tests (all hosts)
 home/<user>/features/agent-evals/ standalone eval pipeline: `aeval` ingest/label/classify/report/export/replay over session transcripts (both hosts)
 home/<user>/features/pi/extensions/agent-forum/  agent forum client tools (forum_*), loaded by Pi only
 hosts/mellon/agent-forum/    agent forum service (Bun + SQLite) and its VM test
@@ -156,12 +156,12 @@ docs/                        per-feature design notes (read the matching doc bef
 Feature-level design lives in `docs/`, which is not loaded automatically: read the matching doc
 before changing a feature, and update it in the same change.
 
-- `docs/sandbox.md`: `sbx` sandboxes: provider interface, kinds, exe.dev provider, auth, git flow, reaper, adding a provider.
+- `docs/sandbox.md`: `sbx` sandboxes: provider interface, kinds, exe.dev provider, auth, git flow, reaper, adding a provider, consumers.
 - `docs/herdr.md`: Herdr launch from Ghostty, saved machines, plugins and keybindings.
 - `docs/rex.md`: Rex (replaces Herdr): program status and session context from `pi` and pi-durable.
 - `docs/git-twig.md`: CoW worktrees, and every place (pi-durable, Pi extensions, Herdr patch, Claude hooks) that creates them.
 - `docs/pi-durable.md`: the Durable agent, its TUI (skills, /tree branches, labels, sessions, dashboard, /swarm), agent tools
-  (profiles, subagent, parallel, watch, agents, sessions), re-porting.
+  (profiles, subagent, parallel, watch, agents, sessions), sandboxes (sbx ExecutionEnv, sandbox subagents and sessions), re-porting.
 - `docs/deep-research.md`: `/research` runs in pi-durable (Exa/Kagi tools, headless Chrome fallback, researcher profiles, plain-folder reports).
 - `docs/omo.md`: harness modules, agent-path `gh` shim, OmO settings, model chains, memory guards.
 - `docs/orchestrator.md`: leader + worker runs, graph, placement, leader tools.
